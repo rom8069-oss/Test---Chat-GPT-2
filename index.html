@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Territory Planning & Optimization Tool</title>
+  <link rel="preconnect" href="https://unpkg.com" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="toolbar">
+      <div class="toolbar-left">
+        <div class="brand-block">
+          <div class="brand-title">Territory Planning & Optimization Tool</div>
+          <div class="brand-subtitle">GitHub Pages-ready • Excel/CSV import • Map-first territory design</div>
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <label class="file-btn">
+          <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
+          <span>Upload Excel / CSV</span>
+        </label>
+
+        <select id="sheet-select" title="Workbook sheet" disabled>
+          <option value="">Sheet</option>
+        </select>
+
+        <button id="load-sheet-btn" class="btn">Load Sheet</button>
+        <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
+        <button id="undo-btn" class="btn" disabled>Undo</button>
+        <button id="reset-btn" class="btn" disabled>Reset</button>
+        <button id="optimize-btn" class="btn btn-accent" disabled>Optimize Routes</button>
+        <button id="export-btn" class="btn" disabled>Export Excel</button>
+        <button id="theme-toggle" class="btn">Dark Map</button>
+      </div>
+    </header>
+
+    <section class="controls-strip">
+      <div class="control-group compact">
+        <label for="assign-rep-select">Assign selected to</label>
+        <select id="assign-rep-select" disabled></select>
+      </div>
+
+      <div class="control-group compact">
+        <label for="rep-filter">Map filter</label>
+        <select id="rep-filter" disabled>
+          <option value="ALL">All reps</option>
+        </select>
+      </div>
+
+      <div class="control-group compact">
+        <label for="rep-count-input">Target rep count</label>
+        <input id="rep-count-input" type="number" min="1" max="100" step="1" value="16" disabled />
+      </div>
+
+      <div class="control-group grow">
+        <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
+        <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
+      </div>
+
+      <div class="control-group compact">
+        <label for="balance-mode">Optimize by</label>
+        <select id="balance-mode" disabled>
+          <option value="hybrid">Hybrid</option>
+          <option value="stops">Stops</option>
+          <option value="revenue">Revenue</option>
+        </select>
+      </div>
+
+      <div class="control-group compact">
+        <label for="rotation-filter">Rotation filter</label>
+        <select id="rotation-filter" disabled>
+          <option value="ALL">All</option>
+          <option value="A">A weekly</option>
+          <option value="B">B biweekly</option>
+          <option value="C">C monthly</option>
+          <option value="D">D quarterly</option>
+        </select>
+      </div>
+
+      <div class="control-group compact checkbox-group">
+        <label><input id="dim-others-checkbox" type="checkbox" checked disabled /> Dim others</label>
+        <label><input id="show-territory-checkbox" type="checkbox" checked disabled /> Show territories</label>
+      </div>
+    </section>
+
+    <section class="summary-strip">
+      <div class="summary-card">
+        <div class="summary-label">Accounts</div>
+        <div class="summary-value" id="global-accounts">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Revenue</div>
+        <div class="summary-value" id="global-revenue">$0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Protected</div>
+        <div class="summary-value" id="global-protected">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Moved</div>
+        <div class="summary-value" id="global-moved">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Unchanged</div>
+        <div class="summary-value" id="global-unchanged">0%</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">4-week workload</div>
+        <div class="summary-value" id="global-workload">0.0</div>
+      </div>
+      <div class="summary-card selection-card">
+        <div class="summary-label">Selection</div>
+        <div class="summary-value" id="selection-count">0</div>
+      </div>
+    </section>
+
+    <main class="main-layout">
+      <section class="map-panel panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Map</div>
+            <div class="panel-subtitle">Use rectangle or polygon draw to lasso accounts</div>
+          </div>
+          <div class="map-legend" id="map-legend"></div>
+        </div>
+        <div id="map"></div>
+        <div id="toast" class="toast"></div>
+      </section>
+
+      <aside class="sidebar panel">
+        <div class="panel-header sidebar-header">
+          <div>
+            <div class="panel-title">Routes</div>
+            <div class="panel-subtitle">Live rep metrics update as assignments change</div>
+          </div>
+          <div class="last-action" id="last-action">No actions yet</div>
+        </div>
+
+        <div class="table-wrap">
+          <table id="rep-table">
+            <thead>
+              <tr>
+                <th>Rep</th>
+                <th>Stops</th>
+                <th>Revenue</th>
+                <th>Wine</th>
+                <th>Spirits</th>
+                <th>THC</th>
+                <th>A</th>
+                <th>B</th>
+                <th>C</th>
+                <th>D</th>
+                <th>Protected</th>
+                <th>Moved In</th>
+                <th>Moved Out</th>
+                <th>4W Load</th>
+              </tr>
+            </thead>
+            <tbody id="rep-table-body">
+              <tr><td colspan="14" class="empty-state">Upload a file to begin.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="data-preview">
+          <div class="preview-header">
+            <div class="panel-title small">Selected accounts</div>
+            <button id="clear-selection-btn" class="btn btn-small" disabled>Clear Selection</button>
+          </div>
+          <div id="selection-preview" class="selection-preview">No accounts selected.</div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
