@@ -568,9 +568,6 @@
                 <th>Rep</th>
                 <th>Stops</th>
                 <th>Revenue</th>
-                <th>Wine</th>
-                <th>Spirits</th>
-                <th>THC</th>
                 <th>A</th>
                 <th>B</th>
                 <th>C</th>
@@ -582,7 +579,7 @@
               </tr>
             </thead>
             <tbody id="rep-table-body">
-              <tr><td colspan="14" class="empty-state">Upload a file to begin.</td></tr>
+              <tr><td colspan="11" class="empty-state">Upload a file to begin.</td></tr>
             </tbody>
           </table>
         </div>
@@ -627,9 +624,6 @@
       currentRep: ['current rep','rep','sales rep','territory rep','owner rep','current sales rep','current route'],
       assignedRep: ['new rep','assigned rep','territory','route','assigned territory','new route'],
       overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue','total revenue','volume'],
-      wineSales: ['wine sales','wine','$ wine','wine revenue','wine $','wine sales $','wine volume'],
-      spiritsSales: ['spirits sales','spirits','$ spirits','spirits revenue','spirit sales','spirit revenue','spirits $','spirit $'],
-      thcSales: ['thc sales','thc','$ thc','thc revenue','hemp sales','cannabis sales','thc $'],
       rank: ['rank','class','priority rank','abc','abcd','frequency rank'],
       protected: ['protected account','protected','locked','do not move','never move']
     };
@@ -653,10 +647,7 @@
       repFocus: null,
       theme: 'light',
       loadedFileName: 'territory_export.xlsx',
-      lastAction: 'No actions yet',
-      hasWineSales: false,
-      hasSpiritsSales: false,
-      hasThcSales: false
+      lastAction: 'No actions yet'
     };
 
     const els = {};
@@ -858,10 +849,6 @@
         headerMap[key] = findBestHeaderMatch(headers, aliases);
       });
 
-      state.hasWineSales = !!headerMap.wineSales;
-      state.hasSpiritsSales = !!headerMap.spiritsSales;
-      state.hasThcSales = !!headerMap.thcSales;
-
       let generatedId = 1;
 
       for (const row of rows) {
@@ -885,9 +872,6 @@
         const rank = normalizeRank(row[headerMap.rank]);
 
         const overallSales = toNumber(row[headerMap.overallSales]);
-        const wineSales = headerMap.wineSales ? toNumber(row[headerMap.wineSales]) : null;
-        const spiritsSales = headerMap.spiritsSales ? toNumber(row[headerMap.spiritsSales]) : null;
-        const thcSales = headerMap.thcSales ? toNumber(row[headerMap.thcSales]) : null;
 
         mapped.push({
           _id: customerId,
@@ -907,9 +891,6 @@
           assignedRep,
           originalAssignedRep: assignedRep,
           overallSales: Number.isFinite(overallSales) ? overallSales : 0,
-          wineSales: Number.isFinite(wineSales) ? wineSales : null,
-          spiritsSales: Number.isFinite(spiritsSales) ? spiritsSales : null,
-          thcSales: Number.isFinite(thcSales) ? thcSales : null,
           rank,
           protected: toBoolean(row[headerMap.protected]),
           raw: row
@@ -1079,7 +1060,7 @@
       const rows = summarizeByRep();
 
       if (!rows.length) {
-        els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty-state">No accounts match the current filters.</td></tr>';
+        els.repTableBody.innerHTML = '<tr><td colspan="11" class="empty-state">No accounts match the current filters.</td></tr>';
         return;
       }
 
@@ -1095,9 +1076,6 @@
             </td>
             <td>${row.stops}</td>
             <td>${formatCurrency(row.revenue)}</td>
-            <td>${displayMoneyOrDash(row.wine, state.hasWineSales)}</td>
-            <td>${displayMoneyOrDash(row.spirits, state.hasSpiritsSales)}</td>
-            <td>${displayMoneyOrDash(row.thc, state.hasThcSales)}</td>
             <td>${row.A}</td>
             <td>${row.B}</td>
             <td>${row.C}</td>
@@ -1602,9 +1580,6 @@
           color: state.repColors.get(rep) || '#4a5568',
           stops: 0,
           revenue: 0,
-          wine: 0,
-          spirits: 0,
-          thc: 0,
           A: 0,
           B: 0,
           C: 0,
@@ -1623,9 +1598,6 @@
             color: state.repColors.get(account.assignedRep) || '#4a5568',
             stops: 0,
             revenue: 0,
-            wine: 0,
-            spirits: 0,
-            thc: 0,
             A: 0,
             B: 0,
             C: 0,
@@ -1640,9 +1612,6 @@
         const row = map.get(account.assignedRep);
         row.stops += 1;
         row.revenue += account.overallSales;
-        if (account.wineSales != null) row.wine += account.wineSales;
-        if (account.spiritsSales != null) row.spirits += account.spiritsSales;
-        if (account.thcSales != null) row.thc += account.thcSales;
         row[account.rank] = (row[account.rank] || 0) + 1;
         row.workload += RANK_WEIGHTS[account.rank] || 1;
 
@@ -1682,9 +1651,6 @@
         Latitude: a.latitude,
         Longitude: a.longitude,
         Overall_Sales: a.overallSales,
-        Wine_Sales: a.wineSales,
-        Spirits_Sales: a.spiritsSales,
-        THC_Sales: a.thcSales,
         Moved: a.assignedRep !== a.originalAssignedRep ? 'Yes' : 'No'
       }));
 
@@ -1692,9 +1658,6 @@
         Rep: r.rep,
         Stops: r.stops,
         Revenue: round2(r.revenue),
-        Wine: state.hasWineSales ? round2(r.wine) : '',
-        Spirits: state.hasSpiritsSales ? round2(r.spirits) : '',
-        THC: state.hasThcSales ? round2(r.thc) : '',
         A: r.A,
         B: r.B,
         C: r.C,
@@ -1831,10 +1794,6 @@
     function uniqueNonBlank(values) {
       return [...new Set(values.map(v => safeString(v)).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    }
-
-    function displayMoneyOrDash(value, enabled) {
-      return enabled ? formatCurrency(value || 0) : '—';
     }
 
     function updateLastAction(text) {
