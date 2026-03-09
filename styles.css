@@ -1,370 +1,191 @@
-:root {
-  --bg: #eef2f7;
-  --panel: rgba(255,255,255,0.92);
-  --panel-solid: #ffffff;
-  --text: #17324d;
-  --muted: #61788e;
-  --border: #d6e0ea;
-  --shadow: 0 10px 28px rgba(18, 38, 63, 0.10);
-  --primary: #204d8d;
-  --primary-2: #2d6dcc;
-  --accent: #0c9f7a;
-  --danger: #b24747;
-  --row-hover: #f2f7fd;
-  --selected: #ffe8a3;
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Territory Planning & Optimization Tool</title>
+  <link rel="preconnect" href="https://unpkg.com" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="toolbar">
+      <div class="toolbar-left">
+        <div class="brand-block">
+          <div class="brand-title">Territory Planning & Optimization Tool</div>
+        </div>
+      </div>
 
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
-body {
-  font-family: "Tw Cen MT", "Trebuchet MS", Arial, sans-serif;
-  background: linear-gradient(180deg, #f4f7fb 0%, #ecf2f9 100%);
-  color: var(--text);
-}
+      <div class="toolbar-right">
+        <label class="file-btn">
+          <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
+          <span>Upload Excel / CSV</span>
+        </label>
 
-button, input, select { font: inherit; }
+        <select id="sheet-select" title="Workbook sheet" disabled>
+          <option value="">Sheet</option>
+        </select>
 
-#app {
-  height: 100vh;
-  display: grid;
-  grid-template-rows: auto auto auto 1fr;
-  gap: 10px;
-  padding: 10px;
-}
+        <button id="load-sheet-btn" class="btn">Load Sheet</button>
+        <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
+        <button id="undo-btn" class="btn" disabled>Undo</button>
+        <button id="reset-btn" class="btn" disabled>Reset</button>
+        <button id="optimize-btn" class="btn btn-accent" disabled>Optimize Routes</button>
+        <button id="export-btn" class="btn" disabled>Export Excel</button>
+        <button id="theme-toggle" class="btn">Dark Map</button>
+      </div>
+    </header>
 
-.toolbar,
-.controls-strip,
-.summary-strip,
-.panel {
-  background: var(--panel);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-}
+    <section class="controls-strip">
+      <div class="control-group compact">
+        <label for="assign-rep-select">Assign selected to</label>
+        <select id="assign-rep-select" disabled></select>
+      </div>
 
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  padding: 14px 16px;
-}
+      <div class="control-group compact">
+        <label for="rep-filter">Map filter</label>
+        <select id="rep-filter" disabled>
+          <option value="ALL">All reps</option>
+        </select>
+      </div>
 
-.toolbar-left,
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
+      <div class="control-group compact">
+        <label for="rep-count-input">Target rep count</label>
+        <input id="rep-count-input" type="number" min="1" max="100" step="1" value="16" disabled />
+      </div>
 
-.brand-title {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-}
-.brand-subtitle {
-  font-size: 13px;
-  color: var(--muted);
-  margin-top: 2px;
-}
+      <div class="control-group compact">
+        <label for="min-stops-input">Minimum stops / rep</label>
+        <input id="min-stops-input" type="number" min="0" max="10000" step="1" value="100" disabled />
+      </div>
 
-.controls-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  align-items: end;
-  padding: 12px 16px;
-}
+      <div class="control-group grow">
+        <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
+        <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
+      </div>
 
-.control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 140px;
-}
-.control-group.compact { min-width: 120px; }
-.control-group.grow { flex: 1; min-width: 240px; }
-.control-group label {
-  font-size: 13px;
-  color: var(--muted);
-}
-.checkbox-group {
-  flex-direction: row;
-  align-items: center;
-  gap: 16px;
-  min-width: unset;
-  padding-bottom: 2px;
-}
-.checkbox-group label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
+      <div class="control-group compact">
+        <label for="balance-mode">Optimize by</label>
+        <select id="balance-mode" disabled>
+          <option value="hybrid">Hybrid</option>
+          <option value="stops">Stops</option>
+          <option value="revenue">Revenue</option>
+        </select>
+      </div>
 
-.summary-strip {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(110px, 1fr));
-  gap: 10px;
-  padding: 10px;
-}
-.summary-card {
-  background: var(--panel-solid);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px;
-}
-.selection-card { outline: 2px solid rgba(45,109,204,0.12); }
-.summary-label {
-  font-size: 12px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.summary-value {
-  margin-top: 5px;
-  font-size: 26px;
-  font-weight: 700;
-}
+      <div class="control-group compact">
+        <label for="rank-filter">Rank filter</label>
+        <select id="rank-filter" disabled>
+          <option value="ALL">All</option>
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+          <option value="D">D</option>
+        </select>
+      </div>
 
-.main-layout {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(500px, 1fr);
-  gap: 10px;
-}
+      <div class="control-group compact checkbox-group">
+        <label><input id="dim-others-checkbox" type="checkbox" checked disabled /> Dim others</label>
+        <label><input id="show-territory-checkbox" type="checkbox" checked disabled /> Show territories</label>
+      </div>
+    </section>
 
-.panel {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 10px;
-  padding: 14px 16px 10px;
-  border-bottom: 1px solid var(--border);
-}
-.panel-title {
-  font-size: 20px;
-  font-weight: 700;
-}
-.panel-title.small { font-size: 16px; }
-.panel-subtitle {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.sidebar-header { align-items: center; }
-.last-action {
-  font-size: 12px;
-  color: var(--muted);
-  text-align: right;
-}
+    <section class="summary-strip">
+      <div class="summary-card">
+        <div class="summary-label">Accounts</div>
+        <div class="summary-value" id="global-accounts">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Revenue</div>
+        <div class="summary-value" id="global-revenue">$0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Protected</div>
+        <div class="summary-value" id="global-protected">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Moved</div>
+        <div class="summary-value" id="global-moved">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Unchanged</div>
+        <div class="summary-value" id="global-unchanged">0%</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">4-week workload</div>
+        <div class="summary-value" id="global-workload">0.0</div>
+      </div>
+      <div class="summary-card selection-card">
+        <div class="summary-label">Selection</div>
+        <div class="summary-value" id="selection-count">0</div>
+      </div>
+    </section>
 
-#map {
-  flex: 1;
-  min-height: 420px;
-}
+    <main class="main-layout">
+      <section class="map-panel panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Map</div>
+            <div class="panel-subtitle">Use rectangle or polygon draw to lasso accounts</div>
+          </div>
+          <div class="map-legend" id="map-legend"></div>
+        </div>
+        <div id="map"></div>
+        <div id="toast" class="toast"></div>
+      </section>
 
-.map-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.legend-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--border);
-  background: var(--panel-solid);
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 12px;
-}
-.color-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  display: inline-block;
-  border: 1px solid rgba(0,0,0,0.15);
-}
+      <aside class="sidebar panel">
+        <div class="panel-header sidebar-header">
+          <div>
+            <div class="panel-title">Routes</div>
+            <div class="panel-subtitle">Live rep metrics update as assignments change</div>
+          </div>
+          <div class="last-action" id="last-action">No actions yet</div>
+        </div>
 
-.file-btn,
-.btn,
-select,
-input[type="number"] {
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--panel-solid);
-  color: var(--text);
-}
-.file-btn,
-.btn {
-  padding: 10px 14px;
-  cursor: pointer;
-  transition: transform 0.12s ease, background 0.18s ease, border-color 0.18s ease;
-}
-.file-btn:hover,
-.btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: #b7c9d9;
-}
-.file-btn input { display: none; }
-.btn-primary {
-  background: linear-gradient(180deg, #2d6dcc 0%, #245fb7 100%);
-  color: #fff;
-  border-color: #245fb7;
-}
-.btn-accent {
-  background: linear-gradient(180deg, #15a985 0%, #0e9372 100%);
-  color: #fff;
-  border-color: #0e9372;
-}
-.btn-small {
-  padding: 7px 10px;
-  font-size: 12px;
-}
-.btn:disabled,
-select:disabled,
-input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-select,
-input[type="number"] {
-  padding: 10px 12px;
-  min-height: 42px;
-}
-input[type="range"] { width: 100%; }
+        <div class="table-wrap">
+          <table id="rep-table">
+            <thead>
+              <tr>
+                <th>Rep</th>
+                <th>Stops</th>
+                <th>Revenue</th>
+                <th>Wine</th>
+                <th>Spirits</th>
+                <th>THC</th>
+                <th>A</th>
+                <th>B</th>
+                <th>C</th>
+                <th>D</th>
+                <th>Protected</th>
+                <th>Moved In</th>
+                <th>Moved Out</th>
+                <th>4W Load</th>
+              </tr>
+            </thead>
+            <tbody id="rep-table-body">
+              <tr><td colspan="14" class="empty-state">Upload a file to begin.</td></tr>
+            </tbody>
+          </table>
+        </div>
 
-.table-wrap {
-  flex: 1;
-  min-height: 260px;
-  overflow: auto;
-}
+        <div class="data-preview">
+          <div class="preview-header">
+            <div class="panel-title small">Selected accounts</div>
+            <button id="clear-selection-btn" class="btn btn-small" disabled>Clear Selection</button>
+          </div>
+          <div id="selection-preview" class="selection-preview">No accounts selected.</div>
+        </div>
+      </aside>
+    </main>
+  </div>
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: #f8fbff;
-  color: var(--muted);
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  padding: 10px 8px;
-  white-space: nowrap;
-}
-
-tbody td {
-  border-bottom: 1px solid #edf2f7;
-  padding: 9px 8px;
-  white-space: nowrap;
-}
-
-tbody tr:hover { background: var(--row-hover); }
-tbody tr.rep-focus-row { background: rgba(45,109,204,0.08); }
-tbody tr.selected-row { background: rgba(255,232,163,0.45); }
-.rep-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-}
-.empty-state {
-  text-align: center;
-  color: var(--muted);
-  padding: 24px 12px !important;
-}
-
-.data-preview {
-  border-top: 1px solid var(--border);
-  padding: 12px 16px 16px;
-  background: rgba(247, 250, 253, 0.7);
-}
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.selection-preview {
-  max-height: 180px;
-  overflow: auto;
-  display: grid;
-  gap: 8px;
-}
-.preview-item {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 9px 10px;
-  background: #fff;
-}
-.preview-title {
-  font-size: 14px;
-  font-weight: 700;
-}
-.preview-meta {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 3px;
-}
-
-.toast {
-  position: absolute;
-  left: 18px;
-  bottom: 18px;
-  z-index: 1000;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(19, 34, 54, 0.92);
-  color: #fff;
-  font-size: 13px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.22);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(6px);
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-.toast.show {
-  opacity: 1;
-  transform: translateY(0);
-}
-.map-panel { position: relative; }
-
-.leaflet-popup-content-wrapper,
-.leaflet-popup-tip {
-  border-radius: 14px;
-}
-.leaflet-container {
-  font-family: "Tw Cen MT", "Trebuchet MS", Arial, sans-serif;
-}
-
-@media (max-width: 1350px) {
-  .summary-strip {
-    grid-template-columns: repeat(3, minmax(110px, 1fr));
-  }
-  .main-layout {
-    grid-template-columns: 1fr;
-  }
-  .sidebar { min-height: 420px; }
-}
-
-@media (max-width: 900px) {
-  #app { height: auto; min-height: 100vh; }
-  .toolbar { flex-direction: column; align-items: stretch; }
-  .toolbar-right { justify-content: flex-start; }
-  .summary-strip { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
-}
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
