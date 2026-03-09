@@ -416,15 +416,17 @@ function markerStyleForAccount(account) {
 }
 
 function buildPopupHtml(account) {
+  const addressLine = [account.address, account.zip].filter(Boolean).join(' ');
+
   return `
     <div style="min-width:220px;">
-      <div style="font-size:15px;font-weight:700;">${escapeHtml(account.customerName)}</div>
-      <div style="margin-top:8px;"><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
+      <div style="font-size:15px;font-weight:700;">${escapeHtml(account.customerName || account.customerId)}</div>
+      <div style="margin-top:6px;color:#5d7286;font-size:12px;">${escapeHtml(addressLine)}</div>
+      <div style="margin-top:10px;"><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
       <div><strong>Current Rep:</strong> ${escapeHtml(account.currentRep)}</div>
       <div><strong>Revenue:</strong> ${formatCurrency(account.overallSales)}</div>
       <div><strong>Rank:</strong> ${escapeHtml(account.rank)}</div>
       <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
-      <div style="margin-top:6px;color:#5d7286;font-size:12px;">${escapeHtml(account.address || '')} ${escapeHtml(account.zip || '')}</div>
     </div>
   `;
 }
