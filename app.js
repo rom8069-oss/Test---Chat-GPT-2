@@ -21,7 +21,7 @@ const COLUMN_ALIASES = {
   wineSales: ['wine sales','wine','$ wine','wine revenue'],
   spiritsSales: ['spirits sales','spirits','$ spirits','spirits revenue'],
   thcSales: ['thc sales','thc','$ thc','thc revenue'],
-  rank: ['rank','class','priority rank','visit class','frequency','rotation','abcdrank','route class'],
+  rank: ['rank','class','priority rank'],
   protected: ['protected','protected account','locked','do not move','never move']
 };
 
@@ -78,17 +78,14 @@ function bindEvents() {
   els.optimizeBtn.addEventListener('click', optimizeRoutes);
   els.exportBtn.addEventListener('click', exportWorkbook);
   els.themeToggle.addEventListener('click', toggleTheme);
-
   els.repFilter.addEventListener('change', () => {
     state.repFocus = null;
     refreshUI();
   });
-
   els.rankFilter.addEventListener('change', refreshUI);
   els.dimOthersCheckbox.addEventListener('change', refreshUI);
   els.showTerritoryCheckbox.addEventListener('change', refreshTerritories);
   els.clearSelectionBtn.addEventListener('click', clearSelection);
-
   els.disruptionSlider.addEventListener('input', () => {
     els.disruptionValue.textContent = els.disruptionSlider.value;
   });
@@ -136,6 +133,7 @@ function initMap() {
   });
 
   state.map.addControl(state.drawControl);
+
   state.map.on(L.Draw.Event.CREATED, handleDrawCreated);
   state.map.on(L.Draw.Event.DELETED, () => {
     clearSelection();
@@ -181,6 +179,7 @@ function loadWorkbook(workbook) {
 
   workbook.SheetNames.forEach((sheetName, idx) => {
     state.workbookSheets[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+
     const option = document.createElement('option');
     option.value = sheetName;
     option.textContent = sheetName;
@@ -219,6 +218,11 @@ function loadSelectedSheet() {
   buildRepColors();
   refreshUI(true);
   fitMapToAccounts();
+
+  if (!els.repCountInput.dataset.userTouched) {
+    els.repCountInput.value = getAllReps().length || 1;
+  }
+
   showToast(`Loaded ${state.accounts.length} accounts from ${sheetName}.`);
   updateLastAction(`Loaded ${state.accounts.length} accounts from ${sheetName}`);
 }
@@ -228,8 +232,8 @@ function normalizeRows(rows) {
 
   const mapped = [];
   const headers = Object.keys(rows[0]);
-  const cleanedHeaderLookup = new Map(headers.map(h => [cleanHeader(h), h]));
   const headerMap = {};
+  const cleanedHeaderLookup = new Map(headers.map(h => [cleanHeader(h), h]));
 
   Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
     let match = null;
@@ -249,7 +253,6 @@ function normalizeRows(rows) {
           break;
         }
       }
-
       if (match) break;
     }
 
@@ -261,6 +264,7 @@ function normalizeRows(rows) {
   for (const row of rows) {
     const lat = toNumber(row[headerMap.latitude]);
     const lng = toNumber(row[headerMap.longitude]);
+
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 
     const customerId = safeString(row[headerMap.customerId]) || `AUTO_${generatedId++}`;
@@ -268,6 +272,7 @@ function normalizeRows(rows) {
     const currentRep = safeString(row[headerMap.currentRep]) || 'Unassigned';
     const assignedRep = safeString(row[headerMap.assignedRep]) || currentRep || 'Unassigned';
     const rank = normalizeRank(row[headerMap.rank]);
+
     const overallSales = toNumber(row[headerMap.overallSales]);
     const wineSales = toNumber(row[headerMap.wineSales]);
     const spiritsSales = toNumber(row[headerMap.spiritsSales]);
@@ -330,8 +335,11 @@ function syncControlState() {
     els.disruptionSlider, els.balanceMode, els.rankFilter,
     els.dimOthersCheckbox, els.showTerritoryCheckbox, els.clearSelectionBtn
   ].forEach(el => {
-    if (!el) return;
-    el.disabled = !hasData || (el === els.assignBtn && state.selection.size === 0);
+    if (el === els.assignBtn) {
+      el.disabled = !hasData || state.selection.size === 0;
+    } else {
+      el.disabled = !hasData;
+    }
   });
 
   els.undoBtn.disabled = !hasData || state.undoStack.length === 0;
@@ -350,9 +358,8 @@ function renderRepControls() {
     rep => rep === 'ALL' ? 'All reps' : rep
   );
 
-  const suggestedCount = reps.length || 1;
   if (!els.repCountInput.dataset.userTouched) {
-    els.repCountInput.value = suggestedCount;
+    els.repCountInput.value = reps.length || 1;
   }
 
   els.repCountInput.oninput = () => {
@@ -368,9 +375,7 @@ function rebuildMarkers() {
     const marker = L.circleMarker([account.latitude, account.longitude], markerStyleForAccount(account))
       .bindPopup(buildPopupHtml(account));
 
-    marker.on('click', () => {
-      toggleSelection(account._id, true);
-    });
+    marker.on('click', () => toggleSelection(account._id, true));
 
     state.markerLayer.addLayer(marker);
     state.markerById.set(account._id, marker);
@@ -381,6 +386,7 @@ function refreshMarkerStyles() {
   for (const account of state.accounts) {
     const marker = state.markerById.get(account._id);
     if (!marker) continue;
+
     marker.setStyle(markerStyleForAccount(account));
     marker.setRadius(state.selection.has(account._id) ? 8 : 6);
     marker.getPopup()?.setContent(buildPopupHtml(account));
@@ -411,15 +417,14 @@ function markerStyleForAccount(account) {
 
 function buildPopupHtml(account) {
   return `
-    <div style="min-width:240px;">
-      <div style="font-size:16px;font-weight:700;">${escapeHtml(account.customerName)}</div>
-      <div style="font-size:12px;color:#5d7286;margin:4px 0 8px;">${escapeHtml(account.address || '')}${account.address && account.zip ? ' • ' : ''}${escapeHtml(account.zip || '')}</div>
-      <div><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
+    <div style="min-width:220px;">
+      <div style="font-size:15px;font-weight:700;">${escapeHtml(account.customerName)}</div>
+      <div style="margin-top:8px;"><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
       <div><strong>Current Rep:</strong> ${escapeHtml(account.currentRep)}</div>
       <div><strong>Revenue:</strong> ${formatCurrency(account.overallSales)}</div>
       <div><strong>Rank:</strong> ${escapeHtml(account.rank)}</div>
       <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
-      <div style="margin-top:6px;color:#5d7286;font-size:12px;">ID: ${escapeHtml(account.customerId)}</div>
+      <div style="margin-top:6px;color:#5d7286;font-size:12px;">${escapeHtml(account.address || '')} ${escapeHtml(account.zip || '')}</div>
     </div>
   `;
 }
@@ -543,8 +548,10 @@ function handleDrawCreated(event) {
 
 function toggleSelection(id, additive = false) {
   if (!additive) state.selection.clear();
+
   if (state.selection.has(id)) state.selection.delete(id);
   else state.selection.add(id);
+
   refreshUI();
 }
 
@@ -557,6 +564,7 @@ function clearSelection() {
 function assignSelectionToRep() {
   const targetRep = els.assignRepSelect.value;
   const selectedIds = [...state.selection];
+
   if (!selectedIds.length || !targetRep) return;
 
   const changes = [];
@@ -658,17 +666,23 @@ function resetAssignments() {
 function optimizeRoutes() {
   if (!state.accounts.length) return;
 
-  const targetCount = Math.max(1, Math.min(100, parseInt(els.repCountInput.value || '1', 10)));
-  const minimumStops = Math.max(0, parseInt(els.minStopsInput.value || '0', 10));
-  const disruptionWeight = Number(els.disruptionSlider.value) / 100;
-  const balanceMode = els.balanceMode.value;
-
+  const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
+  const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
+  const targetCount = Math.max(1, Math.min(100, targetCountRaw));
+  const minStops = Math.max(1, minStopsRaw);
   const totalAccounts = state.accounts.length;
-  if (minimumStops > 0 && targetCount * minimumStops > totalAccounts) {
-    showToast(`Minimum stops too high for ${targetCount} reps. Max feasible minimum is ${Math.floor(totalAccounts / targetCount)}.`);
+
+  if (targetCount * minStops > totalAccounts) {
+    showToast(`Minimum stops too high. ${targetCount} reps x ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
     return;
   }
 
+  const continuityWeight = Number(els.disruptionSlider.value) / 100;
+  const geographyWeight = 1 - continuityWeight;
+  const balanceMode = els.balanceMode.value;
+
+  const protectedAccounts = state.accounts.filter(a => a.protected);
+  const movableAccounts = state.accounts.filter(a => !a.protected);
   const currentReps = getAllReps();
   const targetRepNames = buildTargetRepNames(targetCount, currentReps);
 
@@ -678,53 +692,47 @@ function optimizeRoutes() {
     }
   });
 
-  const lockedAccounts = state.accounts.filter(a => a.protected);
-  const movableAccounts = state.accounts.filter(a => !a.protected);
-
-  const seedGroups = buildSeedGroups(targetRepNames, minimumStops);
   const assignments = new Map();
-
-  for (const account of state.accounts) {
-    if (account.protected) {
-      assignments.set(account._id, account.assignedRep);
-    }
-  }
-
-  const initialCentroids = computeSeedCentroids(seedGroups, targetRepNames);
-  let centroids = initialCentroids;
+  const centroids = initializeCentroids(targetRepNames);
+  protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
 
   for (let iter = 0; iter < 6; iter += 1) {
-    const repStats = buildDetailedRepStats(targetRepNames, assignments);
-    const movableSorted = [...movableAccounts].sort((a, b) => b.overallSales - a.overallSales);
+    const repStats = buildFullRepStats(targetRepNames);
 
-    for (const account of movableSorted) {
+    for (const account of protectedAccounts) {
+      const rep = assignments.get(account._id) || account.assignedRep;
+      addFullStats(repStats.get(rep), account);
+    }
+
+    const orderedMovable = [...movableAccounts].sort((a, b) => {
+      if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
+      return a.customerName.localeCompare(b.customerName);
+    });
+
+    for (const account of orderedMovable) {
       let bestRep = null;
       let bestScore = Infinity;
 
       for (const rep of targetRepNames) {
-        const centroid = centroids.get(rep) || { lat: account.latitude, lng: account.longitude };
-        const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+        const centroid = centroids.get(rep);
         const repStat = repStats.get(rep);
 
-        let disruptionPenalty = 0;
-        if (account.currentRep !== rep) disruptionPenalty += disruptionWeight * 0.75;
-        if (account.assignedRep !== rep) disruptionPenalty += disruptionWeight * 0.25;
+        const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+        const compactnessScore = dist * (0.85 + geographyWeight);
 
-        const avgStopsTarget = totalAccounts / targetRepNames.length;
-        const projectedStops = repStat.stops + 1;
-        const stopBalancePenalty = balanceMode === 'revenue'
-          ? 0
-          : Math.pow((projectedStops - avgStopsTarget) / Math.max(1, avgStopsTarget), 2) * 0.35;
+        const continuityPenalty = account.currentRep === rep ? 0 : (continuityWeight * 0.75);
+        const existingPenalty = account.assignedRep === rep ? 0 : (continuityWeight * 0.20);
 
-        const avgRevenueTarget = state.accounts.reduce((s, a) => s + a.overallSales, 0) / targetRepNames.length;
-        const projectedRevenue = repStat.revenue + account.overallSales;
-        const revenueBalancePenalty = balanceMode === 'stops'
-          ? 0
-          : Math.pow((projectedRevenue - avgRevenueTarget) / Math.max(1, avgRevenueTarget), 2) * 0.22;
+        let balancePenalty = 0;
+        if (balanceMode === 'stops') {
+          balancePenalty = repStat.stops * 0.010;
+        } else if (balanceMode === 'revenue') {
+          balancePenalty = repStat.revenue * 0.0000015;
+        } else {
+          balancePenalty = (repStat.stops * 0.0065) + (repStat.revenue * 0.0000008);
+        }
 
-        const underMinBonus = minimumStops > 0 && repStat.stops < minimumStops ? -0.30 : 0;
-
-        const score = dist + disruptionPenalty + stopBalancePenalty + revenueBalancePenalty + underMinBonus;
+        const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty;
 
         if (score < bestScore) {
           bestScore = score;
@@ -733,22 +741,23 @@ function optimizeRoutes() {
       }
 
       assignments.set(account._id, bestRep);
-      const repStat = repStats.get(bestRep);
-      repStat.stops += 1;
-      repStat.revenue += account.overallSales;
+      addFullStats(repStats.get(bestRep), account);
     }
 
-    enforceMinimumStops(assignments, targetRepNames, minimumStops);
-    centroids = recomputeCentroids(assignments, targetRepNames);
+    recomputeCentroidsFromAssignments(centroids, assignments, targetRepNames);
   }
 
-  enforceMinimumStops(assignments, targetRepNames, minimumStops);
+  enforceMinimumStops(assignments, targetRepNames, minStops);
 
   const changes = [];
   for (const account of state.accounts) {
     const nextRep = assignments.get(account._id) || account.assignedRep;
     if (nextRep !== account.assignedRep) {
-      changes.push({ id: account._id, from: account.assignedRep, to: nextRep });
+      changes.push({
+        id: account._id,
+        from: account.assignedRep,
+        to: nextRep
+      });
     }
   }
 
@@ -757,161 +766,126 @@ function optimizeRoutes() {
     return;
   }
 
-  applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minimumStops} stops`);
+  applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
 }
 
-function buildSeedGroups(targetRepNames, minimumStops) {
-  const movable = state.accounts.filter(a => !a.protected);
-  const sorted = [...movable].sort((a, b) => {
-    if (a.latitude !== b.latitude) return a.latitude - b.latitude;
-    return a.longitude - b.longitude;
-  });
+function enforceMinimumStops(assignments, targetRepNames, minStops) {
+  const maxPasses = 1000;
+  let pass = 0;
 
-  const groups = new Map();
-  targetRepNames.forEach(rep => groups.set(rep, []));
+  while (pass < maxPasses) {
+    pass += 1;
 
-  if (!sorted.length) return groups;
+    const counts = countAssignments(assignments, targetRepNames);
+    const underfilled = targetRepNames
+      .filter(rep => counts.get(rep) < minStops)
+      .sort((a, b) => counts.get(a) - counts.get(b));
 
-  const sliceSize = Math.max(1, Math.floor(sorted.length / targetRepNames.length));
-  let index = 0;
+    if (!underfilled.length) break;
 
-  for (const rep of targetRepNames) {
-    const take = Math.max(1, minimumStops > 0 ? Math.min(minimumStops, sliceSize) : sliceSize);
-    groups.set(rep, sorted.slice(index, index + take));
-    index += take;
-    if (index >= sorted.length) break;
-  }
+    let movedThisPass = false;
 
-  targetRepNames.forEach((rep, i) => {
-    if (!groups.get(rep)?.length) {
-      const fallback = sorted[Math.min(i, sorted.length - 1)];
-      groups.set(rep, fallback ? [fallback] : []);
-    }
-  });
+    for (const needyRep of underfilled) {
+      const needyCentroid = centroidForRepFromAssignments(assignments, needyRep);
 
-  return groups;
-}
+      const donorCandidates = targetRepNames
+        .filter(rep => rep !== needyRep && counts.get(rep) > minStops)
+        .sort((a, b) => counts.get(b) - counts.get(a));
 
-function computeSeedCentroids(seedGroups, targetRepNames) {
-  const centroids = new Map();
+      let bestMove = null;
 
-  targetRepNames.forEach((rep, idx) => {
-    const members = seedGroups.get(rep) || [];
-    if (members.length) {
-      centroids.set(rep, {
-        lat: avg(members.map(a => a.latitude)),
-        lng: avg(members.map(a => a.longitude))
-      });
-    } else {
-      const fallback = state.accounts[Math.min(idx, state.accounts.length - 1)];
-      centroids.set(rep, {
-        lat: fallback ? fallback.latitude : 40,
-        lng: fallback ? fallback.longitude : -89
-      });
-    }
-  });
+      for (const donorRep of donorCandidates) {
+        const donorAccounts = state.accounts.filter(a => assignments.get(a._id) === donorRep && !a.protected);
 
-  return centroids;
-}
+        for (const account of donorAccounts) {
+          const distToNeedy = squaredDistance(account.latitude, account.longitude, needyCentroid.lat, needyCentroid.lng);
+          const continuityPenalty = account.currentRep === donorRep ? 0.22 : 0;
+          const score = distToNeedy + continuityPenalty;
 
-function buildDetailedRepStats(targetRepNames, assignments) {
-  const stats = new Map();
-  targetRepNames.forEach(rep => {
-    stats.set(rep, { rep, stops: 0, revenue: 0 });
-  });
-
-  for (const account of state.accounts) {
-    const rep = assignments.get(account._id);
-    if (!rep || !stats.has(rep)) continue;
-    const stat = stats.get(rep);
-    stat.stops += 1;
-    stat.revenue += account.overallSales;
-  }
-
-  return stats;
-}
-
-function enforceMinimumStops(assignments, targetRepNames, minimumStops) {
-  if (minimumStops <= 0) return;
-
-  const byRep = new Map();
-  targetRepNames.forEach(rep => byRep.set(rep, []));
-
-  for (const account of state.accounts) {
-    const rep = assignments.get(account._id);
-    if (!rep || !byRep.has(rep)) continue;
-    byRep.get(rep).push(account);
-  }
-
-  const underfilled = targetRepNames.filter(rep => byRep.get(rep).length < minimumStops);
-  const donorCandidates = () => targetRepNames
-    .filter(rep => byRep.get(rep).length > minimumStops)
-    .sort((a, b) => byRep.get(b).length - byRep.get(a).length);
-
-  for (const needyRep of underfilled) {
-    while (byRep.get(needyRep).length < minimumStops) {
-      const donors = donorCandidates();
-      if (!donors.length) break;
-
-      let moved = false;
-      const needyCentroid = computeCentroidForAccounts(byRep.get(needyRep));
-
-      for (const donorRep of donors) {
-        const donorAccounts = byRep.get(donorRep).filter(a => !a.protected);
-        if (!donorAccounts.length) continue;
-
-        donorAccounts.sort((a, b) => {
-          const da = squaredDistance(a.latitude, a.longitude, needyCentroid.lat, needyCentroid.lng);
-          const db = squaredDistance(b.latitude, b.longitude, needyCentroid.lat, needyCentroid.lng);
-          return da - db;
-        });
-
-        const candidate = donorAccounts[0];
-        if (!candidate) continue;
-
-        assignments.set(candidate._id, needyRep);
-        byRep.set(donorRep, byRep.get(donorRep).filter(a => a._id !== candidate._id));
-        byRep.get(needyRep).push(candidate);
-        moved = true;
-        break;
+          if (!bestMove || score < bestMove.score) {
+            bestMove = {
+              accountId: account._id,
+              from: donorRep,
+              to: needyRep,
+              score
+            };
+          }
+        }
       }
 
-      if (!moved) break;
+      if (bestMove) {
+        assignments.set(bestMove.accountId, bestMove.to);
+        counts.set(bestMove.from, counts.get(bestMove.from) - 1);
+        counts.set(bestMove.to, counts.get(bestMove.to) + 1);
+        movedThisPass = true;
+      }
     }
+
+    if (!movedThisPass) break;
   }
 }
 
-function recomputeCentroids(assignments, targetRepNames) {
+function initializeCentroids(targetRepNames) {
   const centroids = new Map();
+  const byRep = groupBy(state.accounts, a => a.assignedRep);
 
-  targetRepNames.forEach(rep => {
-    const members = state.accounts.filter(a => assignments.get(a._id) === rep);
-    if (members.length) {
+  targetRepNames.forEach((rep, idx) => {
+    const currentGroup = byRep.get(rep);
+
+    if (currentGroup?.length) {
       centroids.set(rep, {
-        lat: avg(members.map(a => a.latitude)),
-        lng: avg(members.map(a => a.longitude))
+        lat: avg(currentGroup.map(a => a.latitude)),
+        lng: avg(currentGroup.map(a => a.longitude))
       });
-    } else {
-      const fallback = state.accounts[0];
-      centroids.set(rep, {
-        lat: fallback ? fallback.latitude : 40,
-        lng: fallback ? fallback.longitude : -89
-      });
+      return;
     }
+
+    const fallbackSource = state.accounts[Math.floor(idx * state.accounts.length / Math.max(1, targetRepNames.length))] || state.accounts[0];
+    centroids.set(rep, {
+      lat: fallbackSource.latitude,
+      lng: fallbackSource.longitude
+    });
   });
 
   return centroids;
 }
 
-function computeCentroidForAccounts(accounts) {
-  if (!accounts.length) {
-    return { lat: 40, lng: -89 };
+function recomputeCentroidsFromAssignments(centroids, assignments, targetRepNames) {
+  for (const rep of targetRepNames) {
+    const members = state.accounts.filter(a => assignments.get(a._id) === rep);
+    if (!members.length) continue;
+
+    centroids.set(rep, {
+      lat: members.reduce((s, a) => s + a.latitude, 0) / members.length,
+      lng: members.reduce((s, a) => s + a.longitude, 0) / members.length
+    });
+  }
+}
+
+function centroidForRepFromAssignments(assignments, rep) {
+  const members = state.accounts.filter(a => assignments.get(a._id) === rep);
+  if (!members.length) {
+    const fallback = state.accounts[0];
+    return { lat: fallback.latitude, lng: fallback.longitude };
   }
 
   return {
-    lat: avg(accounts.map(a => a.latitude)),
-    lng: avg(accounts.map(a => a.longitude))
+    lat: members.reduce((s, a) => s + a.latitude, 0) / members.length,
+    lng: members.reduce((s, a) => s + a.longitude, 0) / members.length
   };
+}
+
+function countAssignments(assignments, reps) {
+  const counts = new Map();
+  reps.forEach(rep => counts.set(rep, 0));
+
+  for (const account of state.accounts) {
+    const rep = assignments.get(account._id);
+    if (!counts.has(rep)) counts.set(rep, 0);
+    counts.set(rep, counts.get(rep) + 1);
+  }
+
+  return counts;
 }
 
 function buildTargetRepNames(targetCount, currentReps) {
@@ -919,7 +893,21 @@ function buildTargetRepNames(targetCount, currentReps) {
   while (reps.length < targetCount) {
     reps.push(`Rep ${reps.length + 1}`);
   }
-  return reps.slice(0, targetCount);
+  if (reps.length > targetCount) return reps.slice(0, targetCount);
+  return reps.length ? reps : ['Rep 1'];
+}
+
+function buildFullRepStats(reps) {
+  const map = new Map();
+  reps.forEach(rep => {
+    map.set(rep, { rep, stops: 0, revenue: 0 });
+  });
+  return map;
+}
+
+function addFullStats(stat, account) {
+  stat.stops += 1;
+  stat.revenue += account.overallSales || 0;
 }
 
 function refreshTerritories() {
@@ -931,9 +919,10 @@ function refreshTerritories() {
   const reps = getAllReps().filter(rep => repFilter === 'ALL' || rep === repFilter);
 
   reps.forEach(rep => {
-    const members = state.accounts.filter(a => {
-      return a.assignedRep === rep && (rankFilter === 'ALL' || a.rank === rankFilter);
-    });
+    const members = state.accounts.filter(a =>
+      a.assignedRep === rep &&
+      (rankFilter === 'ALL' || a.rank === rankFilter)
+    );
 
     if (members.length < 3) return;
 
@@ -1014,6 +1003,7 @@ function summarizeByRep() {
     row.thc += account.thcSales;
     row[account.rank] = (row[account.rank] || 0) + 1;
     row.workload += RANK_WEIGHTS[account.rank] || 1;
+
     if (account.protected) row.protected += 1;
     if (account.assignedRep !== account.currentRep) row.movedIn += 1;
   }
@@ -1093,9 +1083,7 @@ function fitMapToAccounts() {
 
 function zoomToRep(rep) {
   const points = state.accounts.filter(a => a.assignedRep === rep).map(a => [a.latitude, a.longitude]);
-  if (points.length) {
-    state.map.fitBounds(points, { padding: [30, 30] });
-  }
+  if (points.length) state.map.fitBounds(points, { padding: [30, 30] });
 }
 
 function toggleTheme() {
@@ -1144,9 +1132,7 @@ function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    els.toast.classList.remove('show');
-  }, 2400);
+  toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2200);
 }
 
 function toCamel(id) {
@@ -1175,10 +1161,6 @@ function toBoolean(value) {
 function normalizeRank(rankValue) {
   const raw = safeString(rankValue).toUpperCase();
   if (['A','B','C','D'].includes(raw)) return raw;
-  if (raw.includes('WEEK')) return 'A';
-  if (raw.includes('BI')) return 'B';
-  if (raw.includes('MONTH')) return 'C';
-  if (raw.includes('QUART')) return 'D';
   return 'C';
 }
 
@@ -1200,17 +1182,27 @@ function squaredDistance(lat1, lng1, lat2, lng2) {
   return dx * dx + dy * dy;
 }
 
+function groupBy(arr, fn) {
+  const map = new Map();
+  arr.forEach(item => {
+    const key = fn(item);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(item);
+  });
+  return map;
+}
+
 function round2(v) {
   return Math.round((v || 0) * 100) / 100;
 }
 
 function escapeHtml(text) {
   return String(text ?? '').replace(/[&<>"']/g, m => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
   }[m]));
 }
 
