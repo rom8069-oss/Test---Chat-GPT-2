@@ -22,12 +22,11 @@
       --accent: #0c9f7a;
       --row-hover: #f2f7fd;
       --moved: #8b5cf6;
-      --good: #0f8a62;
-      --bad: #c24b4b;
     }
 
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
+
     body {
       font-family: "Tw Cen MT", "Trebuchet MS", Arial, sans-serif;
       background: linear-gradient(180deg, #f4f7fb 0%, #ecf2f9 100%);
@@ -202,9 +201,7 @@
       white-space: nowrap;
     }
 
-    .map-toggle input {
-      margin: 0;
-    }
+    .map-toggle input { margin: 0; }
 
     #map {
       flex: 1;
@@ -248,12 +245,6 @@
       background: linear-gradient(180deg, #15a985 0%, #0e9372 100%);
       color: #fff;
       border-color: #0e9372;
-    }
-
-    .btn-warning {
-      background: linear-gradient(180deg, #8b5cf6 0%, #7746e6 100%);
-      color: #fff;
-      border-color: #7746e6;
     }
 
     .btn-small {
@@ -335,22 +326,18 @@
     .sidebar-sections {
       border-top: 1px solid var(--border);
       display: grid;
-      grid-template-rows: auto auto auto auto;
+      grid-template-rows: auto auto;
       min-height: 0;
       overflow: auto;
     }
 
     .data-preview,
-    .moved-review,
-    .cadence-review,
-    .preview-review {
+    .moved-review {
       padding: 12px 14px 14px;
       background: rgba(247, 250, 253, 0.7);
     }
 
-    .moved-review,
-    .cadence-review,
-    .preview-review {
+    .moved-review {
       border-top: 1px solid var(--border);
     }
 
@@ -364,7 +351,7 @@
 
     .selection-preview,
     .moved-preview {
-      max-height: 160px;
+      max-height: 220px;
       overflow: auto;
       display: grid;
       gap: 8px;
@@ -402,118 +389,6 @@
       color: var(--moved);
       border: 1px solid rgba(139, 92, 246, 0.18);
       margin-top: 6px;
-    }
-
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(100px, 1fr));
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .metric-card {
-      border: 1px solid var(--border);
-      background: #fff;
-      border-radius: 12px;
-      padding: 8px 10px;
-    }
-
-    .metric-label {
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .metric-value {
-      font-size: 18px;
-      font-weight: 700;
-      margin-top: 4px;
-    }
-
-    .metric-sub {
-      font-size: 11px;
-      margin-top: 3px;
-      color: var(--muted);
-    }
-
-    .delta-positive { color: var(--good); }
-    .delta-negative { color: var(--bad); }
-    .delta-flat { color: var(--muted); }
-
-    .preview-actions {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-    }
-
-    .compare-wrap {
-      max-height: 240px;
-      overflow: auto;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: #fff;
-    }
-
-    .compare-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-
-    .compare-table th {
-      position: sticky;
-      top: 0;
-      background: #f8fbff;
-      color: var(--muted);
-      text-align: left;
-      padding: 8px;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-
-    .compare-table td {
-      padding: 8px;
-      border-bottom: 1px solid #edf2f7;
-      white-space: nowrap;
-    }
-
-    .cadence-wrap {
-      max-height: 220px;
-      overflow: auto;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: #fff;
-    }
-
-    .cadence-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-
-    .cadence-table th {
-      position: sticky;
-      top: 0;
-      background: #f8fbff;
-      color: var(--muted);
-      text-align: left;
-      padding: 8px;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-
-    .cadence-table td {
-      padding: 8px;
-      border-bottom: 1px solid #edf2f7;
-      white-space: nowrap;
-    }
-
-    .compare-empty {
-      color: var(--muted);
-      font-size: 13px;
-      padding: 8px 0 0;
     }
 
     .toast {
@@ -559,7 +434,6 @@
       }
 
       .sidebar { min-height: 700px; }
-      .metrics-grid { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
     }
 
     @media (max-width: 900px) {
@@ -569,7 +443,6 @@
       .summary-strip { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
       .panel-header { flex-direction: column; align-items: stretch; }
       .map-header-right { justify-content: flex-start; }
-      .metrics-grid { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -596,9 +469,7 @@
         <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
         <button id="undo-btn" class="btn" disabled>Undo</button>
         <button id="reset-btn" class="btn" disabled>Reset All</button>
-        <button id="optimize-btn" class="btn btn-accent" disabled>Preview Optimization</button>
-        <button id="apply-preview-btn" class="btn btn-warning" disabled>Apply Preview</button>
-        <button id="discard-preview-btn" class="btn" disabled>Discard Preview</button>
+        <button id="optimize-btn" class="btn btn-accent" disabled>Optimize Routes</button>
         <button id="export-btn" class="btn" disabled>Export Excel</button>
       </div>
     </header>
@@ -718,7 +589,7 @@
         <div class="summary-value" id="global-unchanged">0%</div>
       </div>
       <div class="summary-card">
-        <div class="summary-label">Planned 4-Week Stops</div>
+        <div class="summary-label">Avg Weekly Stops</div>
         <div class="summary-value" id="global-workload">0.0</div>
       </div>
       <div class="summary-card">
@@ -758,7 +629,7 @@
         <div class="panel-header sidebar-header">
           <div>
             <div class="panel-title">Routes</div>
-            <div class="panel-subtitle">Cadence-aware rep metrics update as assignments change</div>
+            <div class="panel-subtitle">Rep metrics update as assignments change</div>
           </div>
           <div class="last-action" id="last-action">No actions yet</div>
         </div>
@@ -809,75 +680,6 @@
               <div id="moved-review-count" class="last-action">0 moved</div>
             </div>
             <div id="moved-preview" class="moved-preview">No moved accounts.</div>
-          </div>
-
-          <div class="cadence-review">
-            <div class="preview-header">
-              <div>
-                <div class="panel-title small">Cadence planning</div>
-                <div class="panel-subtitle">Weekly, biweekly, monthly, and quarterly call mix by rep</div>
-              </div>
-              <div id="cadence-review-status" class="last-action">No data</div>
-            </div>
-
-            <div class="cadence-wrap">
-              <table class="cadence-table">
-                <thead>
-                  <tr>
-                    <th>Rep</th>
-                    <th>Weekly</th>
-                    <th>Biweekly</th>
-                    <th>Monthly</th>
-                    <th>Quarterly</th>
-                    <th>Planned 4W</th>
-                    <th>Avg Weekly</th>
-                  </tr>
-                </thead>
-                <tbody id="cadence-body">
-                  <tr><td colspan="7" class="empty-state">No cadence data yet.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="preview-review">
-            <div class="preview-header">
-              <div>
-                <div class="panel-title small">Optimization preview</div>
-                <div class="panel-subtitle">Before vs after summary and territory quality metrics</div>
-              </div>
-              <div id="preview-status" class="last-action">No preview</div>
-            </div>
-
-            <div class="preview-actions">
-              <button id="apply-preview-btn-inline" class="btn btn-warning btn-small" disabled>Apply Preview</button>
-              <button id="discard-preview-btn-inline" class="btn btn-small" disabled>Discard Preview</button>
-            </div>
-
-            <div id="preview-metrics" class="metrics-grid"></div>
-
-            <div class="compare-wrap">
-              <table class="compare-table">
-                <thead>
-                  <tr>
-                    <th>Rep</th>
-                    <th>Stops</th>
-                    <th>→</th>
-                    <th>Revenue</th>
-                    <th>→</th>
-                    <th>Avg Weekly</th>
-                    <th>→</th>
-                    <th>Δ Stops</th>
-                    <th>Δ Revenue</th>
-                  </tr>
-                </thead>
-                <tbody id="preview-compare-body">
-                  <tr><td colspan="9" class="empty-state">No optimization preview yet.</td></tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div id="preview-notes" class="compare-empty"></div>
           </div>
         </div>
       </aside>
@@ -941,17 +743,7 @@
       repFocus: null,
       theme: 'light',
       loadedFileName: 'territory_export.xlsx',
-      lastAction: 'No actions yet',
-      preview: {
-        active: false,
-        label: '',
-        assignments: null,
-        changes: [],
-        beforeRows: [],
-        afterRows: [],
-        metrics: null,
-        notes: ''
-      }
+      lastAction: 'No actions yet'
     };
 
     const els = {};
@@ -963,20 +755,17 @@
       initMap();
       bindEvents();
       updateLastAction('No actions yet');
-      renderPreviewPanel();
-      renderCadencePanel();
     }
 
     function bindElements() {
       [
-        'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','apply-preview-btn','discard-preview-btn','export-btn',
+        'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
         'assign-rep-select','rep-filter','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode','rank-filter',
         'chain-filter','segment-filter','premise-filter','protected-filter','moved-filter',
         'theme-toggle-checkbox','dim-others-checkbox','show-territory-checkbox',
         'rep-table-body','selection-preview','selection-count','clear-selection-btn',
         'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast',
-        'moved-preview','moved-review-count','preview-status','preview-metrics','preview-compare-body','preview-notes',
-        'apply-preview-btn-inline','discard-preview-btn-inline','cadence-body','cadence-review-status'
+        'moved-preview','moved-review-count'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
       });
@@ -988,11 +777,7 @@
       els.assignBtn.addEventListener('click', assignSelectionToRep);
       els.undoBtn.addEventListener('click', undoLastAction);
       els.resetBtn.addEventListener('click', resetAssignments);
-      els.optimizeBtn.addEventListener('click', previewOptimization);
-      els.applyPreviewBtn.addEventListener('click', applyPreview);
-      els.discardPreviewBtn.addEventListener('click', discardPreview);
-      els.applyPreviewBtnInline.addEventListener('click', applyPreview);
-      els.discardPreviewBtnInline.addEventListener('click', discardPreview);
+      els.optimizeBtn.addEventListener('click', optimizeRoutes);
       els.exportBtn.addEventListener('click', exportWorkbook);
 
       els.themeToggleCheckbox.addEventListener('change', toggleThemeFromCheckbox);
@@ -1130,7 +915,6 @@
 
       if (!normalized.length) {
         state.accounts = [];
-        clearPreview();
         refreshUI();
         showToast('No valid rows found in that sheet.');
         return;
@@ -1141,7 +925,6 @@
       state.changeLog = [];
       state.selection.clear();
       state.repFocus = null;
-      clearPreview();
 
       buildRepColors();
       renderFilterControls();
@@ -1270,9 +1053,7 @@
       renderRepTable();
       renderSelectionPreview();
       renderMovedReview();
-      renderCadencePanel();
       renderSummary();
-      renderPreviewPanel();
       refreshTerritories();
     }
 
@@ -1283,8 +1064,7 @@
         els.assignBtn, els.undoBtn, els.resetBtn, els.optimizeBtn, els.exportBtn,
         els.assignRepSelect, els.repFilter, els.repCountInput, els.minStopsInput, els.maxStopsInput,
         els.disruptionSlider, els.balanceMode, els.rankFilter, els.chainFilter, els.segmentFilter, els.premiseFilter,
-        els.protectedFilter, els.movedFilter,
-        els.dimOthersCheckbox, els.showTerritoryCheckbox, els.clearSelectionBtn
+        els.protectedFilter, els.movedFilter, els.dimOthersCheckbox, els.showTerritoryCheckbox, els.clearSelectionBtn
       ].forEach(el => {
         if (el === els.assignBtn) {
           el.disabled = !hasData || state.selection.size === 0;
@@ -1292,12 +1072,6 @@
           el.disabled = !hasData;
         }
       });
-
-      const previewActive = state.preview.active;
-      els.applyPreviewBtn.disabled = !previewActive;
-      els.discardPreviewBtn.disabled = !previewActive;
-      els.applyPreviewBtnInline.disabled = !previewActive;
-      els.discardPreviewBtnInline.disabled = !previewActive;
 
       els.undoBtn.disabled = !hasData || state.undoStack.length === 0;
       els.clearSelectionBtn.disabled = !hasData || state.selection.size === 0;
@@ -1394,7 +1168,7 @@
           <div><strong>Current Rep:</strong> ${escapeHtml(account.currentRep)}</div>
           <div><strong>Revenue:</strong> ${formatCurrency(account.overallSales)}</div>
           <div><strong>Rank:</strong> ${escapeHtml(account.rank)}</div>
-          <div><strong>Cadence (4W):</strong> ${cadence4WForRank(account.rank).toFixed(2)}</div>
+          <div><strong>Cadence 4W:</strong> ${cadence4WForRank(account.rank).toFixed(2)}</div>
           <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
         </div>
       `;
@@ -1486,30 +1260,6 @@
       `).join('');
     }
 
-    function renderCadencePanel() {
-      const rows = summarizeByRep();
-      if (!rows.length) {
-        els.cadenceReviewStatus.textContent = 'No data';
-        els.cadenceBody.innerHTML = '<tr><td colspan="7" class="empty-state">No cadence data yet.</td></tr>';
-        return;
-      }
-
-      const totalPlanned = rows.reduce((s, r) => s + r.plannedFourWeekStops, 0);
-      els.cadenceReviewStatus.textContent = `${totalPlanned.toFixed(1)} planned 4W stops`;
-
-      els.cadenceBody.innerHTML = rows.map(r => `
-        <tr>
-          <td>${escapeHtml(r.rep)}</td>
-          <td>${r.weekly}</td>
-          <td>${r.biweekly}</td>
-          <td>${r.monthly}</td>
-          <td>${r.quarterly}</td>
-          <td>${r.plannedFourWeekStops.toFixed(2)}</td>
-          <td>${r.avgWeeklyStops.toFixed(2)}</td>
-        </tr>
-      `).join('');
-    }
-
     function renderSummary() {
       const accounts = getFilteredAccounts();
       const totalAccounts = accounts.length;
@@ -1517,133 +1267,14 @@
       const protectedCount = accounts.filter(a => a.protected).length;
       const movedCount = accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
       const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts * 100) : 0;
-      const plannedFourWeekStops = accounts.reduce((sum, a) => sum + cadence4WForRank(a.rank), 0);
+      const avgWeeklyStops = totalAccounts ? accounts.reduce((sum, a) => sum + (cadence4WForRank(a.rank) / 4), 0) : 0;
 
       els.globalAccounts.textContent = totalAccounts.toLocaleString();
       els.globalRevenue.textContent = formatCurrency(totalRevenue);
       els.globalProtected.textContent = protectedCount.toLocaleString();
       els.globalMoved.textContent = movedCount.toLocaleString();
       els.globalUnchanged.textContent = `${unchangedPct.toFixed(1)}%`;
-      els.globalWorkload.textContent = plannedFourWeekStops.toFixed(1);
-    }
-
-    function renderPreviewPanel() {
-      if (!state.preview.active) {
-        els.previewStatus.textContent = 'No preview';
-        els.previewMetrics.innerHTML = '';
-        els.previewCompareBody.innerHTML = '<tr><td colspan="9" class="empty-state">No optimization preview yet.</td></tr>';
-        els.previewNotes.textContent = '';
-        return;
-      }
-
-      els.previewStatus.textContent = `${state.preview.changes.length} proposed changes`;
-
-      const m = state.preview.metrics;
-      els.previewMetrics.innerHTML = `
-        <div class="metric-card">
-          <div class="metric-label">Moved</div>
-          <div class="metric-value">${m.after.movedCount}</div>
-          <div class="metric-sub">Current ${m.before.movedCount}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Disruption %</div>
-          <div class="metric-value">${m.after.disruptionPct.toFixed(1)}%</div>
-          <div class="metric-sub">Current ${m.before.disruptionPct.toFixed(1)}%</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Avg Centroid Dist.</div>
-          <div class="metric-value">${m.after.avgDistanceMiles.toFixed(1)} mi</div>
-          <div class="metric-sub">Current ${m.before.avgDistanceMiles.toFixed(1)} mi</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Max Centroid Dist.</div>
-          <div class="metric-value">${m.after.maxDistanceMiles.toFixed(1)} mi</div>
-          <div class="metric-sub">Current ${m.before.maxDistanceMiles.toFixed(1)} mi</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Stop Spread</div>
-          <div class="metric-value">${m.after.stopSpread.toFixed(0)}</div>
-          <div class="metric-sub">Current ${m.before.stopSpread.toFixed(0)}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Revenue Spread</div>
-          <div class="metric-value">${formatCompactCurrency(m.after.revenueSpread)}</div>
-          <div class="metric-sub">Current ${formatCompactCurrency(m.before.revenueSpread)}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Protected Violations</div>
-          <div class="metric-value">${m.after.protectedViolations}</div>
-          <div class="metric-sub">Must stay 0</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Avg Weekly Stops</div>
-          <div class="metric-value">${m.after.avgWeeklyStops.toFixed(2)}</div>
-          <div class="metric-sub">Current ${m.before.avgWeeklyStops.toFixed(2)}</div>
-        </div>
-      `;
-
-      const merged = mergeComparisonRows(state.preview.beforeRows, state.preview.afterRows);
-      els.previewCompareBody.innerHTML = merged.map(row => `
-        <tr>
-          <td>${escapeHtml(row.rep)}</td>
-          <td>${row.beforeStops}</td>
-          <td>${row.afterStops}</td>
-          <td>${formatCurrency(row.beforeRevenue)}</td>
-          <td>${formatCurrency(row.afterRevenue)}</td>
-          <td>${row.beforeAvg.toFixed(2)}</td>
-          <td>${row.afterAvg.toFixed(2)}</td>
-          <td class="${deltaClass(row.deltaStops)}">${signed(row.deltaStops)}</td>
-          <td class="${deltaClass(row.deltaRevenue)}">${signedCurrency(row.deltaRevenue)}</td>
-        </tr>
-      `).join('');
-
-      els.previewNotes.textContent = state.preview.notes || '';
-    }
-
-    function mergeComparisonRows(beforeRows, afterRows) {
-      const map = new Map();
-
-      beforeRows.forEach(r => {
-        map.set(r.rep, {
-          rep: r.rep,
-          beforeStops: r.stops,
-          afterStops: 0,
-          beforeRevenue: r.revenue,
-          afterRevenue: 0,
-          beforeAvg: r.avgWeeklyStops,
-          afterAvg: 0,
-          deltaStops: 0,
-          deltaRevenue: 0
-        });
-      });
-
-      afterRows.forEach(r => {
-        if (!map.has(r.rep)) {
-          map.set(r.rep, {
-            rep: r.rep,
-            beforeStops: 0,
-            afterStops: r.stops,
-            beforeRevenue: 0,
-            afterRevenue: r.revenue,
-            beforeAvg: 0,
-            afterAvg: r.avgWeeklyStops,
-            deltaStops: 0,
-            deltaRevenue: 0
-          });
-        } else {
-          const row = map.get(r.rep);
-          row.afterStops = r.stops;
-          row.afterRevenue = r.revenue;
-          row.afterAvg = r.avgWeeklyStops;
-        }
-      });
-
-      const rows = [...map.values()].sort((a, b) => a.rep.localeCompare(b.rep, undefined, { numeric: true }));
-      rows.forEach(r => {
-        r.deltaStops = r.afterStops - r.beforeStops;
-        r.deltaRevenue = r.afterRevenue - r.beforeRevenue;
-      });
-      return rows;
+      els.globalWorkload.textContent = avgWeeklyStops.toFixed(1);
     }
 
     function handleDrawCreated(event) {
@@ -1724,8 +1355,6 @@
     function applyChanges(changes, label) {
       if (!changes.length) return;
 
-      clearPreview(false);
-
       changes.forEach(change => {
         const account = state.accounts.find(a => a._id === change.id);
         if (!account) return;
@@ -1759,8 +1388,6 @@
       const action = state.undoStack.pop();
       if (!action) return;
 
-      clearPreview(false);
-
       for (const change of action.changes) {
         const account = state.accounts.find(a => a._id === change.id);
         if (account) account.assignedRep = change.from;
@@ -1793,7 +1420,7 @@
       applyChanges(changes, 'Reset all assignments to imported values');
     }
 
-    function previewOptimization() {
+    function optimizeRoutes() {
       if (!state.accounts.length) return;
 
       const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
@@ -1897,10 +1524,6 @@
       enforceMinimumStops(assignments, targetRepNames, minStops, workingAccounts);
       enforceMaximumStops(assignments, targetRepNames, maxStops, workingAccounts);
 
-      const finalCounts = countAssignments(assignments, targetRepNames, workingAccounts);
-      const violatesMin = [...finalCounts.values()].some(v => v < minStops);
-      const violatesMax = [...finalCounts.values()].some(v => v > maxStops);
-
       const changes = [];
       for (const account of workingAccounts) {
         const nextRep = assignments.get(account._id) || account.assignedRep;
@@ -1914,66 +1537,11 @@
       }
 
       if (!changes.length) {
-        showToast('Optimizer did not produce any proposed changes.');
-        clearPreview();
-        refreshUI();
+        showToast('Optimizer did not find a better assignment under the current rules.');
         return;
       }
 
-      const beforeRows = summarizeByRepFromAccounts(workingAccounts, a => a.assignedRep);
-      const afterRows = summarizeByRepFromAccounts(workingAccounts, a => assignments.get(a._id) || a.assignedRep);
-
-      const beforeMetrics = computeQualityMetrics(workingAccounts, a => a.assignedRep);
-      const afterMetrics = computeQualityMetrics(workingAccounts, a => assignments.get(a._id) || a.assignedRep);
-
-      let notes = `${changes.length} account${changes.length === 1 ? '' : 's'} would move.`;
-      if (violatesMin || violatesMax) {
-        notes += ' The optimizer could not fully satisfy the min/max stop rules with the current filtered set.';
-      }
-
-      state.preview = {
-        active: true,
-        label: `Previewed optimization to ${targetRepNames.length} reps`,
-        assignments,
-        changes,
-        beforeRows,
-        afterRows,
-        metrics: { before: beforeMetrics, after: afterMetrics },
-        notes
-      };
-
-      refreshUI();
-      showToast(`Preview ready: ${changes.length} proposed changes.`);
-    }
-
-    function applyPreview() {
-      if (!state.preview.active || !state.preview.changes.length) return;
-
-      const changes = state.preview.changes.map(c => ({ ...c }));
-      const label = `Applied preview optimization (${changes.length} changes)`;
-      clearPreview(false);
-      applyChanges(changes, label);
-    }
-
-    function discardPreview() {
-      if (!state.preview.active) return;
-      clearPreview();
-      refreshUI();
-      showToast('Optimization preview discarded.');
-    }
-
-    function clearPreview(refresh = false) {
-      state.preview = {
-        active: false,
-        label: '',
-        assignments: null,
-        changes: [],
-        beforeRows: [],
-        afterRows: [],
-        metrics: null,
-        notes: ''
-      };
-      if (refresh) refreshUI();
+      applyChanges(changes, `Optimized routes (${changes.length} changes)`);
     }
 
     function enforceMinimumStops(assignments, targetRepNames, minStops, workingAccounts) {
@@ -2224,7 +1792,7 @@
         const row = map.get(assigned);
         row.stops += 1;
         row.revenue += account.overallSales;
-        row[account.rank] = (row[account.rank] || 0) + 1;
+        row[row.rank = account.rank] = (row[account.rank] || 0) + 1;
 
         if (account.rank === 'A') row.weekly += 1;
         if (account.rank === 'B') row.biweekly += 1;
@@ -2281,69 +1849,6 @@
       return CADENCE_4W[rank] ?? 1;
     }
 
-    function computeQualityMetrics(accounts, resolver) {
-      if (!accounts.length) {
-        return {
-          movedCount: 0,
-          disruptionPct: 0,
-          avgDistanceMiles: 0,
-          maxDistanceMiles: 0,
-          stopSpread: 0,
-          revenueSpread: 0,
-          protectedViolations: 0,
-          avgWeeklyStops: 0
-        };
-      }
-
-      const byRep = groupBy(accounts, a => resolver(a));
-      const centroids = new Map();
-
-      for (const [rep, members] of byRep.entries()) {
-        centroids.set(rep, {
-          lat: avg(members.map(a => a.latitude)),
-          lng: avg(members.map(a => a.longitude))
-        });
-      }
-
-      let distSum = 0;
-      let maxDist = 0;
-      let count = 0;
-      let movedCount = 0;
-      let protectedViolations = 0;
-      let plannedFourWeekStops = 0;
-
-      const stopCounts = [];
-      const revenues = [];
-
-      for (const [rep, members] of byRep.entries()) {
-        stopCounts.push(members.length);
-        revenues.push(members.reduce((s, a) => s + a.overallSales, 0));
-
-        const centroid = centroids.get(rep);
-        for (const account of members) {
-          const d = haversineMiles(account.latitude, account.longitude, centroid.lat, centroid.lng);
-          distSum += d;
-          if (d > maxDist) maxDist = d;
-          count += 1;
-
-          if (resolver(account) !== account.originalAssignedRep) movedCount += 1;
-          if (account.protected && resolver(account) !== account.originalAssignedRep) protectedViolations += 1;
-          plannedFourWeekStops += cadence4WForRank(account.rank);
-        }
-      }
-
-      return {
-        movedCount,
-        disruptionPct: count ? (movedCount / count) * 100 : 0,
-        avgDistanceMiles: count ? distSum / count : 0,
-        maxDistanceMiles: maxDist,
-        stopSpread: stopCounts.length ? Math.max(...stopCounts) - Math.min(...stopCounts) : 0,
-        revenueSpread: revenues.length ? Math.max(...revenues) - Math.min(...revenues) : 0,
-        protectedViolations,
-        avgWeeklyStops: plannedFourWeekStops / 4
-      };
-    }
-
     function exportWorkbook() {
       if (!state.accounts.length) return;
 
@@ -2389,16 +1894,6 @@
         Avg_Weekly_Stops: round2(r.avgWeeklyStops)
       }));
 
-      const cadenceSummary = summarizeByRep().map(r => ({
-        Rep: r.rep,
-        Weekly_Accounts: r.weekly,
-        Biweekly_Accounts: r.biweekly,
-        Monthly_Accounts: r.monthly,
-        Quarterly_Accounts: r.quarterly,
-        Planned_Four_Week_Stops: round2(r.plannedFourWeekStops),
-        Avg_Weekly_Stops: round2(r.avgWeeklyStops)
-      }));
-
       const movedAudit = state.accounts
         .filter(a => a.assignedRep !== a.originalAssignedRep)
         .map(a => ({
@@ -2428,7 +1923,6 @@
 
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assignments), 'Assignments');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Rep Summary');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cadenceSummary), 'Cadence Summary');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movedAudit.length ? movedAudit : [{}]), 'Moved Accounts');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(changeLog), 'Change Log');
 
@@ -2569,32 +2063,6 @@
       toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2200);
     }
 
-    function signed(value) {
-      if (value > 0) return `+${value}`;
-      if (value < 0) return `${value}`;
-      return '0';
-    }
-
-    function signedCurrency(value) {
-      if (value > 0) return `+${formatCurrency(value)}`;
-      if (value < 0) return `-${formatCurrency(Math.abs(value))}`;
-      return '$0';
-    }
-
-    function deltaClass(value) {
-      if (value === 0) return 'delta-flat';
-      return value > 0 ? 'delta-positive' : 'delta-negative';
-    }
-
-    function formatCompactCurrency(value) {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        notation: 'compact',
-        maximumFractionDigits: 1
-      }).format(value || 0);
-    }
-
     function toCamel(id) {
       return id.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
     }
@@ -2640,19 +2108,6 @@
       const dx = lng1 - lng2;
       const dy = lat1 - lat2;
       return dx * dx + dy * dy;
-    }
-
-    function haversineMiles(lat1, lon1, lat2, lon2) {
-      const toRad = deg => deg * Math.PI / 180;
-      const R = 3958.8;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
     }
 
     function groupBy(arr, fn) {
