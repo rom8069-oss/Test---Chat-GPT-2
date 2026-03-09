@@ -598,10 +598,11 @@
                 <th>Moved In</th>
                 <th>Moved Out</th>
                 <th>4W Load</th>
+                <th>Avg Weekly Stops</th>
               </tr>
             </thead>
             <tbody id="rep-table-body">
-              <tr><td colspan="11" class="empty-state">Upload a file to begin.</td></tr>
+              <tr><td colspan="12" class="empty-state">Upload a file to begin.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1008,6 +1009,14 @@
         rep => rep === 'ALL' ? 'All reps' : rep
       );
 
+      const segments = uniqueNonBlank(state.accounts.map(a => a.segment));
+      fillSelect(
+        els.segmentFilter,
+        ['ALL', ...segments],
+        els.segmentFilter.value && ['ALL', ...segments].includes(els.segmentFilter.value) ? els.segmentFilter.value : 'ALL',
+        val => val === 'ALL' ? 'All segments' : val
+      );
+
       if (!els.repCountInput.dataset.userTouched) {
         els.repCountInput.value = reps.length || 1;
       }
@@ -1084,33 +1093,31 @@
       const rows = summarizeByRep();
 
       if (!rows.length) {
-        els.repTableBody.innerHTML = '<tr><td colspan="11" class="empty-state">No accounts match the current filters.</td></tr>';
+        els.repTableBody.innerHTML = '<tr><td colspan="12" class="empty-state">No accounts match the current filters.</td></tr>';
         return;
       }
 
-      els.repTableBody.innerHTML = rows.map(row => {
-        const focused = state.repFocus === row.rep ? 'rep-focus-row' : '';
-        return `
-          <tr class="${focused}" data-rep-row="${escapeHtmlAttr(row.rep)}">
-            <td>
-              <div class="rep-cell">
-                <span class="color-dot" style="background:${row.color}"></span>
-                <span>${escapeHtml(row.rep)}</span>
-              </div>
-            </td>
-            <td>${row.stops}</td>
-            <td>${formatCurrency(row.revenue)}</td>
-            <td>${row.A}</td>
-            <td>${row.B}</td>
-            <td>${row.C}</td>
-            <td>${row.D}</td>
-            <td>${row.protected}</td>
-            <td>${row.movedIn}</td>
-            <td>${row.movedOut}</td>
-            <td>${row.workload.toFixed(2)}</td>
-          </tr>
-        `;
-      }).join('');
+      els.repTableBody.innerHTML = rows.map(row => `
+        <tr data-rep-row="${escapeHtmlAttr(row.rep)}" class="${state.repFocus === row.rep ? 'rep-focus-row' : ''}">
+          <td>
+            <div class="rep-cell">
+              <span class="color-dot" style="background:${row.color}"></span>
+              <span>${escapeHtml(row.rep)}</span>
+            </div>
+          </td>
+          <td>${row.stops}</td>
+          <td>${formatCurrency(row.revenue)}</td>
+          <td>${row.A}</td>
+          <td>${row.B}</td>
+          <td>${row.C}</td>
+          <td>${row.D}</td>
+          <td>${row.protected}</td>
+          <td>${row.movedIn}</td>
+          <td>${row.movedOut}</td>
+          <td>${row.workload.toFixed(2)}</td>
+          <td>${row.avgWeeklyStops.toFixed(2)}</td>
+        </tr>
+      `).join('');
 
       [...els.repTableBody.querySelectorAll('tr[data-rep-row]')].forEach(tr => {
         tr.addEventListener('click', () => {
@@ -1611,7 +1618,8 @@
           protected: 0,
           movedIn: 0,
           movedOut: 0,
-          workload: 0
+          workload: 0,
+          avgWeeklyStops: 0
         });
       });
 
@@ -1629,7 +1637,8 @@
             protected: 0,
             movedIn: 0,
             movedOut: 0,
-            workload: 0
+            workload: 0,
+            avgWeeklyStops: 0
           });
         }
 
@@ -1649,9 +1658,15 @@
         }
       }
 
-      return [...map.values()]
+      const rows = [...map.values()]
         .filter(r => r.stops > 0)
         .sort((a, b) => a.rep.localeCompare(b.rep, undefined, { numeric: true }));
+
+      rows.forEach(r => {
+        r.avgWeeklyStops = r.workload / 4;
+      });
+
+      return rows;
     }
 
     function exportWorkbook() {
@@ -1689,7 +1704,8 @@
         Protected: r.protected,
         Moved_In: r.movedIn,
         Moved_Out: r.movedOut,
-        Four_Week_Load: round2(r.workload)
+        Four_Week_Load: round2(r.workload),
+        Avg_Weekly_Stops: round2(r.avgWeeklyStops)
       }));
 
       const changeLog = state.changeLog.length ? state.changeLog : [{
