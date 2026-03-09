@@ -102,7 +102,6 @@
     }
 
     .control-group.compact { min-width: 116px; }
-    .control-group.grow { min-width: 250px; }
     .control-group.wide { min-width: 220px; }
     .control-group.slider-group { min-width: 260px; }
 
@@ -142,7 +141,7 @@
     .main-layout {
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1.72fr) minmax(610px, 1fr);
+      grid-template-columns: minmax(0, 1.72fr) minmax(660px, 1fr);
       gap: 10px;
     }
 
@@ -336,19 +335,21 @@
     .sidebar-sections {
       border-top: 1px solid var(--border);
       display: grid;
-      grid-template-rows: auto auto auto;
+      grid-template-rows: auto auto auto auto;
       min-height: 0;
       overflow: auto;
     }
 
     .data-preview,
     .moved-review,
+    .cadence-review,
     .preview-review {
       padding: 12px 14px 14px;
       background: rgba(247, 250, 253, 0.7);
     }
 
     .moved-review,
+    .cadence-review,
     .preview-review {
       border-top: 1px solid var(--border);
     }
@@ -436,8 +437,8 @@
       color: var(--muted);
     }
 
-    .delta-up { color: var(--bad); }
-    .delta-down { color: var(--good); }
+    .delta-positive { color: var(--good); }
+    .delta-negative { color: var(--bad); }
     .delta-flat { color: var(--muted); }
 
     .preview-actions {
@@ -473,6 +474,37 @@
     }
 
     .compare-table td {
+      padding: 8px;
+      border-bottom: 1px solid #edf2f7;
+      white-space: nowrap;
+    }
+
+    .cadence-wrap {
+      max-height: 220px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .cadence-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .cadence-table th {
+      position: sticky;
+      top: 0;
+      background: #f8fbff;
+      color: var(--muted);
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .cadence-table td {
       padding: 8px;
       border-bottom: 1px solid #edf2f7;
       white-space: nowrap;
@@ -526,7 +558,7 @@
         grid-template-columns: 1fr;
       }
 
-      .sidebar { min-height: 620px; }
+      .sidebar { min-height: 700px; }
       .metrics-grid { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
     }
 
@@ -686,7 +718,7 @@
         <div class="summary-value" id="global-unchanged">0%</div>
       </div>
       <div class="summary-card">
-        <div class="summary-label">4-week workload</div>
+        <div class="summary-label">Planned 4-Week Stops</div>
         <div class="summary-value" id="global-workload">0.0</div>
       </div>
       <div class="summary-card">
@@ -726,7 +758,7 @@
         <div class="panel-header sidebar-header">
           <div>
             <div class="panel-title">Routes</div>
-            <div class="panel-subtitle">Live rep metrics update as assignments change</div>
+            <div class="panel-subtitle">Cadence-aware rep metrics update as assignments change</div>
           </div>
           <div class="last-action" id="last-action">No actions yet</div>
         </div>
@@ -742,15 +774,19 @@
                 <th>B</th>
                 <th>C</th>
                 <th>D</th>
+                <th>Weekly</th>
+                <th>Biweekly</th>
+                <th>Monthly</th>
+                <th>Quarterly</th>
                 <th>Protected</th>
                 <th>Moved In</th>
                 <th>Moved Out</th>
-                <th>4W Load</th>
-                <th>Avg Weekly Stops</th>
+                <th>Planned 4W</th>
+                <th>Avg Weekly</th>
               </tr>
             </thead>
             <tbody id="rep-table-body">
-              <tr><td colspan="12" class="empty-state">Upload a file to begin.</td></tr>
+              <tr><td colspan="16" class="empty-state">Upload a file to begin.</td></tr>
             </tbody>
           </table>
         </div>
@@ -773,6 +809,35 @@
               <div id="moved-review-count" class="last-action">0 moved</div>
             </div>
             <div id="moved-preview" class="moved-preview">No moved accounts.</div>
+          </div>
+
+          <div class="cadence-review">
+            <div class="preview-header">
+              <div>
+                <div class="panel-title small">Cadence planning</div>
+                <div class="panel-subtitle">Weekly, biweekly, monthly, and quarterly call mix by rep</div>
+              </div>
+              <div id="cadence-review-status" class="last-action">No data</div>
+            </div>
+
+            <div class="cadence-wrap">
+              <table class="cadence-table">
+                <thead>
+                  <tr>
+                    <th>Rep</th>
+                    <th>Weekly</th>
+                    <th>Biweekly</th>
+                    <th>Monthly</th>
+                    <th>Quarterly</th>
+                    <th>Planned 4W</th>
+                    <th>Avg Weekly</th>
+                  </tr>
+                </thead>
+                <tbody id="cadence-body">
+                  <tr><td colspan="7" class="empty-state">No cadence data yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div class="preview-review">
@@ -831,7 +896,12 @@
       '#f03e3e','#3b5bdb','#e8590c','#1098ad','#9c36b5','#5c940d','#d9480f','#1864ab','#c2255c','#12b886'
     ];
 
-    const RANK_WEIGHTS = { A: 4, B: 2, C: 1, D: 0.33 };
+    const CADENCE_4W = {
+      A: 4,
+      B: 2,
+      C: 1,
+      D: 1/3
+    };
 
     const COLUMN_ALIASES = {
       latitude: ['latitude','lat','y','geo_lat','customer_latitude'],
@@ -894,6 +964,7 @@
       bindEvents();
       updateLastAction('No actions yet');
       renderPreviewPanel();
+      renderCadencePanel();
     }
 
     function bindElements() {
@@ -905,7 +976,7 @@
         'rep-table-body','selection-preview','selection-count','clear-selection-btn',
         'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast',
         'moved-preview','moved-review-count','preview-status','preview-metrics','preview-compare-body','preview-notes',
-        'apply-preview-btn-inline','discard-preview-btn-inline'
+        'apply-preview-btn-inline','discard-preview-btn-inline','cadence-body','cadence-review-status'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
       });
@@ -1199,6 +1270,7 @@
       renderRepTable();
       renderSelectionPreview();
       renderMovedReview();
+      renderCadencePanel();
       renderSummary();
       renderPreviewPanel();
       refreshTerritories();
@@ -1322,6 +1394,7 @@
           <div><strong>Current Rep:</strong> ${escapeHtml(account.currentRep)}</div>
           <div><strong>Revenue:</strong> ${formatCurrency(account.overallSales)}</div>
           <div><strong>Rank:</strong> ${escapeHtml(account.rank)}</div>
+          <div><strong>Cadence (4W):</strong> ${cadence4WForRank(account.rank).toFixed(2)}</div>
           <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
         </div>
       `;
@@ -1331,7 +1404,7 @@
       const rows = summarizeByRep();
 
       if (!rows.length) {
-        els.repTableBody.innerHTML = '<tr><td colspan="12" class="empty-state">No accounts match the current filters.</td></tr>';
+        els.repTableBody.innerHTML = '<tr><td colspan="16" class="empty-state">No accounts match the current filters.</td></tr>';
         return;
       }
 
@@ -1349,10 +1422,14 @@
           <td>${row.B}</td>
           <td>${row.C}</td>
           <td>${row.D}</td>
+          <td>${row.weekly}</td>
+          <td>${row.biweekly}</td>
+          <td>${row.monthly}</td>
+          <td>${row.quarterly}</td>
           <td>${row.protected}</td>
           <td>${row.movedIn}</td>
           <td>${row.movedOut}</td>
-          <td>${row.workload.toFixed(2)}</td>
+          <td>${row.plannedFourWeekStops.toFixed(2)}</td>
           <td>${row.avgWeeklyStops.toFixed(2)}</td>
         </tr>
       `).join('');
@@ -1381,7 +1458,7 @@
       els.selectionPreview.innerHTML = selected.map(a => `
         <div class="preview-item">
           <div class="preview-title">${escapeHtml(a.customerName)}</div>
-          <div class="preview-meta">${escapeHtml(a.premise || '—')} • ${escapeHtml(a.segment || '—')} • ${escapeHtml(a.assignedRep)} • ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)}${a.protected ? ' • Protected' : ''}</div>
+          <div class="preview-meta">${escapeHtml(a.premise || '—')} • ${escapeHtml(a.segment || '—')} • ${escapeHtml(a.assignedRep)} • ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)} • 4W ${cadence4WForRank(a.rank).toFixed(2)}${a.protected ? ' • Protected' : ''}</div>
         </div>
       `).join('');
 
@@ -1403,9 +1480,33 @@
       els.movedPreview.innerHTML = movedAccounts.slice(0, 100).map(a => `
         <div class="moved-item">
           <div class="moved-title">${escapeHtml(a.customerName)}</div>
-          <div class="moved-meta">${escapeHtml(a.premise || '—')} • ${escapeHtml(a.segment || '—')} • ${formatCurrency(a.overallSales)}</div>
+          <div class="moved-meta">${escapeHtml(a.premise || '—')} • ${escapeHtml(a.segment || '—')} • ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)}</div>
           <div class="moved-pill">${escapeHtml(a.originalAssignedRep)} → ${escapeHtml(a.assignedRep)}</div>
         </div>
+      `).join('');
+    }
+
+    function renderCadencePanel() {
+      const rows = summarizeByRep();
+      if (!rows.length) {
+        els.cadenceReviewStatus.textContent = 'No data';
+        els.cadenceBody.innerHTML = '<tr><td colspan="7" class="empty-state">No cadence data yet.</td></tr>';
+        return;
+      }
+
+      const totalPlanned = rows.reduce((s, r) => s + r.plannedFourWeekStops, 0);
+      els.cadenceReviewStatus.textContent = `${totalPlanned.toFixed(1)} planned 4W stops`;
+
+      els.cadenceBody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${escapeHtml(r.rep)}</td>
+          <td>${r.weekly}</td>
+          <td>${r.biweekly}</td>
+          <td>${r.monthly}</td>
+          <td>${r.quarterly}</td>
+          <td>${r.plannedFourWeekStops.toFixed(2)}</td>
+          <td>${r.avgWeeklyStops.toFixed(2)}</td>
+        </tr>
       `).join('');
     }
 
@@ -1416,14 +1517,14 @@
       const protectedCount = accounts.filter(a => a.protected).length;
       const movedCount = accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
       const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts * 100) : 0;
-      const workload = accounts.reduce((sum, a) => sum + (RANK_WEIGHTS[a.rank] || 1), 0);
+      const plannedFourWeekStops = accounts.reduce((sum, a) => sum + cadence4WForRank(a.rank), 0);
 
       els.globalAccounts.textContent = totalAccounts.toLocaleString();
       els.globalRevenue.textContent = formatCurrency(totalRevenue);
       els.globalProtected.textContent = protectedCount.toLocaleString();
       els.globalMoved.textContent = movedCount.toLocaleString();
       els.globalUnchanged.textContent = `${unchangedPct.toFixed(1)}%`;
-      els.globalWorkload.textContent = workload.toFixed(1);
+      els.globalWorkload.textContent = plannedFourWeekStops.toFixed(1);
     }
 
     function renderPreviewPanel() {
@@ -1475,9 +1576,9 @@
           <div class="metric-sub">Must stay 0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Rep Count</div>
-          <div class="metric-value">${m.after.repCount}</div>
-          <div class="metric-sub">Current ${m.before.repCount}</div>
+          <div class="metric-label">Avg Weekly Stops</div>
+          <div class="metric-value">${m.after.avgWeeklyStops.toFixed(2)}</div>
+          <div class="metric-sub">Current ${m.before.avgWeeklyStops.toFixed(2)}</div>
         </div>
       `;
 
@@ -1491,8 +1592,8 @@
           <td>${formatCurrency(row.afterRevenue)}</td>
           <td>${row.beforeAvg.toFixed(2)}</td>
           <td>${row.afterAvg.toFixed(2)}</td>
-          <td class="${deltaClass(row.deltaStops, true)}">${signed(row.deltaStops)}</td>
-          <td class="${deltaClass(row.deltaRevenue, false)}">${signedCurrency(row.deltaRevenue)}</td>
+          <td class="${deltaClass(row.deltaStops)}">${signed(row.deltaStops)}</td>
+          <td class="${deltaClass(row.deltaRevenue)}">${signedCurrency(row.deltaRevenue)}</td>
         </tr>
       `).join('');
 
@@ -2111,48 +2212,26 @@
       const map = new Map();
 
       uniqueNonBlank(accounts.flatMap(a => [resolver(a), a.currentRep])).forEach(rep => {
-        map.set(rep, {
-          rep,
-          color: state.repColors.get(rep) || '#4a5568',
-          stops: 0,
-          revenue: 0,
-          A: 0,
-          B: 0,
-          C: 0,
-          D: 0,
-          protected: 0,
-          movedIn: 0,
-          movedOut: 0,
-          workload: 0,
-          avgWeeklyStops: 0
-        });
+        map.set(rep, emptyRepSummary(rep));
       });
 
       for (const account of accounts) {
         const assigned = resolver(account);
         if (!map.has(assigned)) {
-          map.set(assigned, {
-            rep: assigned,
-            color: state.repColors.get(assigned) || '#4a5568',
-            stops: 0,
-            revenue: 0,
-            A: 0,
-            B: 0,
-            C: 0,
-            D: 0,
-            protected: 0,
-            movedIn: 0,
-            movedOut: 0,
-            workload: 0,
-            avgWeeklyStops: 0
-          });
+          map.set(assigned, emptyRepSummary(assigned));
         }
 
         const row = map.get(assigned);
         row.stops += 1;
         row.revenue += account.overallSales;
         row[account.rank] = (row[account.rank] || 0) + 1;
-        row.workload += RANK_WEIGHTS[account.rank] || 1;
+
+        if (account.rank === 'A') row.weekly += 1;
+        if (account.rank === 'B') row.biweekly += 1;
+        if (account.rank === 'C') row.monthly += 1;
+        if (account.rank === 'D') row.quarterly += 1;
+
+        row.plannedFourWeekStops += cadence4WForRank(account.rank);
 
         if (account.protected) row.protected += 1;
         if (assigned !== account.currentRep) row.movedIn += 1;
@@ -2170,10 +2249,36 @@
         .sort((a, b) => a.rep.localeCompare(b.rep, undefined, { numeric: true }));
 
       rows.forEach(r => {
-        r.avgWeeklyStops = r.workload / 4;
+        r.avgWeeklyStops = r.plannedFourWeekStops / 4;
       });
 
       return rows;
+    }
+
+    function emptyRepSummary(rep) {
+      return {
+        rep,
+        color: state.repColors.get(rep) || '#4a5568',
+        stops: 0,
+        revenue: 0,
+        A: 0,
+        B: 0,
+        C: 0,
+        D: 0,
+        weekly: 0,
+        biweekly: 0,
+        monthly: 0,
+        quarterly: 0,
+        protected: 0,
+        movedIn: 0,
+        movedOut: 0,
+        plannedFourWeekStops: 0,
+        avgWeeklyStops: 0
+      };
+    }
+
+    function cadence4WForRank(rank) {
+      return CADENCE_4W[rank] ?? 1;
     }
 
     function computeQualityMetrics(accounts, resolver) {
@@ -2186,7 +2291,7 @@
           stopSpread: 0,
           revenueSpread: 0,
           protectedViolations: 0,
-          repCount: 0
+          avgWeeklyStops: 0
         };
       }
 
@@ -2205,6 +2310,7 @@
       let count = 0;
       let movedCount = 0;
       let protectedViolations = 0;
+      let plannedFourWeekStops = 0;
 
       const stopCounts = [];
       const revenues = [];
@@ -2222,6 +2328,7 @@
 
           if (resolver(account) !== account.originalAssignedRep) movedCount += 1;
           if (account.protected && resolver(account) !== account.originalAssignedRep) protectedViolations += 1;
+          plannedFourWeekStops += cadence4WForRank(account.rank);
         }
       }
 
@@ -2233,7 +2340,7 @@
         stopSpread: stopCounts.length ? Math.max(...stopCounts) - Math.min(...stopCounts) : 0,
         revenueSpread: revenues.length ? Math.max(...revenues) - Math.min(...revenues) : 0,
         protectedViolations,
-        repCount: byRep.size
+        avgWeeklyStops: plannedFourWeekStops / 4
       };
     }
 
@@ -2255,6 +2362,8 @@
         Original_Assigned_Rep: a.originalAssignedRep,
         Protected: a.protected ? 'Yes' : 'No',
         Rank: a.rank,
+        Four_Week_Cadence_Stops: round2(cadence4WForRank(a.rank)),
+        Avg_Weekly_Stops: round2(cadence4WForRank(a.rank) / 4),
         Latitude: a.latitude,
         Longitude: a.longitude,
         Overall_Sales: a.overallSales,
@@ -2269,10 +2378,24 @@
         B: r.B,
         C: r.C,
         D: r.D,
+        Weekly: r.weekly,
+        Biweekly: r.biweekly,
+        Monthly: r.monthly,
+        Quarterly: r.quarterly,
         Protected: r.protected,
         Moved_In: r.movedIn,
         Moved_Out: r.movedOut,
-        Four_Week_Load: round2(r.workload),
+        Planned_Four_Week_Stops: round2(r.plannedFourWeekStops),
+        Avg_Weekly_Stops: round2(r.avgWeeklyStops)
+      }));
+
+      const cadenceSummary = summarizeByRep().map(r => ({
+        Rep: r.rep,
+        Weekly_Accounts: r.weekly,
+        Biweekly_Accounts: r.biweekly,
+        Monthly_Accounts: r.monthly,
+        Quarterly_Accounts: r.quarterly,
+        Planned_Four_Week_Stops: round2(r.plannedFourWeekStops),
         Avg_Weekly_Stops: round2(r.avgWeeklyStops)
       }));
 
@@ -2285,6 +2408,8 @@
           Segment: a.segment,
           Chain: a.chain,
           Revenue: round2(a.overallSales),
+          Rank: a.rank,
+          Four_Week_Cadence_Stops: round2(cadence4WForRank(a.rank)),
           Original_Assigned_Rep: a.originalAssignedRep,
           Current_Assigned_Rep: a.assignedRep,
           Protected: a.protected ? 'Yes' : 'No'
@@ -2303,7 +2428,8 @@
 
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assignments), 'Assignments');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Rep Summary');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movedAudit.length ? movedAudit : [{ }]), 'Moved Accounts');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cadenceSummary), 'Cadence Summary');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movedAudit.length ? movedAudit : [{}]), 'Moved Accounts');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(changeLog), 'Change Log');
 
       XLSX.writeFile(wb, state.loadedFileName || 'territory_export.xlsx');
@@ -2455,10 +2581,9 @@
       return '$0';
     }
 
-    function deltaClass(value, positiveBad = true) {
+    function deltaClass(value) {
       if (value === 0) return 'delta-flat';
-      if (positiveBad) return value > 0 ? 'delta-up' : 'delta-down';
-      return value > 0 ? 'delta-up' : 'delta-down';
+      return value > 0 ? 'delta-positive' : 'delta-negative';
     }
 
     function formatCompactCurrency(value) {
