@@ -75,41 +75,53 @@
     }
 
     .controls-strip {
-      display: flex;
-      flex-wrap: wrap;
+      padding: 12px 16px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+    }
+
+    .controls-row {
+      display: inline-flex;
+      flex-wrap: nowrap;
       gap: 14px;
       align-items: end;
-      padding: 12px 16px;
+      min-width: max-content;
     }
 
     .control-group {
-      display: flex;
+      display: inline-flex;
       flex-direction: column;
       gap: 6px;
       min-width: 140px;
+      flex: 0 0 auto;
     }
 
     .control-group.compact { min-width: 120px; }
-    .control-group.grow { flex: 1; min-width: 220px; }
-    .control-group.wide { min-width: 220px; }
+    .control-group.grow { min-width: 280px; }
+    .control-group.wide { min-width: 240px; }
+    .control-group.slider-group { min-width: 290px; }
 
     .control-group label {
       font-size: 13px;
       color: var(--muted);
+      white-space: nowrap;
     }
 
     .checkbox-group {
+      display: inline-flex;
       flex-direction: row;
       align-items: center;
       gap: 16px;
       min-width: unset;
-      padding-bottom: 2px;
+      padding-bottom: 10px;
     }
 
     .checkbox-group label {
       display: flex;
       align-items: center;
       gap: 6px;
+      white-space: nowrap;
     }
 
     .summary-strip {
@@ -142,7 +154,7 @@
     .main-layout {
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1.55fr) minmax(540px, 1fr);
+      grid-template-columns: minmax(0, 1.7fr) minmax(520px, 1fr);
       gap: 10px;
     }
 
@@ -186,32 +198,6 @@
     #map {
       flex: 1;
       min-height: 420px;
-    }
-
-    .map-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: flex-end;
-    }
-
-    .legend-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border: 1px solid var(--border);
-      background: var(--panel-solid);
-      border-radius: 999px;
-      padding: 6px 10px;
-      font-size: 12px;
-    }
-
-    .color-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      display: inline-block;
-      border: 1px solid rgba(0,0,0,0.15);
     }
 
     .file-btn,
@@ -311,6 +297,14 @@
       align-items: center;
       gap: 8px;
       font-weight: 700;
+    }
+
+    .color-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+      border: 1px solid rgba(0,0,0,0.15);
     }
 
     .empty-state {
@@ -441,75 +435,77 @@
     </header>
 
     <section class="controls-strip">
-      <div class="control-group compact">
-        <label for="assign-rep-select">Assign selected to</label>
-        <select id="assign-rep-select" disabled></select>
-      </div>
+      <div class="controls-row">
+        <div class="control-group compact">
+          <label for="assign-rep-select">Assign selected to</label>
+          <select id="assign-rep-select" disabled></select>
+        </div>
 
-      <div class="control-group compact">
-        <label for="rep-filter">Rep filter</label>
-        <select id="rep-filter" disabled>
-          <option value="ALL">All reps</option>
-        </select>
-      </div>
+        <div class="control-group compact">
+          <label for="rep-filter">Rep filter</label>
+          <select id="rep-filter" disabled>
+            <option value="ALL">All reps</option>
+          </select>
+        </div>
 
-      <div class="control-group compact">
-        <label for="rank-filter">Rank filter</label>
-        <select id="rank-filter" disabled>
-          <option value="ALL">All</option>
-          <option value="A">A</option>
-          <option value="B">B</option>
-          <option value="C">C</option>
-          <option value="D">D</option>
-        </select>
-      </div>
+        <div class="control-group compact">
+          <label for="rank-filter">Rank filter</label>
+          <select id="rank-filter" disabled>
+            <option value="ALL">All</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+        </div>
 
-      <div class="control-group compact">
-        <label for="chain-filter">Chain filter</label>
-        <select id="chain-filter" disabled>
-          <option value="ALL">All chains</option>
-        </select>
-      </div>
+        <div class="control-group compact">
+          <label for="chain-filter">Chain filter</label>
+          <select id="chain-filter" disabled>
+            <option value="ALL">All chains</option>
+          </select>
+        </div>
 
-      <div class="control-group compact">
-        <label for="segment-filter">Segment filter</label>
-        <select id="segment-filter" disabled>
-          <option value="ALL">All segments</option>
-        </select>
-      </div>
+        <div class="control-group compact">
+          <label for="segment-filter">Segment filter</label>
+          <select id="segment-filter" disabled>
+            <option value="ALL">All segments</option>
+          </select>
+        </div>
 
-      <div class="control-group wide">
-        <label for="premise-filter">Premise filter</label>
-        <input id="premise-filter" type="text" placeholder="Type premise text..." disabled />
-      </div>
+        <div class="control-group wide">
+          <label for="premise-filter">Premise filter</label>
+          <input id="premise-filter" type="text" placeholder="Type premise text..." disabled />
+        </div>
 
-      <div class="control-group compact">
-        <label for="rep-count-input">Target rep count</label>
-        <input id="rep-count-input" type="number" min="1" max="100" step="1" value="16" disabled />
-      </div>
+        <div class="control-group compact">
+          <label for="rep-count-input">Target rep count</label>
+          <input id="rep-count-input" type="number" min="1" max="100" step="1" value="16" disabled />
+        </div>
 
-      <div class="control-group compact">
-        <label for="min-stops-input">Minimum stops / rep</label>
-        <input id="min-stops-input" type="number" min="1" max="10000" step="1" value="100" disabled />
-      </div>
+        <div class="control-group compact">
+          <label for="min-stops-input">Minimum stops / rep</label>
+          <input id="min-stops-input" type="number" min="1" max="10000" step="1" value="100" disabled />
+        </div>
 
-      <div class="control-group grow">
-        <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
-        <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
-      </div>
+        <div class="control-group slider-group">
+          <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
+          <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
+        </div>
 
-      <div class="control-group compact">
-        <label for="balance-mode">Optimize by</label>
-        <select id="balance-mode" disabled>
-          <option value="hybrid">Hybrid</option>
-          <option value="stops">Stops</option>
-          <option value="revenue">Revenue</option>
-        </select>
-      </div>
+        <div class="control-group compact">
+          <label for="balance-mode">Optimize by</label>
+          <select id="balance-mode" disabled>
+            <option value="hybrid">Hybrid</option>
+            <option value="stops">Stops</option>
+            <option value="revenue">Revenue</option>
+          </select>
+        </div>
 
-      <div class="control-group compact checkbox-group">
-        <label><input id="dim-others-checkbox" type="checkbox" checked disabled /> Dim others</label>
-        <label><input id="show-territory-checkbox" type="checkbox" checked disabled /> Show territories</label>
+        <div class="checkbox-group">
+          <label><input id="dim-others-checkbox" type="checkbox" checked disabled /> Dim others</label>
+          <label><input id="show-territory-checkbox" type="checkbox" checked disabled /> Show territories</label>
+        </div>
       </div>
     </section>
 
@@ -551,7 +547,6 @@
             <div class="panel-title">Map</div>
             <div class="panel-subtitle">Use rectangle or polygon draw to lasso accounts</div>
           </div>
-          <div class="map-legend" id="map-legend"></div>
         </div>
         <div id="map"></div>
         <div id="toast" class="toast"></div>
@@ -625,6 +620,7 @@
       premise: ['premise','premise name','outlet','location name'],
       address: ['address','street address','addr','full address','street','address 1','customer address'],
       zip: ['zip','zip code','zipcode','postal code'],
+      city: ['city'],
       chain: ['chain','chain name'],
       segment: ['segment','customer segment'],
       currentDm: ['current dm','dm'],
@@ -680,7 +676,7 @@
         'assign-rep-select','rep-filter','rep-count-input','min-stops-input','disruption-slider','disruption-value','balance-mode','rank-filter',
         'chain-filter','segment-filter','premise-filter',
         'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count','clear-selection-btn',
-        'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','map-legend','last-action','toast'
+        'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
       });
@@ -902,7 +898,7 @@
           premise,
           address: safeString(row[headerMap.address]),
           zip: safeString(row[headerMap.zip]),
-          city: safeString(row[findBestHeaderMatch(headers, ['city'])]),
+          city: safeString(row[headerMap.city]),
           company: customerName,
           chain,
           segment,
@@ -965,7 +961,6 @@
 
     function refreshUI(rebuildMap = false) {
       syncControlState();
-      renderLegend();
       renderRepControls();
 
       if (rebuildMap) rebuildMarkers();
@@ -1078,16 +1073,6 @@
           <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
         </div>
       `;
-    }
-
-    function renderLegend() {
-      const reps = getAllReps();
-      els.mapLegend.innerHTML = reps.slice(0, 10).map(rep => `
-        <div class="legend-chip">
-          <span class="color-dot" style="background:${state.repColors.get(rep)}"></span>
-          <span>${escapeHtml(rep)}</span>
-        </div>
-      `).join('');
     }
 
     function renderRepTable() {
