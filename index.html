@@ -80,8 +80,10 @@
     .controls-strip {
       padding: 10px 14px;
       overflow-x: auto;
-      overflow-y: hidden;
+      overflow-y: visible;
       white-space: nowrap;
+      position: relative;
+      z-index: 30;
     }
 
     .controls-row {
@@ -98,6 +100,7 @@
       gap: 5px;
       min-width: 132px;
       flex: 0 0 auto;
+      position: relative;
     }
 
     .control-group.compact { min-width: 116px; }
@@ -254,7 +257,8 @@
 
     .btn:disabled,
     select:disabled,
-    input:disabled {
+    input:disabled,
+    .multi-select.disabled .multi-select-button {
       opacity: 0.55;
       cursor: not-allowed;
     }
@@ -268,6 +272,105 @@
     }
 
     input[type="range"] { width: 100%; }
+
+    .multi-select {
+      position: relative;
+      min-width: 100%;
+    }
+
+    .multi-select-button {
+      width: 100%;
+      min-height: 40px;
+      padding: 9px 36px 9px 11px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel-solid);
+      color: var(--text);
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .multi-select-button::after {
+      content: "▾";
+      position: absolute;
+      right: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    .multi-select.open .multi-select-button {
+      border-color: #b7c9d9;
+      box-shadow: 0 0 0 3px rgba(45,109,204,0.08);
+    }
+
+    .multi-select-panel {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      width: 100%;
+      min-width: 220px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 18px 32px rgba(18, 38, 63, 0.16);
+      z-index: 2000;
+      display: none;
+      overflow: hidden;
+    }
+
+    .multi-select.open .multi-select-panel {
+      display: block;
+    }
+
+    .multi-select-actions {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      border-bottom: 1px solid #edf2f7;
+      background: #f8fbff;
+    }
+
+    .multi-select-link {
+      border: 0;
+      background: transparent;
+      color: var(--primary);
+      font-size: 12px;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .multi-select-options {
+      max-height: 240px;
+      overflow: auto;
+      padding: 8px 0;
+    }
+
+    .multi-select-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      white-space: normal;
+    }
+
+    .multi-select-option:hover {
+      background: #f6f9fc;
+    }
+
+    .multi-select-option input {
+      margin: 0;
+      cursor: pointer;
+    }
 
     .table-wrap {
       flex: 1;
@@ -482,34 +585,58 @@
         </div>
 
         <div class="control-group compact">
-          <label for="rep-filter">Rep filter</label>
-          <select id="rep-filter" disabled>
-            <option value="ALL">All reps</option>
-          </select>
+          <label>Rep filter</label>
+          <div id="rep-filter-wrap" class="multi-select disabled">
+            <button id="rep-filter-btn" type="button" class="multi-select-button" disabled>All reps</button>
+            <div id="rep-filter-panel" class="multi-select-panel">
+              <div class="multi-select-actions">
+                <button type="button" class="multi-select-link" data-multi-action="all" data-target="rep">Select all</button>
+                <button type="button" class="multi-select-link" data-multi-action="none" data-target="rep">Clear</button>
+              </div>
+              <div id="rep-filter-options" class="multi-select-options"></div>
+            </div>
+          </div>
         </div>
 
         <div class="control-group compact">
-          <label for="rank-filter">Rank filter</label>
-          <select id="rank-filter" disabled>
-            <option value="ALL">All</option>
-            <option value="A">A</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-            <option value="D">D</option>
-          </select>
+          <label>Rank filter</label>
+          <div id="rank-filter-wrap" class="multi-select disabled">
+            <button id="rank-filter-btn" type="button" class="multi-select-button" disabled>All ranks</button>
+            <div id="rank-filter-panel" class="multi-select-panel">
+              <div class="multi-select-actions">
+                <button type="button" class="multi-select-link" data-multi-action="all" data-target="rank">Select all</button>
+                <button type="button" class="multi-select-link" data-multi-action="none" data-target="rank">Clear</button>
+              </div>
+              <div id="rank-filter-options" class="multi-select-options"></div>
+            </div>
+          </div>
         </div>
 
         <div class="control-group compact">
-          <label for="chain-filter">Chain filter</label>
-          <select id="chain-filter" disabled>
-            <option value="ALL">All chains</option>
-          </select>
+          <label>Chain filter</label>
+          <div id="chain-filter-wrap" class="multi-select disabled">
+            <button id="chain-filter-btn" type="button" class="multi-select-button" disabled>All chains</button>
+            <div id="chain-filter-panel" class="multi-select-panel">
+              <div class="multi-select-actions">
+                <button type="button" class="multi-select-link" data-multi-action="all" data-target="chain">Select all</button>
+                <button type="button" class="multi-select-link" data-multi-action="none" data-target="chain">Clear</button>
+              </div>
+              <div id="chain-filter-options" class="multi-select-options"></div>
+            </div>
+          </div>
         </div>
 
         <div class="control-group compact">
           <label for="segment-filter">Segment filter</label>
           <select id="segment-filter" disabled>
             <option value="ALL">All segments</option>
+          </select>
+        </div>
+
+        <div class="control-group compact">
+          <label for="premise-filter">Premise filter</label>
+          <select id="premise-filter" disabled>
+            <option value="ALL">All premises</option>
           </select>
         </div>
 
@@ -529,11 +656,6 @@
             <option value="MOVED_ONLY">Moved only</option>
             <option value="UNCHANGED_ONLY">Unchanged only</option>
           </select>
-        </div>
-
-        <div class="control-group wide">
-          <label for="premise-filter">Premise filter</label>
-          <input id="premise-filter" type="text" placeholder="Type premise text..." disabled />
         </div>
 
         <div class="control-group compact">
@@ -649,11 +771,11 @@
                 <th>Biweekly</th>
                 <th>Monthly</th>
                 <th>Quarterly</th>
+                <th>Planned 4W</th>
+                <th>Avg Weekly</th>
                 <th>Protected</th>
                 <th>Moved In</th>
                 <th>Moved Out</th>
-                <th>Planned 4W</th>
-                <th>Avg Weekly</th>
               </tr>
             </thead>
             <tbody id="rep-table-body">
@@ -743,7 +865,12 @@
       repFocus: null,
       theme: 'light',
       loadedFileName: 'territory_export.xlsx',
-      lastAction: 'No actions yet'
+      lastAction: 'No actions yet',
+      filterSelections: {
+        rep: new Set(),
+        rank: new Set(['A','B','C','D']),
+        chain: new Set()
+      }
     };
 
     const els = {};
@@ -755,17 +882,21 @@
       initMap();
       bindEvents();
       updateLastAction('No actions yet');
+      renderMultiSelects();
     }
 
     function bindElements() {
       [
         'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
-        'assign-rep-select','rep-filter','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode','rank-filter',
-        'chain-filter','segment-filter','premise-filter','protected-filter','moved-filter',
+        'assign-rep-select','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode',
+        'segment-filter','premise-filter','protected-filter','moved-filter',
         'theme-toggle-checkbox','dim-others-checkbox','show-territory-checkbox',
         'rep-table-body','selection-preview','selection-count','clear-selection-btn',
         'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast',
-        'moved-preview','moved-review-count'
+        'moved-preview','moved-review-count',
+        'rep-filter-wrap','rep-filter-btn','rep-filter-panel','rep-filter-options',
+        'rank-filter-wrap','rank-filter-btn','rank-filter-panel','rank-filter-options',
+        'chain-filter-wrap','chain-filter-btn','chain-filter-panel','chain-filter-options'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
       });
@@ -782,23 +913,48 @@
 
       els.themeToggleCheckbox.addEventListener('change', toggleThemeFromCheckbox);
 
-      els.repFilter.addEventListener('change', () => {
-        state.repFocus = null;
-        refreshUI();
-      });
-
-      els.rankFilter.addEventListener('change', refreshUI);
-      els.chainFilter.addEventListener('change', refreshUI);
       els.segmentFilter.addEventListener('change', refreshUI);
+      els.premiseFilter.addEventListener('change', refreshUI);
       els.protectedFilter.addEventListener('change', refreshUI);
       els.movedFilter.addEventListener('change', refreshUI);
-      els.premiseFilter.addEventListener('input', refreshUI);
       els.dimOthersCheckbox.addEventListener('change', refreshUI);
       els.showTerritoryCheckbox.addEventListener('change', refreshTerritories);
       els.clearSelectionBtn.addEventListener('click', clearSelection);
 
       els.disruptionSlider.addEventListener('input', () => {
         els.disruptionValue.textContent = els.disruptionSlider.value;
+      });
+
+      bindMultiSelectEvents('rep');
+      bindMultiSelectEvents('rank');
+      bindMultiSelectEvents('chain');
+
+      document.addEventListener('click', handleDocumentClick);
+    }
+
+    function bindMultiSelectEvents(type) {
+      const wrap = els[`${type}FilterWrap`];
+      const btn = els[`${type}FilterBtn`];
+
+      btn.addEventListener('click', (event) => {
+        if (btn.disabled) return;
+        event.stopPropagation();
+        closeAllMultiSelects(type);
+        wrap.classList.toggle('open');
+      });
+    }
+
+    function handleDocumentClick(event) {
+      const multiRoots = [els.repFilterWrap, els.rankFilterWrap, els.chainFilterWrap];
+      const insideAny = multiRoots.some(root => root && root.contains(event.target));
+      if (!insideAny) closeAllMultiSelects();
+    }
+
+    function closeAllMultiSelects(exceptType = null) {
+      ['rep','rank','chain'].forEach(type => {
+        if (type !== exceptType) {
+          els[`${type}FilterWrap`]?.classList.remove('open');
+        }
       });
     }
 
@@ -1010,25 +1166,13 @@
     }
 
     function renderFilterControls() {
+      const reps = getAllReps();
       const chains = uniqueNonBlank(state.accounts.map(a => a.chain));
       const segments = uniqueNonBlank(state.accounts.map(a => a.segment));
-      const reps = getAllReps();
+      const premises = uniqueNonBlank(state.accounts.map(a => a.premise));
+      const ranks = ['A','B','C','D'];
 
       fillSelect(els.assignRepSelect, reps, reps[0]);
-
-      fillSelect(
-        els.repFilter,
-        ['ALL', ...reps],
-        'ALL',
-        rep => rep === 'ALL' ? 'All reps' : rep
-      );
-
-      fillSelect(
-        els.chainFilter,
-        ['ALL', ...chains],
-        'ALL',
-        val => val === 'ALL' ? 'All chains' : val
-      );
 
       fillSelect(
         els.segmentFilter,
@@ -1037,10 +1181,91 @@
         val => val === 'ALL' ? 'All segments' : val
       );
 
-      els.rankFilter.value = 'ALL';
+      fillSelect(
+        els.premiseFilter,
+        ['ALL', ...premises],
+        'ALL',
+        val => val === 'ALL' ? 'All premises' : val
+      );
+
+      state.filterSelections.rep = new Set(reps);
+      state.filterSelections.rank = new Set(ranks);
+      state.filterSelections.chain = new Set(chains);
+
+      renderMultiSelectOptions('rep', reps, state.filterSelections.rep, 'All reps');
+      renderMultiSelectOptions('rank', ranks, state.filterSelections.rank, 'All ranks');
+      renderMultiSelectOptions('chain', chains, state.filterSelections.chain, 'All chains');
+
       els.protectedFilter.value = 'ALL';
       els.movedFilter.value = 'ALL';
-      els.premiseFilter.value = '';
+    }
+
+    function renderMultiSelects() {
+      renderMultiSelectOptions('rep', [], state.filterSelections.rep, 'All reps');
+      renderMultiSelectOptions('rank', ['A','B','C','D'], state.filterSelections.rank, 'All ranks');
+      renderMultiSelectOptions('chain', [], state.filterSelections.chain, 'All chains');
+    }
+
+    function renderMultiSelectOptions(type, values, selectedSet, allLabel) {
+      const optionsEl = els[`${type}FilterOptions`];
+      const buttonEl = els[`${type}FilterBtn`];
+      const wrapEl = els[`${type}FilterWrap`];
+
+      if (!optionsEl || !buttonEl || !wrapEl) return;
+
+      optionsEl.innerHTML = values.map(value => `
+        <label class="multi-select-option">
+          <input type="checkbox" data-multi-type="${escapeHtmlAttr(type)}" value="${escapeHtmlAttr(value)}" ${selectedSet.has(value) ? 'checked' : ''}>
+          <span>${escapeHtml(value)}</span>
+        </label>
+      `).join('') || '<div class="multi-select-option"><span>No options</span></div>';
+
+      optionsEl.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.addEventListener('click', event => event.stopPropagation());
+        input.addEventListener('change', () => {
+          const nextSet = new Set(
+            [...optionsEl.querySelectorAll('input[type="checkbox"]:checked')].map(el => el.value)
+          );
+          state.filterSelections[type] = nextSet;
+          updateMultiSelectButton(type, values, allLabel);
+          refreshUI();
+        });
+      });
+
+      wrapEl.querySelectorAll('.multi-select-link').forEach(link => {
+        link.onclick = (event) => {
+          event.stopPropagation();
+          const action = link.getAttribute('data-multi-action');
+          if (action === 'all') state.filterSelections[type] = new Set(values);
+          if (action === 'none') state.filterSelections[type] = new Set();
+          renderMultiSelectOptions(type, values, state.filterSelections[type], allLabel);
+          refreshUI();
+        };
+      });
+
+      updateMultiSelectButton(type, values, allLabel);
+    }
+
+    function updateMultiSelectButton(type, values, allLabel) {
+      const buttonEl = els[`${type}FilterBtn`];
+      const selected = [...state.filterSelections[type]];
+
+      if (!values.length) {
+        buttonEl.textContent = allLabel;
+        return;
+      }
+
+      if (selected.length === 0 || selected.length === values.length) {
+        buttonEl.textContent = allLabel;
+        return;
+      }
+
+      if (selected.length === 1) {
+        buttonEl.textContent = selected[0];
+        return;
+      }
+
+      buttonEl.textContent = `${selected.length} selected`;
     }
 
     function refreshUI(rebuildMap = false) {
@@ -1062,8 +1287,8 @@
 
       [
         els.assignBtn, els.undoBtn, els.resetBtn, els.optimizeBtn, els.exportBtn,
-        els.assignRepSelect, els.repFilter, els.repCountInput, els.minStopsInput, els.maxStopsInput,
-        els.disruptionSlider, els.balanceMode, els.rankFilter, els.chainFilter, els.segmentFilter, els.premiseFilter,
+        els.assignRepSelect, els.repCountInput, els.minStopsInput, els.maxStopsInput,
+        els.disruptionSlider, els.balanceMode, els.segmentFilter, els.premiseFilter,
         els.protectedFilter, els.movedFilter, els.dimOthersCheckbox, els.showTerritoryCheckbox, els.clearSelectionBtn
       ].forEach(el => {
         if (el === els.assignBtn) {
@@ -1073,25 +1298,26 @@
         }
       });
 
+      ['rep','rank','chain'].forEach(type => {
+        els[`${type}FilterBtn`].disabled = !hasData;
+        els[`${type}FilterWrap`].classList.toggle('disabled', !hasData);
+        if (!hasData) els[`${type}FilterWrap`].classList.remove('open');
+      });
+
       els.undoBtn.disabled = !hasData || state.undoStack.length === 0;
       els.clearSelectionBtn.disabled = !hasData || state.selection.size === 0;
     }
 
     function renderRepControls() {
       const reps = getAllReps();
+      const chains = uniqueNonBlank(state.accounts.map(a => a.chain));
       const segments = uniqueNonBlank(state.accounts.map(a => a.segment));
+      const premises = uniqueNonBlank(state.accounts.map(a => a.premise));
 
       fillSelect(
         els.assignRepSelect,
         reps,
         els.assignRepSelect.value && reps.includes(els.assignRepSelect.value) ? els.assignRepSelect.value : reps[0]
-      );
-
-      fillSelect(
-        els.repFilter,
-        ['ALL', ...reps],
-        els.repFilter.value && ['ALL', ...reps].includes(els.repFilter.value) ? els.repFilter.value : 'ALL',
-        rep => rep === 'ALL' ? 'All reps' : rep
       );
 
       fillSelect(
@@ -1101,6 +1327,21 @@
         val => val === 'ALL' ? 'All segments' : val
       );
 
+      fillSelect(
+        els.premiseFilter,
+        ['ALL', ...premises],
+        els.premiseFilter.value && ['ALL', ...premises].includes(els.premiseFilter.value) ? els.premiseFilter.value : 'ALL',
+        val => val === 'ALL' ? 'All premises' : val
+      );
+
+      normalizeSelectionSet('rep', reps);
+      normalizeSelectionSet('rank', ['A','B','C','D']);
+      normalizeSelectionSet('chain', chains);
+
+      renderMultiSelectOptions('rep', reps, state.filterSelections.rep, 'All reps');
+      renderMultiSelectOptions('rank', ['A','B','C','D'], state.filterSelections.rank, 'All ranks');
+      renderMultiSelectOptions('chain', chains, state.filterSelections.chain, 'All chains');
+
       if (!els.repCountInput.dataset.userTouched) {
         els.repCountInput.value = reps.length || 1;
       }
@@ -1108,6 +1349,17 @@
       els.repCountInput.oninput = () => {
         els.repCountInput.dataset.userTouched = '1';
       };
+    }
+
+    function normalizeSelectionSet(type, validValues) {
+      const current = state.filterSelections[type];
+      const filtered = [...current].filter(v => validValues.includes(v));
+
+      if (!filtered.length) {
+        state.filterSelections[type] = new Set(validValues);
+      } else {
+        state.filterSelections[type] = new Set(filtered);
+      }
     }
 
     function rebuildMarkers() {
@@ -1200,11 +1452,11 @@
           <td>${row.biweekly}</td>
           <td>${row.monthly}</td>
           <td>${row.quarterly}</td>
+          <td>${row.plannedFourWeekStops.toFixed(2)}</td>
+          <td>${row.avgWeeklyStops.toFixed(2)}</td>
           <td>${row.protected}</td>
           <td>${row.movedIn}</td>
           <td>${row.movedOut}</td>
-          <td>${row.plannedFourWeekStops.toFixed(2)}</td>
-          <td>${row.avgWeeklyStops.toFixed(2)}</td>
         </tr>
       `).join('');
 
@@ -1212,7 +1464,13 @@
         tr.addEventListener('click', () => {
           const rep = tr.getAttribute('data-rep-row');
           state.repFocus = state.repFocus === rep ? null : rep;
-          els.repFilter.value = state.repFocus || 'ALL';
+          if (state.repFocus) {
+            state.filterSelections.rep = new Set([rep]);
+            renderMultiSelectOptions('rep', getAllReps(), state.filterSelections.rep, 'All reps');
+          } else {
+            state.filterSelections.rep = new Set(getAllReps());
+            renderMultiSelectOptions('rep', getAllReps(), state.filterSelections.rep, 'All reps');
+          }
           refreshUI();
           zoomToRep(rep);
         });
@@ -1792,7 +2050,7 @@
         const row = map.get(assigned);
         row.stops += 1;
         row.revenue += account.overallSales;
-        row[row.rank = account.rank] = (row[account.rank] || 0) + 1;
+        row[account.rank] = (row[account.rank] || 0) + 1;
 
         if (account.rank === 'A') row.weekly += 1;
         if (account.rank === 'B') row.biweekly += 1;
@@ -1887,11 +2145,11 @@
         Biweekly: r.biweekly,
         Monthly: r.monthly,
         Quarterly: r.quarterly,
+        Planned_Four_Week_Stops: round2(r.plannedFourWeekStops),
+        Avg_Weekly_Stops: round2(r.avgWeeklyStops),
         Protected: r.protected,
         Moved_In: r.movedIn,
-        Moved_Out: r.movedOut,
-        Planned_Four_Week_Stops: round2(r.plannedFourWeekStops),
-        Avg_Weekly_Stops: round2(r.avgWeeklyStops)
+        Moved_Out: r.movedOut
       }));
 
       const movedAudit = state.accounts
@@ -1979,18 +2237,21 @@
     }
 
     function passesAllFilters(account) {
-      const repFilter = els.repFilter?.value || 'ALL';
-      const rankFilter = els.rankFilter?.value || 'ALL';
-      const chainFilter = els.chainFilter?.value || 'ALL';
       const segmentFilter = els.segmentFilter?.value || 'ALL';
+      const premiseFilter = els.premiseFilter?.value || 'ALL';
       const protectedFilter = els.protectedFilter?.value || 'ALL';
       const movedFilter = els.movedFilter?.value || 'ALL';
-      const premiseFilter = (els.premiseFilter?.value || '').trim().toLowerCase();
 
-      if (repFilter !== 'ALL' && account.assignedRep !== repFilter) return false;
-      if (rankFilter !== 'ALL' && account.rank !== rankFilter) return false;
-      if (chainFilter !== 'ALL' && (account.chain || '') !== chainFilter) return false;
+      const repSelections = state.filterSelections.rep;
+      const rankSelections = state.filterSelections.rank;
+      const chainSelections = state.filterSelections.chain;
+
+      if (repSelections.size && !repSelections.has(account.assignedRep)) return false;
+      if (rankSelections.size && !rankSelections.has(account.rank)) return false;
+      if (chainSelections.size && !chainSelections.has(account.chain || '')) return false;
+
       if (segmentFilter !== 'ALL' && (account.segment || '') !== segmentFilter) return false;
+      if (premiseFilter !== 'ALL' && (account.premise || '') !== premiseFilter) return false;
 
       if (protectedFilter === 'PROTECTED_ONLY' && !account.protected) return false;
       if (protectedFilter === 'UNPROTECTED_ONLY' && account.protected) return false;
@@ -1998,11 +2259,6 @@
       const isMoved = account.assignedRep !== account.originalAssignedRep;
       if (movedFilter === 'MOVED_ONLY' && !isMoved) return false;
       if (movedFilter === 'UNCHANGED_ONLY' && isMoved) return false;
-
-      if (premiseFilter) {
-        const premiseText = `${account.premise || ''} ${account.customerName || ''}`.toLowerCase();
-        if (!premiseText.includes(premiseFilter)) return false;
-      }
 
       return true;
     }
