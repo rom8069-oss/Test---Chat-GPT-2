@@ -21,6 +21,7 @@
       --primary: #204d8d;
       --accent: #0c9f7a;
       --row-hover: #f2f7fd;
+      --moved: #8b5cf6;
     }
 
     * { box-sizing: border-box; }
@@ -139,7 +140,7 @@
     .main-layout {
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1.75fr) minmax(520px, 1fr);
+      grid-template-columns: minmax(0, 1.75fr) minmax(560px, 1fr);
       gap: 10px;
     }
 
@@ -272,7 +273,7 @@
 
     .table-wrap {
       flex: 1;
-      min-height: 260px;
+      min-height: 240px;
       overflow: auto;
     }
 
@@ -324,10 +325,22 @@
       padding: 24px 12px !important;
     }
 
-    .data-preview {
+    .sidebar-sections {
       border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-rows: auto auto;
+      min-height: 0;
+    }
+
+    .data-preview,
+    .moved-review {
       padding: 12px 14px 14px;
       background: rgba(247, 250, 253, 0.7);
+    }
+
+    .moved-review {
+      border-top: 1px solid var(--border);
+      min-height: 180px;
     }
 
     .preview-header {
@@ -338,29 +351,46 @@
       margin-bottom: 10px;
     }
 
-    .selection-preview {
+    .selection-preview,
+    .moved-preview {
       max-height: 180px;
       overflow: auto;
       display: grid;
       gap: 8px;
     }
 
-    .preview-item {
+    .preview-item,
+    .moved-item {
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 9px 10px;
       background: #fff;
     }
 
-    .preview-title {
+    .preview-title,
+    .moved-title {
       font-size: 14px;
       font-weight: 700;
     }
 
-    .preview-meta {
+    .preview-meta,
+    .moved-meta {
       font-size: 12px;
       color: var(--muted);
       margin-top: 3px;
+    }
+
+    .moved-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      background: rgba(139, 92, 246, 0.10);
+      color: var(--moved);
+      border: 1px solid rgba(139, 92, 246, 0.18);
+      margin-top: 6px;
     }
 
     .toast {
@@ -405,7 +435,7 @@
         grid-template-columns: 1fr;
       }
 
-      .sidebar { min-height: 420px; }
+      .sidebar { min-height: 520px; }
     }
 
     @media (max-width: 900px) {
@@ -440,7 +470,7 @@
         <button id="load-sheet-btn" class="btn">Load Sheet</button>
         <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
         <button id="undo-btn" class="btn" disabled>Undo</button>
-        <button id="reset-btn" class="btn" disabled>Reset</button>
+        <button id="reset-btn" class="btn" disabled>Reset All</button>
         <button id="optimize-btn" class="btn btn-accent" disabled>Optimize Routes</button>
         <button id="export-btn" class="btn" disabled>Export Excel</button>
       </div>
@@ -485,6 +515,24 @@
           </select>
         </div>
 
+        <div class="control-group compact">
+          <label for="protected-filter">Protected filter</label>
+          <select id="protected-filter" disabled>
+            <option value="ALL">All</option>
+            <option value="PROTECTED_ONLY">Protected only</option>
+            <option value="UNPROTECTED_ONLY">Unprotected only</option>
+          </select>
+        </div>
+
+        <div class="control-group compact">
+          <label for="moved-filter">Moved filter</label>
+          <select id="moved-filter" disabled>
+            <option value="ALL">All</option>
+            <option value="MOVED_ONLY">Moved only</option>
+            <option value="UNCHANGED_ONLY">Unchanged only</option>
+          </select>
+        </div>
+
         <div class="control-group wide">
           <label for="premise-filter">Premise filter</label>
           <input id="premise-filter" type="text" placeholder="Type premise text..." disabled />
@@ -498,6 +546,11 @@
         <div class="control-group compact">
           <label for="min-stops-input">Minimum stops / rep</label>
           <input id="min-stops-input" type="number" min="1" max="10000" step="1" value="100" disabled />
+        </div>
+
+        <div class="control-group compact">
+          <label for="max-stops-input">Maximum stops / rep</label>
+          <input id="max-stops-input" type="number" min="1" max="10000" step="1" value="200" disabled />
         </div>
 
         <div class="control-group slider-group">
@@ -607,12 +660,25 @@
           </table>
         </div>
 
-        <div class="data-preview">
-          <div class="preview-header">
-            <div class="panel-title small">Selected accounts</div>
-            <button id="clear-selection-btn" class="btn btn-small" disabled>Clear Selection</button>
+        <div class="sidebar-sections">
+          <div class="data-preview">
+            <div class="preview-header">
+              <div class="panel-title small">Selected accounts</div>
+              <button id="clear-selection-btn" class="btn btn-small" disabled>Clear Selection</button>
+            </div>
+            <div id="selection-preview" class="selection-preview">No accounts selected.</div>
           </div>
-          <div id="selection-preview" class="selection-preview">No accounts selected.</div>
+
+          <div class="moved-review">
+            <div class="preview-header">
+              <div>
+                <div class="panel-title small">Moved accounts review</div>
+                <div class="panel-subtitle">Accounts whose assigned rep is different from the imported rep</div>
+              </div>
+              <div id="moved-review-count" class="last-action">0 moved</div>
+            </div>
+            <div id="moved-preview" class="moved-preview">No moved accounts.</div>
+          </div>
         </div>
       </aside>
     </main>
@@ -687,11 +753,12 @@
     function bindElements() {
       [
         'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
-        'assign-rep-select','rep-filter','rep-count-input','min-stops-input','disruption-slider','disruption-value','balance-mode','rank-filter',
-        'chain-filter','segment-filter','premise-filter',
+        'assign-rep-select','rep-filter','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode','rank-filter',
+        'chain-filter','segment-filter','premise-filter','protected-filter','moved-filter',
         'theme-toggle-checkbox','dim-others-checkbox','show-territory-checkbox',
         'rep-table-body','selection-preview','selection-count','clear-selection-btn',
-        'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast'
+        'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast',
+        'moved-preview','moved-review-count'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
       });
@@ -716,6 +783,8 @@
       els.rankFilter.addEventListener('change', refreshUI);
       els.chainFilter.addEventListener('change', refreshUI);
       els.segmentFilter.addEventListener('change', refreshUI);
+      els.protectedFilter.addEventListener('change', refreshUI);
+      els.movedFilter.addEventListener('change', refreshUI);
       els.premiseFilter.addEventListener('input', refreshUI);
       els.dimOthersCheckbox.addEventListener('change', refreshUI);
       els.showTerritoryCheckbox.addEventListener('change', refreshTerritories);
@@ -962,6 +1031,8 @@
       );
 
       els.rankFilter.value = 'ALL';
+      els.protectedFilter.value = 'ALL';
+      els.movedFilter.value = 'ALL';
       els.premiseFilter.value = '';
     }
 
@@ -974,6 +1045,7 @@
       refreshMarkerStyles();
       renderRepTable();
       renderSelectionPreview();
+      renderMovedReview();
       renderSummary();
       refreshTerritories();
     }
@@ -983,8 +1055,9 @@
 
       [
         els.assignBtn, els.undoBtn, els.resetBtn, els.optimizeBtn, els.exportBtn,
-        els.assignRepSelect, els.repFilter, els.repCountInput, els.minStopsInput,
+        els.assignRepSelect, els.repFilter, els.repCountInput, els.minStopsInput, els.maxStopsInput,
         els.disruptionSlider, els.balanceMode, els.rankFilter, els.chainFilter, els.segmentFilter, els.premiseFilter,
+        els.protectedFilter, els.movedFilter,
         els.dimOthersCheckbox, els.showTerritoryCheckbox, els.clearSelectionBtn
       ].forEach(el => {
         if (el === els.assignBtn) {
@@ -1000,7 +1073,13 @@
 
     function renderRepControls() {
       const reps = getAllReps();
-      fillSelect(els.assignRepSelect, reps, els.assignRepSelect.value && reps.includes(els.assignRepSelect.value) ? els.assignRepSelect.value : reps[0]);
+      const segments = uniqueNonBlank(state.accounts.map(a => a.segment));
+
+      fillSelect(
+        els.assignRepSelect,
+        reps,
+        els.assignRepSelect.value && reps.includes(els.assignRepSelect.value) ? els.assignRepSelect.value : reps[0]
+      );
 
       fillSelect(
         els.repFilter,
@@ -1009,7 +1088,6 @@
         rep => rep === 'ALL' ? 'All reps' : rep
       );
 
-      const segments = uniqueNonBlank(state.accounts.map(a => a.segment));
       fillSelect(
         els.segmentFilter,
         ['ALL', ...segments],
@@ -1150,6 +1228,27 @@
       syncControlState();
     }
 
+    function renderMovedReview() {
+      const movedAccounts = getFilteredAccounts()
+        .filter(a => a.assignedRep !== a.originalAssignedRep)
+        .sort((a, b) => b.overallSales - a.overallSales);
+
+      els.movedReviewCount.textContent = `${movedAccounts.length} moved`;
+
+      if (!movedAccounts.length) {
+        els.movedPreview.textContent = 'No moved accounts.';
+        return;
+      }
+
+      els.movedPreview.innerHTML = movedAccounts.slice(0, 100).map(a => `
+        <div class="moved-item">
+          <div class="moved-title">${escapeHtml(a.customerName)}</div>
+          <div class="moved-meta">${escapeHtml(a.premise || '—')} • ${escapeHtml(a.segment || '—')} • ${formatCurrency(a.overallSales)}</div>
+          <div class="moved-pill">${escapeHtml(a.originalAssignedRep)} → ${escapeHtml(a.assignedRep)}</div>
+        </div>
+      `).join('');
+    }
+
     function renderSummary() {
       const accounts = getFilteredAccounts();
       const totalAccounts = accounts.length;
@@ -1243,6 +1342,8 @@
     }
 
     function applyChanges(changes, label) {
+      if (!changes.length) return;
+
       changes.forEach(change => {
         const account = state.accounts.find(a => a._id === change.id);
         if (!account) return;
@@ -1278,7 +1379,9 @@
 
       for (const change of action.changes) {
         const account = state.accounts.find(a => a._id === change.id);
-        if (account) account.assignedRep = change.from;
+        if (account) {
+          account.assignedRep = change.from;
+        }
       }
 
       buildRepColors();
@@ -1305,10 +1408,7 @@
         return;
       }
 
-      applyChanges(changes, 'Reset assignments to imported values');
-      state.undoStack = [];
-      updateLastAction('Reset assignments to imported values');
-      refreshUI();
+      applyChanges(changes, 'Reset all assignments to imported values');
     }
 
     function optimizeRoutes() {
@@ -1316,8 +1416,11 @@
 
       const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
       const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
+      const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
+
       const targetCount = Math.max(1, Math.min(100, targetCountRaw));
       const minStops = Math.max(1, minStopsRaw);
+      const maxStops = Math.max(minStops, maxStopsRaw);
 
       const workingAccounts = getFilteredAccounts();
       const totalAccounts = workingAccounts.length;
@@ -1329,6 +1432,11 @@
 
       if (targetCount * minStops > totalAccounts) {
         showToast(`Minimum stops too high. ${targetCount} reps x ${minStops} minimum exceeds ${totalAccounts} filtered accounts.`);
+        return;
+      }
+
+      if (targetCount * maxStops < totalAccounts) {
+        showToast(`Maximum stops too low. ${targetCount} reps x ${maxStops} maximum is below ${totalAccounts} filtered accounts.`);
         return;
       }
 
@@ -1349,9 +1457,10 @@
 
       const assignments = new Map();
       const centroids = initializeCentroids(targetRepNames, workingAccounts);
+
       protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
 
-      for (let iter = 0; iter < 6; iter += 1) {
+      for (let iter = 0; iter < 8; iter += 1) {
         const repStats = buildFullRepStats(targetRepNames);
 
         for (const account of protectedAccounts) {
@@ -1380,14 +1489,15 @@
 
             let balancePenalty = 0;
             if (balanceMode === 'stops') {
-              balancePenalty = repStat.stops * 0.010;
+              balancePenalty = repStat.stops * 0.012;
             } else if (balanceMode === 'revenue') {
-              balancePenalty = repStat.revenue * 0.0000015;
+              balancePenalty = repStat.revenue * 0.0000016;
             } else {
-              balancePenalty = (repStat.stops * 0.0065) + (repStat.revenue * 0.0000008);
+              balancePenalty = (repStat.stops * 0.007) + (repStat.revenue * 0.0000008);
             }
 
-            const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty;
+            const overMaxPenalty = repStat.stops >= maxStops ? 999999 : 0;
+            const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + overMaxPenalty;
 
             if (score < bestScore) {
               bestScore = score;
@@ -1403,6 +1513,15 @@
       }
 
       enforceMinimumStops(assignments, targetRepNames, minStops, workingAccounts);
+      enforceMaximumStops(assignments, targetRepNames, maxStops, workingAccounts);
+
+      const finalCounts = countAssignments(assignments, targetRepNames, workingAccounts);
+      const violatesMin = [...finalCounts.values()].some(v => v < minStops);
+      const violatesMax = [...finalCounts.values()].some(v => v > maxStops);
+
+      if (violatesMin || violatesMax) {
+        showToast('Optimizer could not fully satisfy the min/max stop rules with the current filtered set.');
+      }
 
       const changes = [];
       for (const account of workingAccounts) {
@@ -1421,7 +1540,7 @@
         return;
       }
 
-      applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
+      applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with min ${minStops} and max ${maxStops} stops`);
     }
 
     function enforceMinimumStops(assignments, targetRepNames, minStops, workingAccounts) {
@@ -1470,8 +1589,59 @@
 
           if (bestMove) {
             assignments.set(bestMove.accountId, bestMove.to);
-            counts.set(bestMove.from, counts.get(bestMove.from) - 1);
-            counts.set(bestMove.to, counts.get(bestMove.to) + 1);
+            movedThisPass = true;
+          }
+        }
+
+        if (!movedThisPass) break;
+      }
+    }
+
+    function enforceMaximumStops(assignments, targetRepNames, maxStops, workingAccounts) {
+      const maxPasses = 1000;
+      let pass = 0;
+
+      while (pass < maxPasses) {
+        pass += 1;
+
+        const counts = countAssignments(assignments, targetRepNames, workingAccounts);
+        const overfilled = targetRepNames
+          .filter(rep => counts.get(rep) > maxStops)
+          .sort((a, b) => counts.get(b) - counts.get(a));
+
+        if (!overfilled.length) break;
+
+        let movedThisPass = false;
+
+        for (const donorRep of overfilled) {
+          const eligibleTargets = targetRepNames
+            .filter(rep => rep !== donorRep && counts.get(rep) < maxStops)
+            .sort((a, b) => counts.get(a) - counts.get(b));
+
+          const donorAccounts = workingAccounts.filter(a => assignments.get(a._id) === donorRep && !a.protected);
+
+          let bestMove = null;
+
+          for (const account of donorAccounts) {
+            for (const targetRep of eligibleTargets) {
+              const targetCentroid = centroidForRepFromAssignments(assignments, targetRep, workingAccounts);
+              const dist = squaredDistance(account.latitude, account.longitude, targetCentroid.lat, targetCentroid.lng);
+              const continuityPenalty = account.currentRep === donorRep ? 0.22 : 0;
+              const score = dist + continuityPenalty;
+
+              if (!bestMove || score < bestMove.score) {
+                bestMove = {
+                  accountId: account._id,
+                  from: donorRep,
+                  to: targetRep,
+                  score
+                };
+              }
+            }
+          }
+
+          if (bestMove) {
+            assignments.set(bestMove.accountId, bestMove.to);
             movedThisPass = true;
           }
         }
@@ -1708,6 +1878,20 @@
         Avg_Weekly_Stops: round2(r.avgWeeklyStops)
       }));
 
+      const movedAudit = state.accounts
+        .filter(a => a.assignedRep !== a.originalAssignedRep)
+        .map(a => ({
+          Customer_ID: a.customerId,
+          Customer_Name: a.customerName,
+          Premise: a.premise,
+          Segment: a.segment,
+          Chain: a.chain,
+          Revenue: round2(a.overallSales),
+          Original_Assigned_Rep: a.originalAssignedRep,
+          Current_Assigned_Rep: a.assignedRep,
+          Protected: a.protected ? 'Yes' : 'No'
+        }));
+
       const changeLog = state.changeLog.length ? state.changeLog : [{
         timestamp: '',
         customerId: '',
@@ -1721,6 +1905,7 @@
 
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assignments), 'Assignments');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Rep Summary');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movedAudit.length ? movedAudit : [{ }]), 'Moved Accounts');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(changeLog), 'Change Log');
 
       XLSX.writeFile(wb, state.loadedFileName || 'territory_export.xlsx');
@@ -1780,12 +1965,21 @@
       const rankFilter = els.rankFilter?.value || 'ALL';
       const chainFilter = els.chainFilter?.value || 'ALL';
       const segmentFilter = els.segmentFilter?.value || 'ALL';
+      const protectedFilter = els.protectedFilter?.value || 'ALL';
+      const movedFilter = els.movedFilter?.value || 'ALL';
       const premiseFilter = (els.premiseFilter?.value || '').trim().toLowerCase();
 
       if (repFilter !== 'ALL' && account.assignedRep !== repFilter) return false;
       if (rankFilter !== 'ALL' && account.rank !== rankFilter) return false;
       if (chainFilter !== 'ALL' && (account.chain || '') !== chainFilter) return false;
       if (segmentFilter !== 'ALL' && (account.segment || '') !== segmentFilter) return false;
+
+      if (protectedFilter === 'PROTECTED_ONLY' && !account.protected) return false;
+      if (protectedFilter === 'UNPROTECTED_ONLY' && account.protected) return false;
+
+      const isMoved = account.assignedRep !== account.originalAssignedRep;
+      if (movedFilter === 'MOVED_ONLY' && !isMoved) return false;
+      if (movedFilter === 'UNCHANGED_ONLY' && isMoved) return false;
 
       if (premiseFilter) {
         const premiseText = `${account.premise || ''} ${account.customerName || ''}`.toLowerCase();
