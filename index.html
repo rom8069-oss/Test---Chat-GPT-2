@@ -55,27 +55,28 @@
     .toolbar {
       display: flex;
       justify-content: space-between;
-      gap: 16px;
+      gap: 10px;
       align-items: center;
-      padding: 14px 16px;
+      padding: 10px 14px;
     }
 
     .toolbar-left,
     .toolbar-right {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
     }
 
     .brand-title {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 700;
       letter-spacing: 0.2px;
+      line-height: 1.1;
     }
 
     .controls-strip {
-      padding: 12px 16px;
+      padding: 10px 14px;
       overflow-x: auto;
       overflow-y: hidden;
       white-space: nowrap;
@@ -84,7 +85,7 @@
     .controls-row {
       display: inline-flex;
       flex-wrap: nowrap;
-      gap: 14px;
+      gap: 12px;
       align-items: end;
       min-width: max-content;
     }
@@ -92,35 +93,19 @@
     .control-group {
       display: inline-flex;
       flex-direction: column;
-      gap: 6px;
-      min-width: 140px;
+      gap: 5px;
+      min-width: 132px;
       flex: 0 0 auto;
     }
 
-    .control-group.compact { min-width: 120px; }
-    .control-group.grow { min-width: 280px; }
-    .control-group.wide { min-width: 240px; }
-    .control-group.slider-group { min-width: 290px; }
+    .control-group.compact { min-width: 116px; }
+    .control-group.grow { min-width: 250px; }
+    .control-group.wide { min-width: 220px; }
+    .control-group.slider-group { min-width: 260px; }
 
     .control-group label {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .checkbox-group {
-      display: inline-flex;
-      flex-direction: row;
-      align-items: center;
-      gap: 16px;
-      min-width: unset;
-      padding-bottom: 10px;
-    }
-
-    .checkbox-group label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
       white-space: nowrap;
     }
 
@@ -135,7 +120,7 @@
       background: var(--panel-solid);
       border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 12px;
+      padding: 10px 12px;
     }
 
     .summary-label {
@@ -146,15 +131,15 @@
     }
 
     .summary-value {
-      margin-top: 5px;
-      font-size: 26px;
+      margin-top: 4px;
+      font-size: 24px;
       font-weight: 700;
     }
 
     .main-layout {
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1.7fr) minmax(520px, 1fr);
+      grid-template-columns: minmax(0, 1.75fr) minmax(520px, 1fr);
       gap: 10px;
     }
 
@@ -170,13 +155,14 @@
       justify-content: space-between;
       align-items: start;
       gap: 10px;
-      padding: 14px 16px 10px;
+      padding: 12px 14px 10px;
       border-bottom: 1px solid var(--border);
     }
 
     .panel-title {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 700;
+      line-height: 1.1;
     }
 
     .panel-title.small { font-size: 16px; }
@@ -185,6 +171,7 @@
       font-size: 12px;
       color: var(--muted);
       margin-top: 2px;
+      line-height: 1.2;
     }
 
     .sidebar-header { align-items: center; }
@@ -193,6 +180,28 @@
       font-size: 12px;
       color: var(--muted);
       text-align: right;
+      white-space: nowrap;
+    }
+
+    .map-header-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .map-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .map-toggle input {
+      margin: 0;
     }
 
     #map {
@@ -213,9 +222,10 @@
 
     .file-btn,
     .btn {
-      padding: 10px 14px;
+      padding: 8px 12px;
       cursor: pointer;
       transition: transform 0.12s ease, background 0.18s ease, border-color 0.18s ease;
+      font-size: 14px;
     }
 
     .file-btn:hover,
@@ -253,8 +263,9 @@
     select,
     input[type="number"],
     input[type="text"] {
-      padding: 10px 12px;
-      min-height: 42px;
+      padding: 9px 11px;
+      min-height: 40px;
+      font-size: 14px;
     }
 
     input[type="range"] { width: 100%; }
@@ -315,7 +326,7 @@
 
     .data-preview {
       border-top: 1px solid var(--border);
-      padding: 12px 16px 16px;
+      padding: 12px 14px 14px;
       background: rgba(247, 250, 253, 0.7);
     }
 
@@ -402,6 +413,8 @@
       .toolbar { flex-direction: column; align-items: stretch; }
       .toolbar-right { justify-content: flex-start; }
       .summary-strip { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+      .panel-header { flex-direction: column; align-items: stretch; }
+      .map-header-right { justify-content: flex-start; }
     }
   </style>
 </head>
@@ -430,7 +443,6 @@
         <button id="reset-btn" class="btn" disabled>Reset</button>
         <button id="optimize-btn" class="btn btn-accent" disabled>Optimize Routes</button>
         <button id="export-btn" class="btn" disabled>Export Excel</button>
-        <button id="theme-toggle" class="btn">Dark Map</button>
       </div>
     </header>
 
@@ -501,11 +513,6 @@
             <option value="revenue">Revenue</option>
           </select>
         </div>
-
-        <div class="checkbox-group">
-          <label><input id="dim-others-checkbox" type="checkbox" checked disabled /> Dim others</label>
-          <label><input id="show-territory-checkbox" type="checkbox" checked disabled /> Show territories</label>
-        </div>
       </div>
     </section>
 
@@ -546,6 +553,21 @@
           <div>
             <div class="panel-title">Map</div>
             <div class="panel-subtitle">Use rectangle or polygon draw to lasso accounts</div>
+          </div>
+
+          <div class="map-header-right">
+            <label class="map-toggle">
+              <input id="theme-toggle-checkbox" type="checkbox" />
+              <span>Dark Map</span>
+            </label>
+            <label class="map-toggle">
+              <input id="dim-others-checkbox" type="checkbox" checked disabled />
+              <span>Dim others</span>
+            </label>
+            <label class="map-toggle">
+              <input id="show-territory-checkbox" type="checkbox" checked disabled />
+              <span>Show territories</span>
+            </label>
           </div>
         </div>
         <div id="map"></div>
@@ -663,10 +685,11 @@
 
     function bindElements() {
       [
-        'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn','theme-toggle',
+        'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
         'assign-rep-select','rep-filter','rep-count-input','min-stops-input','disruption-slider','disruption-value','balance-mode','rank-filter',
         'chain-filter','segment-filter','premise-filter',
-        'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count','clear-selection-btn',
+        'theme-toggle-checkbox','dim-others-checkbox','show-territory-checkbox',
+        'rep-table-body','selection-preview','selection-count','clear-selection-btn',
         'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
@@ -681,7 +704,8 @@
       els.resetBtn.addEventListener('click', resetAssignments);
       els.optimizeBtn.addEventListener('click', optimizeRoutes);
       els.exportBtn.addEventListener('click', exportWorkbook);
-      els.themeToggle.addEventListener('click', toggleTheme);
+
+      els.themeToggleCheckbox.addEventListener('change', toggleThemeFromCheckbox);
 
       els.repFilter.addEventListener('change', () => {
         state.repFocus = null;
@@ -1030,9 +1054,9 @@
         radius: isSelected ? 8 : 6,
         color: isSelected ? '#1e293b' : color,
         weight: isSelected ? 2.4 : 1.2,
-        opacity: visible ? 0.95 : 0.14,
+        opacity: visible ? 0.96 : 0.05,
         fillColor: color,
-        fillOpacity: focusDim ? 0.10 : (account.protected ? 0.85 : 0.72)
+        fillOpacity: focusDim ? 0.03 : (account.protected ? 0.86 : 0.72)
       };
     }
 
@@ -1700,17 +1724,19 @@
       if (points.length) state.map.fitBounds(points, { padding: [30, 30] });
     }
 
-    function toggleTheme() {
-      if (state.theme === 'light') {
-        state.map.removeLayer(state.lightLayer);
-        state.darkLayer.addTo(state.map);
-        state.theme = 'dark';
-        els.themeToggle.textContent = 'Light Map';
+    function toggleThemeFromCheckbox() {
+      if (els.themeToggleCheckbox.checked) {
+        if (state.theme !== 'dark') {
+          state.map.removeLayer(state.lightLayer);
+          state.darkLayer.addTo(state.map);
+          state.theme = 'dark';
+        }
       } else {
-        state.map.removeLayer(state.darkLayer);
-        state.lightLayer.addTo(state.map);
-        state.theme = 'light';
-        els.themeToggle.textContent = 'Dark Map';
+        if (state.theme !== 'light') {
+          state.map.removeLayer(state.darkLayer);
+          state.lightLayer.addTo(state.map);
+          state.theme = 'light';
+        }
       }
     }
 
