@@ -22,6 +22,9 @@
       --accent: #0c9f7a;
       --row-hover: #f2f7fd;
       --moved: #8b5cf6;
+      --good: #0f8a62;
+      --bad: #c24b4b;
+      --flat: #61788e;
     }
 
     * { box-sizing: border-box; }
@@ -505,6 +508,10 @@
       margin-top: 6px;
     }
 
+    .delta-pos { color: var(--good); font-weight: 700; }
+    .delta-neg { color: var(--bad); font-weight: 700; }
+    .delta-flat { color: var(--flat); font-weight: 700; }
+
     .toast {
       position: absolute;
       left: 18px;
@@ -758,15 +765,13 @@
               <tr>
                 <th>Rep</th>
                 <th>Stops</th>
+                <th>+/- Stops</th>
                 <th>Revenue</th>
+                <th>+/- Revenue</th>
                 <th>A</th>
                 <th>B</th>
                 <th>C</th>
                 <th>D</th>
-                <th>Weekly</th>
-                <th>Biweekly</th>
-                <th>Monthly</th>
-                <th>Quarterly</th>
                 <th>Planned 4W</th>
                 <th>Avg Weekly</th>
                 <th>Protected</th>
@@ -775,7 +780,7 @@
               </tr>
             </thead>
             <tbody id="rep-table-body">
-              <tr><td colspan="16" class="empty-state">Upload a file to begin.</td></tr>
+              <tr><td colspan="14" class="empty-state">Upload a file to begin.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1468,7 +1473,7 @@
       const rows = summarizeByRep();
 
       if (!rows.length) {
-        els.repTableBody.innerHTML = '<tr><td colspan="16" class="empty-state">No accounts match the current filters.</td></tr>';
+        els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty-state">No accounts match the current filters.</td></tr>';
         return;
       }
 
@@ -1481,15 +1486,13 @@
             </div>
           </td>
           <td>${row.stops}</td>
+          <td class="${deltaClass(row.stopDelta)}">${signedNumber(row.stopDelta)}</td>
           <td>${formatCurrency(row.revenue)}</td>
+          <td class="${deltaClass(row.revenueDelta)}">${signedCurrency(row.revenueDelta)}</td>
           <td>${row.A}</td>
           <td>${row.B}</td>
           <td>${row.C}</td>
           <td>${row.D}</td>
-          <td>${row.weekly}</td>
-          <td>${row.biweekly}</td>
-          <td>${row.monthly}</td>
-          <td>${row.quarterly}</td>
           <td>${row.plannedFourWeekStops.toFixed(2)}</td>
           <td>${row.avgWeeklyStops.toFixed(2)}</td>
           <td>${row.protected}</td>
@@ -1519,7 +1522,6 @@
 
       if (!selected.length) {
         els.selectionPreview.textContent = 'No accounts selected.';
-        syncControlState();
         return;
       }
 
@@ -2398,7 +2400,7 @@
     function summarizeByRepFromAccounts(accounts, resolver) {
       const map = new Map();
 
-      uniqueNonBlank(accounts.flatMap(a => [resolver(a), a.currentRep])).forEach(rep => {
+      uniqueNonBlank(accounts.flatMap(a => [resolver(a), a.currentRep, a.originalAssignedRep])).forEach(rep => {
         map.set(rep, emptyRepSummary(rep));
       });
 
@@ -2410,12 +2412,6 @@
         row.stops += 1;
         row.revenue += account.overallSales;
         row[account.rank] = (row[account.rank] || 0) + 1;
-
-        if (account.rank === 'A') row.weekly += 1;
-        if (account.rank === 'B') row.biweekly += 1;
-        if (account.rank === 'C') row.monthly += 1;
-        if (account.rank === 'D') row.quarterly += 1;
-
         row.plannedFourWeekStops += cadence4WForRank(account.rank);
 
         if (account.protected) row.protected += 1;
@@ -2429,11 +2425,28 @@
         }
       }
 
-      const rows = [...map.values()].filter(r => r.stops > 0)
+      const baseline = new Map();
+      uniqueNonBlank(accounts.map(a => a.originalAssignedRep)).forEach(rep => {
+        baseline.set(rep, { stops: 0, revenue: 0 });
+      });
+
+      for (const account of accounts) {
+        const baseRep = account.originalAssignedRep;
+        if (!baseline.has(baseRep)) baseline.set(baseRep, { stops: 0, revenue: 0 });
+        const row = baseline.get(baseRep);
+        row.stops += 1;
+        row.revenue += account.overallSales;
+      }
+
+      const rows = [...map.values()]
+        .filter(r => r.stops > 0 || baseline.has(r.rep))
         .sort((a, b) => a.rep.localeCompare(b.rep, undefined, { numeric: true }));
 
       rows.forEach(r => {
+        const base = baseline.get(r.rep) || { stops: 0, revenue: 0 };
         r.avgWeeklyStops = r.plannedFourWeekStops / 4;
+        r.stopDelta = r.stops - base.stops;
+        r.revenueDelta = r.revenue - base.revenue;
       });
 
       return rows;
@@ -2445,14 +2458,12 @@
         color: state.repColors.get(rep) || '#4a5568',
         stops: 0,
         revenue: 0,
+        stopDelta: 0,
+        revenueDelta: 0,
         A: 0,
         B: 0,
         C: 0,
         D: 0,
-        weekly: 0,
-        biweekly: 0,
-        monthly: 0,
-        quarterly: 0,
         plannedFourWeekStops: 0,
         avgWeeklyStops: 0,
         protected: 0,
@@ -2494,15 +2505,13 @@
       const summary = summarizeByRep().map(r => ({
         Rep: r.rep,
         Stops: r.stops,
+        Delta_Stops: r.stopDelta,
         Revenue: round2(r.revenue),
+        Delta_Revenue: round2(r.revenueDelta),
         A: r.A,
         B: r.B,
         C: r.C,
         D: r.D,
-        Weekly: r.weekly,
-        Biweekly: r.biweekly,
-        Monthly: r.monthly,
-        Quarterly: r.quarterly,
         Planned_Four_Week_Stops: round2(r.plannedFourWeekStops),
         Avg_Weekly_Stops: round2(r.avgWeeklyStops),
         Protected: r.protected,
@@ -2675,6 +2684,24 @@
       els.toast.classList.add('show');
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2200);
+    }
+
+    function deltaClass(value) {
+      if (value > 0) return 'delta-pos';
+      if (value < 0) return 'delta-neg';
+      return 'delta-flat';
+    }
+
+    function signedNumber(value) {
+      if (value > 0) return `+${value}`;
+      if (value < 0) return `${value}`;
+      return '0';
+    }
+
+    function signedCurrency(value) {
+      if (value > 0) return `+${formatCurrency(value)}`;
+      if (value < 0) return `-${formatCurrency(Math.abs(value))}`;
+      return '$0';
     }
 
     function toCamel(id) {
