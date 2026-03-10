@@ -79,11 +79,16 @@
 
     .controls-strip {
       padding: 10px 14px;
+      overflow: visible;
+      position: relative;
+      z-index: 40;
+    }
+
+    .controls-scroll {
       overflow-x: auto;
       overflow-y: visible;
       white-space: nowrap;
-      position: relative;
-      z-index: 40;
+      padding-bottom: 2px;
     }
 
     .controls-row {
@@ -318,7 +323,7 @@
       border: 1px solid var(--border);
       border-radius: 14px;
       box-shadow: 0 18px 32px rgba(18, 38, 63, 0.16);
-      z-index: 2000;
+      z-index: 3000;
       display: none;
       overflow: hidden;
     }
@@ -576,113 +581,115 @@
     </header>
 
     <section class="controls-strip">
-      <div class="controls-row">
-        <div class="control-group compact">
-          <label for="assign-rep-select">Assign selected to</label>
-          <select id="assign-rep-select" disabled></select>
-        </div>
+      <div class="controls-scroll">
+        <div class="controls-row">
+          <div class="control-group compact">
+            <label for="assign-rep-select">Assign selected to</label>
+            <select id="assign-rep-select" disabled></select>
+          </div>
 
-        <div class="control-group compact">
-          <label>Rep filter</label>
-          <div id="rep-filter-wrap" class="multi-select disabled">
-            <button id="rep-filter-btn" type="button" class="multi-select-button" disabled>All reps</button>
-            <div id="rep-filter-panel" class="multi-select-panel">
-              <div class="multi-select-actions">
-                <button type="button" class="multi-select-link" data-multi-action="all" data-target="rep">Select all</button>
-                <button type="button" class="multi-select-link" data-multi-action="none" data-target="rep">Clear</button>
+          <div class="control-group compact">
+            <label>Rep filter</label>
+            <div id="rep-filter-wrap" class="multi-select disabled">
+              <button id="rep-filter-btn" type="button" class="multi-select-button" disabled>All reps</button>
+              <div id="rep-filter-panel" class="multi-select-panel">
+                <div class="multi-select-actions">
+                  <button type="button" class="multi-select-link" data-multi-action="all" data-target="rep">Select all</button>
+                  <button type="button" class="multi-select-link" data-multi-action="none" data-target="rep">Clear</button>
+                </div>
+                <div id="rep-filter-options" class="multi-select-options"></div>
               </div>
-              <div id="rep-filter-options" class="multi-select-options"></div>
             </div>
           </div>
-        </div>
 
-        <div class="control-group compact">
-          <label>Rank filter</label>
-          <div id="rank-filter-wrap" class="multi-select disabled">
-            <button id="rank-filter-btn" type="button" class="multi-select-button" disabled>All ranks</button>
-            <div id="rank-filter-panel" class="multi-select-panel">
-              <div class="multi-select-actions">
-                <button type="button" class="multi-select-link" data-multi-action="all" data-target="rank">Select all</button>
-                <button type="button" class="multi-select-link" data-multi-action="none" data-target="rank">Clear</button>
+          <div class="control-group compact">
+            <label>Rank filter</label>
+            <div id="rank-filter-wrap" class="multi-select disabled">
+              <button id="rank-filter-btn" type="button" class="multi-select-button" disabled>All ranks</button>
+              <div id="rank-filter-panel" class="multi-select-panel">
+                <div class="multi-select-actions">
+                  <button type="button" class="multi-select-link" data-multi-action="all" data-target="rank">Select all</button>
+                  <button type="button" class="multi-select-link" data-multi-action="none" data-target="rank">Clear</button>
+                </div>
+                <div id="rank-filter-options" class="multi-select-options"></div>
               </div>
-              <div id="rank-filter-options" class="multi-select-options"></div>
             </div>
           </div>
-        </div>
 
-        <div class="control-group compact">
-          <label>Chain filter</label>
-          <div id="chain-filter-wrap" class="multi-select disabled">
-            <button id="chain-filter-btn" type="button" class="multi-select-button" disabled>All chains</button>
-            <div id="chain-filter-panel" class="multi-select-panel">
-              <div class="multi-select-actions">
-                <button type="button" class="multi-select-link" data-multi-action="all" data-target="chain">Select all</button>
-                <button type="button" class="multi-select-link" data-multi-action="none" data-target="chain">Clear</button>
+          <div class="control-group compact">
+            <label>Chain filter</label>
+            <div id="chain-filter-wrap" class="multi-select disabled">
+              <button id="chain-filter-btn" type="button" class="multi-select-button" disabled>All chains</button>
+              <div id="chain-filter-panel" class="multi-select-panel">
+                <div class="multi-select-actions">
+                  <button type="button" class="multi-select-link" data-multi-action="all" data-target="chain">Select all</button>
+                  <button type="button" class="multi-select-link" data-multi-action="none" data-target="chain">Clear</button>
+                </div>
+                <div id="chain-filter-options" class="multi-select-options"></div>
               </div>
-              <div id="chain-filter-options" class="multi-select-options"></div>
             </div>
           </div>
-        </div>
 
-        <div class="control-group compact">
-          <label for="segment-filter">Segment filter</label>
-          <select id="segment-filter" disabled>
-            <option value="ALL">All segments</option>
-          </select>
-        </div>
+          <div class="control-group compact">
+            <label for="segment-filter">Segment filter</label>
+            <select id="segment-filter" disabled>
+              <option value="ALL">All segments</option>
+            </select>
+          </div>
 
-        <div class="control-group compact">
-          <label for="premise-filter">Premise filter</label>
-          <select id="premise-filter" disabled>
-            <option value="ALL">All premises</option>
-          </select>
-        </div>
+          <div class="control-group compact">
+            <label for="premise-filter">Premise filter</label>
+            <select id="premise-filter" disabled>
+              <option value="ALL">All premises</option>
+            </select>
+          </div>
 
-        <div class="control-group compact">
-          <label for="protected-filter">Protected filter</label>
-          <select id="protected-filter" disabled>
-            <option value="ALL">All</option>
-            <option value="PROTECTED_ONLY">Protected only</option>
-            <option value="UNPROTECTED_ONLY">Unprotected only</option>
-          </select>
-        </div>
+          <div class="control-group compact">
+            <label for="protected-filter">Protected filter</label>
+            <select id="protected-filter" disabled>
+              <option value="ALL">All</option>
+              <option value="PROTECTED_ONLY">Protected only</option>
+              <option value="UNPROTECTED_ONLY">Unprotected only</option>
+            </select>
+          </div>
 
-        <div class="control-group compact">
-          <label for="moved-filter">Moved filter</label>
-          <select id="moved-filter" disabled>
-            <option value="ALL">All</option>
-            <option value="MOVED_ONLY">Moved only</option>
-            <option value="UNCHANGED_ONLY">Unchanged only</option>
-          </select>
-        </div>
+          <div class="control-group compact">
+            <label for="moved-filter">Moved filter</label>
+            <select id="moved-filter" disabled>
+              <option value="ALL">All</option>
+              <option value="MOVED_ONLY">Moved only</option>
+              <option value="UNCHANGED_ONLY">Unchanged only</option>
+            </select>
+          </div>
 
-        <div class="control-group compact">
-          <label for="rep-count-input">Target rep count</label>
-          <input id="rep-count-input" type="number" min="1" max="100" step="1" value="16" disabled />
-        </div>
+          <div class="control-group compact">
+            <label for="rep-count-input">Target rep count</label>
+            <input id="rep-count-input" type="number" min="1" max="100" step="1" value="16" disabled />
+          </div>
 
-        <div class="control-group compact">
-          <label for="min-stops-input">Minimum stops / rep</label>
-          <input id="min-stops-input" type="number" min="1" max="10000" step="1" value="100" disabled />
-        </div>
+          <div class="control-group compact">
+            <label for="min-stops-input">Minimum stops / rep</label>
+            <input id="min-stops-input" type="number" min="1" max="10000" step="1" value="100" disabled />
+          </div>
 
-        <div class="control-group compact">
-          <label for="max-stops-input">Maximum stops / rep</label>
-          <input id="max-stops-input" type="number" min="1" max="10000" step="1" value="200" disabled />
-        </div>
+          <div class="control-group compact">
+            <label for="max-stops-input">Maximum stops / rep</label>
+            <input id="max-stops-input" type="number" min="1" max="10000" step="1" value="200" disabled />
+          </div>
 
-        <div class="control-group slider-group">
-          <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
-          <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
-        </div>
+          <div class="control-group slider-group">
+            <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
+            <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
+          </div>
 
-        <div class="control-group compact">
-          <label for="balance-mode">Optimize by</label>
-          <select id="balance-mode" disabled>
-            <option value="hybrid">Hybrid</option>
-            <option value="stops">Stops</option>
-            <option value="revenue">Revenue</option>
-          </select>
+          <div class="control-group compact">
+            <label for="balance-mode">Optimize by</label>
+            <select id="balance-mode" disabled>
+              <option value="hybrid">Hybrid</option>
+              <option value="stops">Stops</option>
+              <option value="revenue">Revenue</option>
+            </select>
+          </div>
         </div>
       </div>
     </section>
