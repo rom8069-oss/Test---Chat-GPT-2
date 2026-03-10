@@ -309,16 +309,26 @@
       gap:10px;
     }
 
-    .table-wrap{
-      height:100%;
+    .routes-card{
+      display:flex;
+      flex-direction:column;
       min-height:0;
-      overflow:auto;
+    }
+
+    .table-wrap{
+      flex:1 1 auto;
+      min-height:0;
+      min-width:0;
+      overflow-x:auto;
+      overflow-y:auto;
+      scrollbar-gutter:stable both-edges;
+      padding-bottom:8px;
     }
 
     table{
-      width:100%;
+      width:max-content;
+      min-width:100%;
       border-collapse:collapse;
-      min-width:960px;
     }
 
     thead th{
@@ -480,20 +490,21 @@
     }
 
     .multi-panel{
-      position:absolute;
-      top:calc(100% + 6px);
-      left:0;
-      width:max(240px,100%);
-      max-width:360px;
-      max-height:320px;
+      position:fixed;
+      top:-9999px;
+      left:-9999px;
+      width:280px;
+      max-width:min(360px, calc(100vw - 20px));
+      max-height:min(320px, calc(100vh - 20px));
       display:none;
       flex-direction:column;
       background:#fff;
       border:1px solid var(--border);
       border-radius:14px;
       box-shadow:0 16px 34px rgba(25,56,93,.18);
-      z-index:9999;
+      z-index:10001;
       overflow:hidden;
+      isolation:isolate;
     }
 
     .multi.open .multi-panel{
@@ -763,7 +774,7 @@
       </div>
 
       <div class="side">
-        <div class="card">
+        <div class="card routes-card">
           <div class="card-head">
             <div>
               <div class="card-title">Routes</div>
@@ -771,7 +782,7 @@
             </div>
             <div class="small muted" id="last-action">No actions yet</div>
           </div>
-          <div class="table-wrap">
+          <div class="table-wrap" id="routes-table-wrap">
             <table>
               <thead>
                 <tr>
@@ -895,7 +906,8 @@
         rank: '',
         chain: '',
         segment: ''
-      }
+      },
+      openMultiKey: null
     };
 
     const els = {};
@@ -921,7 +933,8 @@
         'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly',
         'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
         'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
-        'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary'
+        'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
+        'routes-table-wrap'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
       });
@@ -961,7 +974,12 @@
       });
 
       document.addEventListener('click', handleDocumentClickForPanels);
-      window.addEventListener('resize', closeAllMultiPanels);
+      window.addEventListener('resize', () => {
+        if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+      });
+      window.addEventListener('scroll', () => {
+        if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+      }, true);
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeAllMultiPanels();
       });
@@ -1027,11 +1045,13 @@
         document.querySelector(`[data-select-all="${key}"]`).addEventListener('click', (e) => {
           e.stopPropagation();
           toggleSelectAllMulti(key);
+          positionMultiPanel(key);
         });
 
         document.querySelector(`[data-search="${key}"]`).addEventListener('input', (e) => {
           state.multiSearch[key] = e.target.value || '';
           renderMultiFilterOptions();
+          positionMultiPanel(key);
         });
       });
     }
@@ -1046,11 +1066,38 @@
       const wrap = document.getElementById(`${key}-filter-wrap`);
       const alreadyOpen = wrap.classList.contains('open');
       closeAllMultiPanels();
-      if (!alreadyOpen) wrap.classList.add('open');
+
+      if (!alreadyOpen) {
+        wrap.classList.add('open');
+        state.openMultiKey = key;
+        positionMultiPanel(key);
+      }
     }
 
     function closeAllMultiPanels() {
       document.querySelectorAll('.multi.open').forEach(el => el.classList.remove('open'));
+      state.openMultiKey = null;
+    }
+
+    function positionMultiPanel(key) {
+      const wrap = document.getElementById(`${key}-filter-wrap`);
+      const trigger = wrap?.querySelector('.multi-trigger');
+      const panel = wrap?.querySelector('.multi-panel');
+      if (!wrap || !trigger || !panel || !wrap.classList.contains('open')) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const preferredWidth = Math.max(rect.width, 260);
+      const width = Math.min(360, Math.max(240, preferredWidth));
+      let left = rect.left;
+      if (left + width > viewportWidth - 10) left = viewportWidth - width - 10;
+      if (left < 10) left = 10;
+
+      panel.style.width = `${width}px`;
+      panel.style.maxHeight = `${Math.max(180, viewportHeight - rect.bottom - 18)}px`;
+      panel.style.left = `${left}px`;
+      panel.style.top = `${Math.min(viewportHeight - 10, rect.bottom + 6)}px`;
     }
 
     function onFileChosen(event) {
@@ -1233,6 +1280,8 @@
       renderSingleMultiFilter('rank', getDistinctValues(state.accounts, a => a.rank), els.rankFilterOptions, els.rankFilterSummary, 'All ranks');
       renderSingleMultiFilter('chain', getDistinctValues(state.accounts, a => a.chain), els.chainFilterOptions, els.chainFilterSummary, 'All chains');
       renderSingleMultiFilter('segment', getDistinctValues(state.accounts, a => a.segment), els.segmentFilterOptions, els.segmentFilterSummary, 'All segments');
+
+      if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
     }
 
     function renderSingleMultiFilter(key, values, container, summaryEl, allLabel) {
@@ -1265,6 +1314,7 @@
           updateMultiFilterSummary(key, values, summaryEl, allLabel);
           refreshUI();
           renderSingleMultiFilter(key, values, container, summaryEl, allLabel);
+          positionMultiPanel(key);
         });
       });
 
@@ -1319,6 +1369,7 @@
       renderSummary();
       renderMovedReview();
       refreshTerritories();
+      if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
     }
 
     function syncControlState() {
