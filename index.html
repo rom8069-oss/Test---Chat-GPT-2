@@ -302,6 +302,9 @@
       text-overflow: ellipsis;
       cursor: pointer;
       position: relative;
+      font-size: 13px;
+      line-height: 1.2;
+      font-weight: 400;
     }
 
     .multi-select-button::after {
@@ -311,7 +314,7 @@
       top: 50%;
       transform: translateY(-50%);
       color: var(--muted);
-      font-size: 12px;
+      font-size: 11px;
       pointer-events: none;
     }
 
@@ -364,10 +367,11 @@
       align-items: center;
       gap: 8px;
       padding: 8px 12px;
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text);
       cursor: pointer;
       white-space: normal;
+      line-height: 1.25;
     }
 
     .multi-select-option:hover {
@@ -980,11 +984,8 @@
           const action = link.getAttribute('data-multi-action');
           const values = getMultiSelectValues(type);
 
-          if (action === 'all') {
-            state.filterSelections[type] = new Set(values);
-          } else if (action === 'none') {
-            state.filterSelections[type] = new Set();
-          }
+          if (action === 'all') state.filterSelections[type] = new Set(values);
+          else state.filterSelections[type] = new Set();
 
           renderMultiSelectOptions(type, values, state.filterSelections[type], getMultiSelectAllLabel(type));
           positionFloatingPanel(type);
@@ -1085,12 +1086,7 @@
       const buttonEl = els[`${type}FilterBtn`];
       const selected = [...state.filterSelections[type]];
 
-      if (!values.length) {
-        buttonEl.textContent = allLabel;
-        return;
-      }
-
-      if (selected.length === 0 || selected.length === values.length) {
+      if (!values.length || selected.length === 0 || selected.length === values.length) {
         buttonEl.textContent = allLabel;
         return;
       }
@@ -1163,25 +1159,18 @@
       reader.onload = e => {
         const data = e.target.result;
         try {
-          if (file.name.toLowerCase().endsWith('.csv')) {
-            const workbook = XLSX.read(data, { type: 'binary' });
-            loadWorkbook(workbook);
-          } else {
-            const arr = new Uint8Array(data);
-            const workbook = XLSX.read(arr, { type: 'array' });
-            loadWorkbook(workbook);
-          }
+          const workbook = file.name.toLowerCase().endsWith('.csv')
+            ? XLSX.read(data, { type: 'binary' })
+            : XLSX.read(new Uint8Array(data), { type: 'array' });
+          loadWorkbook(workbook);
         } catch (err) {
           console.error(err);
           showToast('File could not be read. Check the format and try again.');
         }
       };
 
-      if (file.name.toLowerCase().endsWith('.csv')) {
-        reader.readAsBinaryString(file);
-      } else {
-        reader.readAsArrayBuffer(file);
-      }
+      if (file.name.toLowerCase().endsWith('.csv')) reader.readAsBinaryString(file);
+      else reader.readAsArrayBuffer(file);
     }
 
     function loadWorkbook(workbook) {
@@ -1191,7 +1180,6 @@
 
       workbook.SheetNames.forEach((sheetName, idx) => {
         state.workbookSheets[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
-
         const option = document.createElement('option');
         option.value = sheetName;
         option.textContent = sheetName;
@@ -1256,23 +1244,16 @@
       for (const row of rows) {
         const lat = toNumber(row[headerMap.latitude]);
         const lng = toNumber(row[headerMap.longitude]);
-
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 
         const customerId = safeString(row[headerMap.customerId]) || `AUTO_${generatedId++}`;
-        const customerName =
-          safeString(row[headerMap.customerName]) ||
-          safeString(row[headerMap.premise]) ||
-          customerId;
-
+        const customerName = safeString(row[headerMap.customerName]) || safeString(row[headerMap.premise]) || customerId;
         const premise = safeString(row[headerMap.premise]);
         const segment = safeString(row[headerMap.segment]);
         const chain = safeString(row[headerMap.chain]);
-
         const currentRep = safeString(row[headerMap.currentRep]) || 'Unassigned';
         const assignedRep = safeString(row[headerMap.assignedRep]) || currentRep || 'Unassigned';
         const rank = normalizeRank(row[headerMap.rank]);
-
         const overallSales = toNumber(row[headerMap.overallSales]);
 
         mapped.push({
@@ -1304,8 +1285,7 @@
 
     function buildRepColors() {
       state.repColors.clear();
-      const reps = getAllReps();
-      reps.forEach((rep, idx) => {
+      getAllReps().forEach((rep, idx) => {
         state.repColors.set(rep, COLOR_PALETTE[idx % COLOR_PALETTE.length]);
       });
     }
@@ -1317,20 +1297,8 @@
       const premises = uniqueNonBlank(state.accounts.map(a => a.premise));
 
       fillSelect(els.assignRepSelect, reps, reps[0]);
-
-      fillSelect(
-        els.segmentFilter,
-        ['ALL', ...segments],
-        'ALL',
-        v => v === 'ALL' ? 'All segments' : v
-      );
-
-      fillSelect(
-        els.premiseFilter,
-        ['ALL', ...premises],
-        'ALL',
-        v => v === 'ALL' ? 'All premises' : v
-      );
+      fillSelect(els.segmentFilter, ['ALL', ...segments], 'ALL', v => v === 'ALL' ? 'All segments' : v);
+      fillSelect(els.premiseFilter, ['ALL', ...premises], 'ALL', v => v === 'ALL' ? 'All premises' : v);
 
       state.filterSelections.rep = new Set(reps);
       state.filterSelections.rank = new Set(['A','B','C','D']);
@@ -1368,11 +1336,8 @@
         els.segmentFilter, els.premiseFilter, els.protectedFilter, els.movedFilter,
         els.dimOthersCheckbox, els.showTerritoryCheckbox, els.clearSelectionBtn
       ].forEach(el => {
-        if (el === els.assignBtn) {
-          el.disabled = !hasData || state.selection.size === 0;
-        } else {
-          el.disabled = !hasData;
-        }
+        if (el === els.assignBtn) el.disabled = !hasData || state.selection.size === 0;
+        else el.disabled = !hasData;
       });
 
       ['rep','rank','chain'].forEach(type => {
@@ -1420,14 +1385,11 @@
       renderMultiSelectOptions('rank', ['A','B','C','D'], state.filterSelections.rank, 'All ranks');
       renderMultiSelectOptions('chain', chains, state.filterSelections.chain, 'All chains');
 
-      if (state.activeFloatingType) {
-        positionFloatingPanel(state.activeFloatingType);
-      }
+      if (state.activeFloatingType) positionFloatingPanel(state.activeFloatingType);
 
       if (!els.repCountInput.dataset.userTouched) {
         els.repCountInput.value = reps.length || 1;
       }
-
       els.repCountInput.oninput = () => {
         els.repCountInput.dataset.userTouched = '1';
       };
@@ -1541,11 +1503,8 @@
           const rep = tr.getAttribute('data-rep-row');
           state.repFocus = state.repFocus === rep ? null : rep;
 
-          if (state.repFocus) {
-            state.filterSelections.rep = new Set([rep]);
-          } else {
-            state.filterSelections.rep = new Set(getAllReps());
-          }
+          if (state.repFocus) state.filterSelections.rep = new Set([rep]);
+          else state.filterSelections.rep = new Set(getAllReps());
 
           renderMultiSelectOptions('rep', getAllReps(), state.filterSelections.rep, 'All reps');
           refreshUI();
@@ -1570,8 +1529,6 @@
           <div class="preview-meta">${escapeHtml(a.premise || '—')} • ${escapeHtml(a.segment || '—')} • ${escapeHtml(a.assignedRep)} • ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)} • 4W ${cadence4WForRank(a.rank).toFixed(2)}${a.protected ? ' • Protected' : ''}</div>
         </div>
       `).join('');
-
-      syncControlState();
     }
 
     function renderMovedReview() {
@@ -1618,19 +1575,14 @@
       state.drawLayer.addLayer(layer);
 
       let polygon;
-      if (layer instanceof L.Rectangle || layer instanceof L.Polygon) {
-        polygon = layer.toGeoJSON();
-      } else {
-        return;
-      }
+      if (layer instanceof L.Rectangle || layer instanceof L.Polygon) polygon = layer.toGeoJSON();
+      else return;
 
       state.selection.clear();
 
       for (const account of getFilteredAccounts()) {
         const point = turf.point([account.longitude, account.latitude]);
-        if (turf.booleanPointInPolygon(point, polygon)) {
-          state.selection.add(account._id);
-        }
+        if (turf.booleanPointInPolygon(point, polygon)) state.selection.add(account._id);
       }
 
       refreshUI();
@@ -1639,10 +1591,8 @@
 
     function toggleSelection(id, additive = false) {
       if (!additive) state.selection.clear();
-
       if (state.selection.has(id)) state.selection.delete(id);
       else state.selection.add(id);
-
       refreshUI();
     }
 
@@ -1655,7 +1605,6 @@
     function assignSelectionToRep() {
       const targetRep = els.assignRepSelect.value;
       const selectedIds = [...state.selection];
-
       if (!selectedIds.length || !targetRep) return;
 
       const changes = [];
@@ -1695,7 +1644,6 @@
         if (!account) return;
 
         account.assignedRep = change.to;
-
         state.changeLog.push({
           timestamp: new Date().toISOString(),
           customerId: account.customerId,
@@ -1736,7 +1684,6 @@
 
     function resetAssignments() {
       const changes = [];
-
       for (const account of state.accounts) {
         if (account.assignedRep !== account.originalAssignedRep) {
           changes.push({
@@ -1758,13 +1705,9 @@
     function optimizeRoutes() {
       if (!state.accounts.length) return;
 
-      const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
-      const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
-      const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
-
-      const targetCount = Math.max(1, Math.min(100, targetCountRaw));
-      const minStops = Math.max(1, minStopsRaw);
-      const maxStops = Math.max(minStops, maxStopsRaw);
+      const targetCount = Math.max(1, Math.min(100, parseInt(els.repCountInput.value || '1', 10)));
+      const minStops = Math.max(1, parseInt(els.minStopsInput.value || '1', 10));
+      const maxStops = Math.max(minStops, parseInt(els.maxStopsInput.value || '999999', 10));
 
       const workingAccounts = getFilteredAccounts();
       const totalAccounts = workingAccounts.length;
@@ -1798,18 +1741,16 @@
       });
 
       const accountLookup = new Map(workingAccounts.map(a => [a._id, a]));
-      const neighborLookup = buildNeighborLookup(workingAccounts, 8);
+      const neighborLookup = buildNeighborLookup(workingAccounts, 12);
 
       const assignments = new Map();
-      for (const account of workingAccounts) {
-        assignments.set(account._id, account.assignedRep);
-      }
+      for (const account of workingAccounts) assignments.set(account._id, account.assignedRep);
 
       seedEmptyReps(assignments, targetRepNames, workingAccounts, minStops);
 
       let centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
 
-      for (let iter = 0; iter < 10; iter += 1) {
+      for (let iter = 0; iter < 12; iter += 1) {
         const { countMap, revenueMap } = buildRepLoadMaps(assignments, targetRepNames, workingAccounts);
 
         const orderedMovable = [...workingAccounts]
@@ -1852,7 +1793,7 @@
           }
 
           if (bestRep !== currentRep) {
-            if (countMap.get(currentRep) - 1 >= Math.min(minStops, totalAccounts)) {
+            if ((countMap.get(currentRep) || 0) - 1 >= Math.min(minStops, totalAccounts)) {
               assignments.set(account._id, bestRep);
               countMap.set(currentRep, countMap.get(currentRep) - 1);
               countMap.set(bestRep, (countMap.get(bestRep) || 0) + 1);
@@ -1868,43 +1809,35 @@
       }
 
       cleanupEnclaves({
-        assignments,
-        targetRepNames,
-        workingAccounts,
-        minStops,
-        maxStops,
-        accountLookup,
-        neighborLookup,
-        continuityWeight,
-        geographyWeight,
-        balanceMode
+        assignments, targetRepNames, workingAccounts, minStops, maxStops,
+        accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode
+      });
+
+      majoritySmoothAssignments({
+        assignments, targetRepNames, workingAccounts, minStops, maxStops,
+        accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode,
+        passes: 4
       });
 
       enforceMinimumStops(assignments, targetRepNames, minStops, maxStops, workingAccounts, accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode);
       enforceMaximumStops(assignments, targetRepNames, minStops, maxStops, workingAccounts, accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode);
 
       cleanupEnclaves({
-        assignments,
-        targetRepNames,
-        workingAccounts,
-        minStops,
-        maxStops,
-        accountLookup,
-        neighborLookup,
-        continuityWeight,
-        geographyWeight,
-        balanceMode
+        assignments, targetRepNames, workingAccounts, minStops, maxStops,
+        accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode
+      });
+
+      majoritySmoothAssignments({
+        assignments, targetRepNames, workingAccounts, minStops, maxStops,
+        accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode,
+        passes: 3
       });
 
       const changes = [];
       for (const account of workingAccounts) {
         const nextRep = assignments.get(account._id) || account.assignedRep;
         if (nextRep !== account.assignedRep) {
-          changes.push({
-            id: account._id,
-            from: account.assignedRep,
-            to: nextRep
-          });
+          changes.push({ id: account._id, from: account.assignedRep, to: nextRep });
         }
       }
 
@@ -1924,7 +1857,12 @@
       const movable = workingAccounts.filter(a => !a.protected);
       if (!movable.length) return;
 
-      const currentCentroids = initializeCentroidsFromAssignments(assignments, targetRepNames.filter(rep => (counts.get(rep) || 0) > 0), workingAccounts);
+      const currentCentroids = initializeCentroidsFromAssignments(
+        assignments,
+        targetRepNames.filter(rep => (counts.get(rep) || 0) > 0),
+        workingAccounts
+      );
+
       const usedIds = new Set();
 
       for (const emptyRep of emptyReps) {
@@ -1942,9 +1880,7 @@
             if (d < minDist) minDist = d;
           }
 
-          if (!best || minDist > best.score) {
-            best = { id: account._id, score: minDist };
-          }
+          if (!best || minDist > best.score) best = { id: account._id, score: minDist };
         }
 
         if (best) {
@@ -1959,7 +1895,7 @@
       }
     }
 
-    function buildNeighborLookup(accounts, k = 8) {
+    function buildNeighborLookup(accounts, k = 12) {
       const lookup = new Map();
 
       for (let i = 0; i < accounts.length; i += 1) {
@@ -1981,7 +1917,6 @@
 
     function insertTopNeighbor(arr, candidate, maxLen) {
       let inserted = false;
-
       for (let i = 0; i < arr.length; i += 1) {
         if (candidate.dist < arr[i].dist) {
           arr.splice(i, 0, candidate);
@@ -1989,7 +1924,6 @@
           break;
         }
       }
-
       if (!inserted) arr.push(candidate);
       if (arr.length > maxLen) arr.length = maxLen;
     }
@@ -1998,36 +1932,44 @@
       return assignments.get(accountId) || accountLookup.get(accountId)?.assignedRep || 'Unassigned';
     }
 
-    function getNeighborInfo(accountId, assignments, accountLookup, neighborLookup, maxNeighbors = 6) {
-      const neighbors = (neighborLookup.get(accountId) || []).slice(0, maxNeighbors);
-      const repCounts = new Map();
-      const nearestByRep = new Map();
+    function getNeighborInfo(accountId, assignments, accountLookup, neighborLookup) {
+      const all = neighborLookup.get(accountId) || [];
+      const inner = all.slice(0, 6);
+      const outer = all.slice(0, 12);
 
-      for (const neighbor of neighbors) {
-        const rep = getAssignedRep(neighbor.id, assignments, accountLookup);
-        repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+      function summarize(neighbors) {
+        const repCounts = new Map();
+        const nearestByRep = new Map();
 
-        if (!nearestByRep.has(rep) || neighbor.dist < nearestByRep.get(rep)) {
-          nearestByRep.set(rep, neighbor.dist);
+        for (const neighbor of neighbors) {
+          const rep = getAssignedRep(neighbor.id, assignments, accountLookup);
+          repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+          if (!nearestByRep.has(rep) || neighbor.dist < nearestByRep.get(rep)) {
+            nearestByRep.set(rep, neighbor.dist);
+          }
         }
-      }
 
-      let dominantRep = null;
-      let dominantCount = 0;
-
-      for (const [rep, count] of repCounts.entries()) {
-        if (count > dominantCount) {
-          dominantCount = count;
-          dominantRep = rep;
+        let dominantRep = null;
+        let dominantCount = 0;
+        for (const [rep, count] of repCounts.entries()) {
+          if (count > dominantCount) {
+            dominantCount = count;
+            dominantRep = rep;
+          }
         }
+
+        return {
+          total: neighbors.length,
+          repCounts,
+          nearestByRep,
+          dominantRep,
+          dominantShare: neighbors.length ? dominantCount / neighbors.length : 0
+        };
       }
 
       return {
-        total: neighbors.length,
-        repCounts,
-        nearestByRep,
-        dominantRep,
-        dominantShare: neighbors.length ? dominantCount / neighbors.length : 0
+        inner: summarize(inner),
+        outer: summarize(outer)
       };
     }
 
@@ -2069,22 +2011,41 @@
       const centroid = centroids.get(candidateRep) || { lat: account.latitude, lng: account.longitude };
       const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
 
-      const neighborInfo = getNeighborInfo(account._id, assignments, accountLookup, neighborLookup, 6);
-      const sameNeighborCount = neighborInfo.repCounts.get(candidateRep) || 0;
-      const sameShare = neighborInfo.total ? sameNeighborCount / neighborInfo.total : 0;
+      const neighborInfo = getNeighborInfo(account._id, assignments, accountLookup, neighborLookup);
+      const inner = neighborInfo.inner;
+      const outer = neighborInfo.outer;
 
-      let neighborPenalty = geographyWeight * (1 - sameShare) * 2.25;
+      const innerSameCount = inner.repCounts.get(candidateRep) || 0;
+      const outerSameCount = outer.repCounts.get(candidateRep) || 0;
 
-      if (neighborInfo.dominantRep && neighborInfo.dominantRep !== candidateRep) {
-        neighborPenalty += geographyWeight * neighborInfo.dominantShare * 2.4;
+      const innerSameShare = inner.total ? innerSameCount / inner.total : 0;
+      const outerSameShare = outer.total ? outerSameCount / outer.total : 0;
+
+      let localPenalty = geographyWeight * (1 - innerSameShare) * 4.6;
+      localPenalty += geographyWeight * (1 - outerSameShare) * 1.75;
+
+      if (inner.dominantRep && inner.dominantRep !== candidateRep) {
+        localPenalty += geographyWeight * inner.dominantShare * 5.2;
       }
 
-      if (sameNeighborCount === 0 && neighborInfo.total >= 4) {
-        neighborPenalty += geographyWeight * 1.4;
+      if (outer.dominantRep && outer.dominantRep !== candidateRep) {
+        localPenalty += geographyWeight * outer.dominantShare * 1.8;
       }
 
-      const nearestSame = neighborInfo.nearestByRep.get(candidateRep);
-      const nearestPenalty = Number.isFinite(nearestSame) ? nearestSame * (0.55 + geographyWeight * 0.45) : geographyWeight * 0.45;
+      if (innerSameCount <= 1 && inner.total >= 5) {
+        localPenalty += geographyWeight * 2.7;
+      }
+
+      if (innerSameCount === 0 && outerSameCount <= 2) {
+        localPenalty += geographyWeight * 3.2;
+      }
+
+      const nearestSameInner = inner.nearestByRep.get(candidateRep);
+      const nearestSameOuter = outer.nearestByRep.get(candidateRep);
+
+      const nearestPenalty =
+        (Number.isFinite(nearestSameInner) ? nearestSameInner * (0.85 + geographyWeight * 0.65) : geographyWeight * 0.9) +
+        (Number.isFinite(nearestSameOuter) ? nearestSameOuter * 0.22 : 0.15);
 
       const currentCount = countMap.get(candidateRep) || 0;
       const currentRevenue = revenueMap.get(candidateRep) || 0;
@@ -2092,13 +2053,9 @@
       const projectedRevenue = currentRevenue + (candidateRep === currentRep ? 0 : account.overallSales);
 
       let balancePenalty = 0;
-      if (balanceMode === 'stops') {
-        balancePenalty = projectedCount * 0.014;
-      } else if (balanceMode === 'revenue') {
-        balancePenalty = projectedRevenue * 0.0000017;
-      } else {
-        balancePenalty = (projectedCount * 0.008) + (projectedRevenue * 0.00000085);
-      }
+      if (balanceMode === 'stops') balancePenalty = projectedCount * 0.014;
+      else if (balanceMode === 'revenue') balancePenalty = projectedRevenue * 0.0000017;
+      else balancePenalty = (projectedCount * 0.008) + (projectedRevenue * 0.00000085);
 
       let continuityPenalty = 0;
       if (account.currentRep !== candidateRep) continuityPenalty += continuityWeight * 0.75;
@@ -2107,17 +2064,15 @@
       let minGuardPenalty = 0;
       if (candidateRep !== currentRep) {
         const currentRepCount = countMap.get(currentRep) || 0;
-        if (currentRepCount - 1 < minStops) {
-          minGuardPenalty += 999999;
-        }
+        if (currentRepCount - 1 < minStops) minGuardPenalty += 999999;
       }
 
       const overMaxPenalty = projectedCount > maxStops ? 999999 : 0;
 
       return (
-        dist * (0.70 + geographyWeight * 1.55) +
+        dist * (0.55 + geographyWeight * 1.7) +
         nearestPenalty +
-        neighborPenalty +
+        localPenalty +
         balancePenalty +
         continuityPenalty +
         minGuardPenalty +
@@ -2137,7 +2092,7 @@
       geographyWeight,
       balanceMode
     }) {
-      for (let pass = 0; pass < 4; pass += 1) {
+      for (let pass = 0; pass < 5; pass += 1) {
         const { countMap, revenueMap } = buildRepLoadMaps(assignments, targetRepNames, workingAccounts);
         const centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
 
@@ -2145,22 +2100,22 @@
           .filter(a => !a.protected)
           .map(account => {
             const currentRep = assignments.get(account._id);
-            const info = getNeighborInfo(account._id, assignments, accountLookup, neighborLookup, 6);
-            const ownShare = info.total ? ((info.repCounts.get(currentRep) || 0) / info.total) : 0;
+            const info = getNeighborInfo(account._id, assignments, accountLookup, neighborLookup);
+            const innerOwnShare = info.inner.total ? ((info.inner.repCounts.get(currentRep) || 0) / info.inner.total) : 0;
 
             return {
               account,
               currentRep,
-              dominantRep: info.dominantRep,
-              dominantShare: info.dominantShare,
-              ownShare
+              dominantRep: info.inner.dominantRep || info.outer.dominantRep,
+              dominantShare: info.inner.dominantShare || info.outer.dominantShare,
+              innerOwnShare
             };
           })
           .filter(x =>
             x.dominantRep &&
             x.dominantRep !== x.currentRep &&
-            x.dominantShare >= 0.60 &&
-            x.ownShare <= 0.25
+            x.dominantShare >= 0.66 &&
+            x.innerOwnShare <= 0.20
           )
           .sort((a, b) => b.dominantShare - a.dominantShare);
 
@@ -2175,42 +2130,80 @@
           if ((countMap.get(candidateRep) || 0) + 1 > maxStops) continue;
 
           const currentScore = scoreRepAssignment({
-            account,
-            candidateRep: currentRep,
-            currentRep,
-            assignments,
-            targetRepNames,
-            centroids,
-            countMap,
-            revenueMap,
-            accountLookup,
-            neighborLookup,
-            continuityWeight,
-            geographyWeight,
-            balanceMode,
-            minStops,
-            maxStops
+            account, candidateRep: currentRep, currentRep, assignments, targetRepNames,
+            centroids, countMap, revenueMap, accountLookup, neighborLookup,
+            continuityWeight, geographyWeight, balanceMode, minStops, maxStops
           });
 
           const candidateScore = scoreRepAssignment({
-            account,
-            candidateRep,
-            currentRep,
-            assignments,
-            targetRepNames,
-            centroids,
-            countMap,
-            revenueMap,
-            accountLookup,
-            neighborLookup,
-            continuityWeight,
-            geographyWeight,
-            balanceMode,
-            minStops,
-            maxStops
+            account, candidateRep, currentRep, assignments, targetRepNames,
+            centroids, countMap, revenueMap, accountLookup, neighborLookup,
+            continuityWeight, geographyWeight, balanceMode, minStops, maxStops
           });
 
-          if (candidateScore + 0.45 < currentScore) {
+          if (candidateScore + 0.8 < currentScore) {
+            assignments.set(account._id, candidateRep);
+            countMap.set(currentRep, countMap.get(currentRep) - 1);
+            countMap.set(candidateRep, (countMap.get(candidateRep) || 0) + 1);
+            revenueMap.set(currentRep, (revenueMap.get(currentRep) || 0) - account.overallSales);
+            revenueMap.set(candidateRep, (revenueMap.get(candidateRep) || 0) + account.overallSales);
+            moved += 1;
+          }
+        }
+
+        if (!moved) break;
+      }
+    }
+
+    function majoritySmoothAssignments({
+      assignments,
+      targetRepNames,
+      workingAccounts,
+      minStops,
+      maxStops,
+      accountLookup,
+      neighborLookup,
+      continuityWeight,
+      geographyWeight,
+      balanceMode,
+      passes = 3
+    }) {
+      for (let pass = 0; pass < passes; pass += 1) {
+        const { countMap, revenueMap } = buildRepLoadMaps(assignments, targetRepNames, workingAccounts);
+        const centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
+        let moved = 0;
+
+        const candidates = workingAccounts
+          .filter(a => !a.protected)
+          .map(account => {
+            const currentRep = assignments.get(account._id);
+            const info = getNeighborInfo(account._id, assignments, accountLookup, neighborLookup);
+            return { account, currentRep, info };
+          })
+          .sort((a, b) => (b.info.inner.dominantShare - a.info.inner.dominantShare));
+
+        for (const item of candidates) {
+          const { account, currentRep, info } = item;
+          const candidateRep = info.inner.dominantRep;
+
+          if (!candidateRep || candidateRep === currentRep) continue;
+          if (info.inner.dominantShare < 0.67) continue;
+          if ((countMap.get(currentRep) || 0) - 1 < minStops) continue;
+          if ((countMap.get(candidateRep) || 0) + 1 > maxStops) continue;
+
+          const currentScore = scoreRepAssignment({
+            account, candidateRep: currentRep, currentRep, assignments, targetRepNames,
+            centroids, countMap, revenueMap, accountLookup, neighborLookup,
+            continuityWeight, geographyWeight, balanceMode, minStops, maxStops
+          });
+
+          const candidateScore = scoreRepAssignment({
+            account, candidateRep, currentRep, assignments, targetRepNames,
+            centroids, countMap, revenueMap, accountLookup, neighborLookup,
+            continuityWeight, geographyWeight, balanceMode, minStops, maxStops
+          });
+
+          if (candidateScore + 0.5 < currentScore) {
             assignments.set(account._id, candidateRep);
             countMap.set(currentRep, countMap.get(currentRep) - 1);
             countMap.set(candidateRep, (countMap.get(candidateRep) || 0) + 1);
@@ -2247,57 +2240,26 @@
 
           for (const account of workingAccounts) {
             if (account.protected) continue;
-
             const fromRep = assignments.get(account._id);
             if (fromRep === needyRep) continue;
             if ((countMap.get(fromRep) || 0) - 1 < minStops) continue;
             if ((countMap.get(needyRep) || 0) + 1 > maxStops) continue;
 
             const currentScore = scoreRepAssignment({
-              account,
-              candidateRep: fromRep,
-              currentRep: fromRep,
-              assignments,
-              targetRepNames,
-              centroids,
-              countMap,
-              revenueMap,
-              accountLookup,
-              neighborLookup,
-              continuityWeight,
-              geographyWeight,
-              balanceMode,
-              minStops,
-              maxStops
+              account, candidateRep: fromRep, currentRep: fromRep, assignments, targetRepNames,
+              centroids, countMap, revenueMap, accountLookup, neighborLookup,
+              continuityWeight, geographyWeight, balanceMode, minStops, maxStops
             });
 
             const nextScore = scoreRepAssignment({
-              account,
-              candidateRep: needyRep,
-              currentRep: fromRep,
-              assignments,
-              targetRepNames,
-              centroids,
-              countMap,
-              revenueMap,
-              accountLookup,
-              neighborLookup,
-              continuityWeight,
-              geographyWeight,
-              balanceMode,
-              minStops,
-              maxStops
+              account, candidateRep: needyRep, currentRep: fromRep, assignments, targetRepNames,
+              centroids, countMap, revenueMap, accountLookup, neighborLookup,
+              continuityWeight, geographyWeight, balanceMode, minStops, maxStops
             });
 
             const penalty = nextScore - currentScore;
-
             if (!bestMove || penalty < bestMove.penalty) {
-              bestMove = {
-                accountId: account._id,
-                fromRep,
-                toRep: needyRep,
-                penalty
-              };
+              bestMove = { accountId: account._id, fromRep, toRep: needyRep, penalty };
             }
           }
 
@@ -2342,50 +2304,20 @@
               if ((countMap.get(donorRep) || 0) - 1 < minStops) continue;
 
               const currentScore = scoreRepAssignment({
-                account,
-                candidateRep: donorRep,
-                currentRep: donorRep,
-                assignments,
-                targetRepNames,
-                centroids,
-                countMap,
-                revenueMap,
-                accountLookup,
-                neighborLookup,
-                continuityWeight,
-                geographyWeight,
-                balanceMode,
-                minStops,
-                maxStops
+                account, candidateRep: donorRep, currentRep: donorRep, assignments, targetRepNames,
+                centroids, countMap, revenueMap, accountLookup, neighborLookup,
+                continuityWeight, geographyWeight, balanceMode, minStops, maxStops
               });
 
               const nextScore = scoreRepAssignment({
-                account,
-                candidateRep: targetRep,
-                currentRep: donorRep,
-                assignments,
-                targetRepNames,
-                centroids,
-                countMap,
-                revenueMap,
-                accountLookup,
-                neighborLookup,
-                continuityWeight,
-                geographyWeight,
-                balanceMode,
-                minStops,
-                maxStops
+                account, candidateRep: targetRep, currentRep: donorRep, assignments, targetRepNames,
+                centroids, countMap, revenueMap, accountLookup, neighborLookup,
+                continuityWeight, geographyWeight, balanceMode, minStops, maxStops
               });
 
               const penalty = nextScore - currentScore;
-
               if (!bestMove || penalty < bestMove.penalty) {
-                bestMove = {
-                  accountId: account._id,
-                  fromRep: donorRep,
-                  toRep: targetRep,
-                  penalty
-                };
+                bestMove = { accountId: account._id, fromRep: donorRep, toRep: targetRep, penalty };
               }
             }
           }
@@ -2405,7 +2337,6 @@
 
       for (const rep of targetRepNames) {
         const members = workingAccounts.filter(a => (assignments.get(a._id) || a.assignedRep) === rep);
-
         if (members.length) {
           centroids.set(rep, {
             lat: avg(members.map(a => a.latitude)),
@@ -2427,9 +2358,7 @@
 
     function buildTargetRepNames(targetCount, currentReps) {
       const reps = [...currentReps];
-      while (reps.length < targetCount) {
-        reps.push(`Rep ${reps.length + 1}`);
-      }
+      while (reps.length < targetCount) reps.push(`Rep ${reps.length + 1}`);
       if (reps.length > targetCount) return reps.slice(0, targetCount);
       return reps.length ? reps : ['Rep 1'];
     }
@@ -2442,31 +2371,23 @@
 
       reps.forEach(rep => {
         const members = getFilteredAccounts().filter(a => a.assignedRep === rep);
-
         if (members.length < 3) return;
 
         const points = members.map(a => [a.longitude, a.latitude]);
         const featureCollection = turf.featureCollection(points.map(p => turf.point(p)));
 
         let hull = null;
-        try {
-          hull = turf.convex(featureCollection);
-        } catch (e) {
-          hull = null;
-        }
-
+        try { hull = turf.convex(featureCollection); } catch (e) { hull = null; }
         if (!hull) return;
 
         const coords = hull.geometry.coordinates[0].map(([lng, lat]) => [lat, lng]);
-        const poly = L.polygon(coords, {
+        L.polygon(coords, {
           color: state.repColors.get(rep) || '#666',
           weight: 2,
           fillOpacity: 0.06,
           opacity: 0.7,
           interactive: false
-        });
-
-        poly.addTo(state.territoryLayer);
+        }).addTo(state.territoryLayer);
       });
     }
 
@@ -2483,9 +2404,7 @@
 
       for (const account of accounts) {
         const assigned = resolver(account);
-        if (!map.has(assigned)) {
-          map.set(assigned, emptyRepSummary(assigned));
-        }
+        if (!map.has(assigned)) map.set(assigned, emptyRepSummary(assigned));
 
         const row = map.get(assigned);
         row.stops += 1;
@@ -2510,8 +2429,7 @@
         }
       }
 
-      const rows = [...map.values()]
-        .filter(r => r.stops > 0)
+      const rows = [...map.values()].filter(r => r.stops > 0)
         .sort((a, b) => a.rep.localeCompare(b.rep, undefined, { numeric: true }));
 
       rows.forEach(r => {
@@ -2632,8 +2550,7 @@
     function fitMapToAccounts() {
       const accounts = getFilteredAccounts().length ? getFilteredAccounts() : state.accounts;
       if (!accounts.length) return;
-      const latlngs = accounts.map(a => [a.latitude, a.longitude]);
-      state.map.fitBounds(latlngs, { padding: [25, 25] });
+      state.map.fitBounds(accounts.map(a => [a.latitude, a.longitude]), { padding: [25, 25] });
     }
 
     function zoomToRep(rep) {
@@ -2658,9 +2575,7 @@
     }
 
     function enableTopControls() {
-      [els.sheetSelect, els.loadSheetBtn].forEach(el => {
-        el.disabled = false;
-      });
+      [els.sheetSelect, els.loadSheetBtn].forEach(el => { el.disabled = false; });
     }
 
     function getAllReps() {
@@ -2682,13 +2597,9 @@
       const protectedFilter = els.protectedFilter?.value || 'ALL';
       const movedFilter = els.movedFilter?.value || 'ALL';
 
-      const repSelections = state.filterSelections.rep;
-      const rankSelections = state.filterSelections.rank;
-      const chainSelections = state.filterSelections.chain;
-
-      if (repSelections.size > 0 && !repSelections.has(account.assignedRep)) return false;
-      if (rankSelections.size > 0 && !rankSelections.has(account.rank)) return false;
-      if (chainSelections.size > 0 && !chainSelections.has(account.chain || '')) return false;
+      if (state.filterSelections.rep.size > 0 && !state.filterSelections.rep.has(account.assignedRep)) return false;
+      if (state.filterSelections.rank.size > 0 && !state.filterSelections.rank.has(account.rank)) return false;
+      if (state.filterSelections.chain.size > 0 && !state.filterSelections.chain.has(account.chain || '')) return false;
 
       if (segmentFilter !== 'ALL' && (account.segment || '') !== segmentFilter) return false;
       if (premiseFilter !== 'ALL' && (account.premise || '') !== premiseFilter) return false;
@@ -2705,9 +2616,7 @@
 
     function fillSelect(selectEl, values, selectedValue, labelFn = v => v) {
       selectEl.innerHTML = values.map(v => `<option value="${escapeHtmlAttr(v)}">${escapeHtml(labelFn(v))}</option>`).join('');
-      if (selectedValue && values.includes(selectedValue)) {
-        selectEl.value = selectedValue;
-      }
+      if (selectedValue && values.includes(selectedValue)) selectEl.value = selectedValue;
     }
 
     function findBestHeaderMatch(headers, aliases) {
@@ -2720,7 +2629,6 @@
 
         for (const alias of aliases) {
           const a = cleanHeader(alias);
-
           let score = 0;
 
           if (h === a) score = 100;
@@ -2749,12 +2657,10 @@
     function countAssignments(assignments, reps, workingAccounts) {
       const counts = new Map();
       reps.forEach(rep => counts.set(rep, 0));
-
       for (const account of workingAccounts) {
         const rep = assignments.get(account._id) || account.assignedRep;
         counts.set(rep, (counts.get(rep) || 0) + 1);
       }
-
       return counts;
     }
 
@@ -2796,8 +2702,7 @@
 
     function normalizeRank(rankValue) {
       const raw = safeString(rankValue).toUpperCase();
-      if (['A','B','C','D'].includes(raw)) return raw;
-      return 'C';
+      return ['A','B','C','D'].includes(raw) ? raw : 'C';
     }
 
     function formatCurrency(value) {
@@ -2816,16 +2721,6 @@
       const dx = lng1 - lng2;
       const dy = lat1 - lat2;
       return dx * dx + dy * dy;
-    }
-
-    function groupBy(arr, fn) {
-      const map = new Map();
-      arr.forEach(item => {
-        const key = fn(item);
-        if (!map.has(key)) map.set(key, []);
-        map.get(key).push(item);
-      });
-      return map;
     }
 
     function round2(v) {
