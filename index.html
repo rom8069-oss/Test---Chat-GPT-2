@@ -1,842 +1,838 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Territory Planning & Optimization Tool</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Territory Planning &amp; Optimization Tool</title>
 
-  <link rel="preconnect" href="https://unpkg.com" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 
   <style>
-    :root {
-      --bg: #eef2f7;
-      --panel: rgba(255,255,255,0.95);
-      --panel-solid: #ffffff;
-      --text: #17324d;
-      --muted: #61788e;
-      --border: #d6e0ea;
-      --shadow: 0 10px 28px rgba(18, 38, 63, 0.10);
-      --primary: #204d8d;
-      --accent: #0c9f7a;
-      --row-hover: #f2f7fd;
-      --moved: #8b5cf6;
-      --good: #0f8a62;
-      --bad: #c24b4b;
-      --flat: #61788e;
-    }
-
-    * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; }
-
-    body {
-      font-family: "Tw Cen MT", "Trebuchet MS", Arial, sans-serif;
-      background: linear-gradient(180deg, #f4f7fb 0%, #ecf2f9 100%);
-      color: var(--text);
-    }
-
-    button, input, select { font: inherit; }
-
-    #app {
-      height: 100vh;
-      display: grid;
-      grid-template-rows: auto auto auto 1fr;
-      gap: 10px;
-      padding: 10px;
-    }
-
-    .toolbar,
-    .controls-strip,
-    .summary-strip,
-    .panel {
-      background: var(--panel);
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      box-shadow: var(--shadow);
-    }
-
-    .toolbar {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 14px;
-    }
-
-    .toolbar-left,
-    .toolbar-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .brand-title {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: 0.2px;
-      line-height: 1.1;
-    }
-
-    .controls-strip {
-      padding: 10px 14px;
-      overflow: visible;
-      position: relative;
-      z-index: 20;
-    }
-
-    .controls-scroll {
-      overflow-x: auto;
-      overflow-y: hidden;
-      white-space: nowrap;
-      padding-bottom: 2px;
-    }
-
-    .controls-row {
-      display: inline-flex;
-      flex-wrap: nowrap;
-      gap: 12px;
-      align-items: end;
-      min-width: max-content;
-    }
-
-    .control-group {
-      display: inline-flex;
-      flex-direction: column;
-      gap: 5px;
-      min-width: 132px;
-      flex: 0 0 auto;
-      position: relative;
-    }
-
-    .control-group.compact { min-width: 116px; }
-    .control-group.slider-group { min-width: 180px; }
-
-    .control-group label {
-      font-size: 12px;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .summary-strip {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(110px, 1fr));
-      gap: 10px;
-      padding: 10px;
-    }
-
-    .summary-card {
-      background: var(--panel-solid);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 10px 12px;
-    }
-
-    .summary-label {
-      font-size: 12px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-
-    .summary-value {
-      margin-top: 4px;
-      font-size: 24px;
-      font-weight: 700;
-    }
-
-    .main-layout {
-      min-height: 0;
-      display: grid;
-      grid-template-columns: minmax(0, 1.72fr) minmax(660px, 1fr);
-      gap: 10px;
-    }
-
-    .panel {
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .panel-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: start;
-      gap: 10px;
-      padding: 12px 14px 10px;
-      border-bottom: 1px solid var(--border);
-    }
+    :root{
+      --bg:#e9eff5;
+      --panel:#ffffff;
+      --panel-soft:#f7fbff;
+      --border:#cfd9e5;
+      --border-soft:#dde7f1;
+      --text:#29415b;
+      --muted:#72879d;
+      --primary:#3067d6;
+      --primary-soft:#8eaee6;
+      --green:#16a272;
+      --shadow:0 4px 14px rgba(35,67,106,.07);
+      --radius:18px;
+      --radius-sm:12px;
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:"Tw Cen MT","Trebuchet MS","Segoe UI",Arial,sans-serif;
+      overflow:hidden;
+    }
+
+    button,input,select,textarea{
+      font-family:"Tw Cen MT","Trebuchet MS","Segoe UI",Arial,sans-serif;
+    }
+
+    .app{
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding:10px;
+    }
+
+    .topbar{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      padding:10px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      flex:0 0 auto;
+    }
+
+    .title{
+      font-size:19px;
+      font-weight:800;
+      letter-spacing:.2px;
+      white-space:nowrap;
+      padding-left:2px;
+    }
+
+    .topbar-actions{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .btn,.input,.file-label{
+      height:34px;
+      border:1px solid #c8d4e1;
+      border-radius:12px;
+      background:#fff;
+      color:var(--text);
+      padding:0 12px;
+      font-size:13px;
+      font-weight:700;
+      outline:none;
+    }
+
+    .btn{
+      cursor:pointer;
+      transition:.15s ease;
+      white-space:nowrap;
+    }
+
+    .btn:hover:not(:disabled){ transform:translateY(-1px); }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
+
+    .btn-primary{
+      background:var(--primary-soft);
+      color:#fff;
+      border-color:transparent;
+    }
+
+    .btn-green{
+      background:var(--green);
+      color:#fff;
+      border-color:transparent;
+    }
+
+    .btn-subtle{
+      background:#fff;
+    }
+
+    .file-label{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      min-width:max-content;
+    }
+
+    input[type="file"]{ display:none; }
+
+    .controls-card{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      padding:10px 12px;
+      flex:0 0 auto;
+      position:relative;
+      overflow:visible;
+      z-index:30;
+    }
+
+    .controls-grid{
+      display:grid;
+      grid-template-columns:
+        minmax(170px,1.2fr)
+        minmax(105px,.8fr)
+        minmax(105px,.8fr)
+        minmax(105px,.82fr)
+        minmax(120px,.9fr)
+        minmax(110px,.82fr)
+        minmax(120px,.82fr)
+        minmax(120px,.82fr)
+        minmax(95px,.7fr)
+        minmax(95px,.7fr)
+        minmax(95px,.7fr)
+        minmax(105px,.75fr)
+        minmax(170px,1fr);
+      gap:10px;
+      align-items:end;
+      overflow:visible;
+    }
+
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:5px;
+      min-width:0;
+      position:relative;
+      overflow:visible;
+    }
+
+    .field label{
+      font-size:11px;
+      color:var(--muted);
+      font-weight:700;
+      white-space:nowrap;
+      padding-left:2px;
+    }
+
+    .field select,
+    .field input,
+    .multi-trigger{
+      width:100%;
+      height:40px;
+      border:1px solid #c8d4e1;
+      border-radius:12px;
+      background:#fff;
+      color:var(--text);
+      padding:0 12px;
+      font-size:13px;
+      font-weight:700;
+      min-width:0;
+    }
+
+    .field select{
+      appearance:auto;
+    }
+
+    .range-wrap{
+      height:40px;
+      display:flex;
+      align-items:center;
+      padding:0 2px 0 0;
+    }
+
+    .range-wrap input[type="range"]{
+      width:100%;
+    }
+
+    .stats{
+      display:grid;
+      grid-template-columns:repeat(7,minmax(0,1fr));
+      gap:10px;
+      flex:0 0 auto;
+    }
+
+    .stat{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:16px;
+      box-shadow:var(--shadow);
+      padding:12px 14px;
+      min-height:74px;
+    }
+
+    .stat .k{
+      color:var(--muted);
+      font-size:11px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.35px;
+    }
+
+    .stat .v{
+      margin-top:5px;
+      font-size:20px;
+      font-weight:800;
+    }
+
+    .main{
+      flex:1 1 auto;
+      min-height:0;
+      display:grid;
+      grid-template-columns:minmax(0,1.72fr) minmax(500px,.98fr);
+      gap:10px;
+    }
+
+    .card{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      min-height:0;
+      overflow:hidden;
+    }
+
+    .map-card{
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+    }
+
+    .card-head{
+      padding:10px 12px 8px;
+      border-bottom:1px solid var(--border-soft);
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .card-title{
+      font-size:15px;
+      font-weight:800;
+      line-height:1.1;
+    }
+
+    .card-sub{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:3px;
+    }
 
-    .panel-title {
-      font-size: 18px;
-      font-weight: 700;
-      line-height: 1.1;
+    .map-actions{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      padding-top:2px;
+    }
+
+    .inline-check{
+      display:inline-flex;
+      align-items:center;
+      gap:5px;
+      font-size:12px;
+      color:var(--text);
+      white-space:nowrap;
+    }
+
+    #map{
+      width:100%;
+      min-height:420px;
+      flex:1 1 auto;
     }
 
-    .panel-title.small { font-size: 16px; }
-
-    .panel-subtitle {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 2px;
-      line-height: 1.2;
-    }
-
-    .sidebar-header { align-items: center; }
-
-    .last-action {
-      font-size: 12px;
-      color: var(--muted);
-      text-align: right;
-      white-space: nowrap;
-    }
-
-    .map-header-right {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
-    .map-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-right: 4px;
-    }
-
-    .map-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .map-toggle input { margin: 0; }
-
-    #map {
-      flex: 1;
-      min-height: 420px;
-    }
-
-    .file-btn,
-    .btn,
-    select,
-    input[type="number"] {
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--panel-solid);
-      color: var(--text);
-    }
-
-    .file-btn,
-    .btn {
-      padding: 8px 12px;
-      cursor: pointer;
-      transition: transform 0.12s ease, background 0.18s ease, border-color 0.18s ease;
-      font-size: 14px;
+    .side{
+      min-height:0;
+      display:grid;
+      grid-template-rows:minmax(300px, 62%) minmax(170px, 38%);
+      gap:10px;
     }
 
-    .file-btn:hover,
-    .btn:hover:not(:disabled) {
-      transform: translateY(-1px);
-      border-color: #b7c9d9;
+    .table-wrap{
+      height:100%;
+      min-height:0;
+      overflow:auto;
     }
 
-    .file-btn input { display: none; }
-
-    .btn-primary {
-      background: linear-gradient(180deg, #2d6dcc 0%, #245fb7 100%);
-      color: #fff;
-      border-color: #245fb7;
-    }
-
-    .btn-accent {
-      background: linear-gradient(180deg, #15a985 0%, #0e9372 100%);
-      color: #fff;
-      border-color: #0e9372;
-    }
-
-    .btn-small {
-      padding: 7px 10px;
-      font-size: 12px;
-    }
-
-    .btn:disabled,
-    select:disabled,
-    input:disabled,
-    .multi-select.disabled .multi-select-button {
-      opacity: 0.55;
-      cursor: not-allowed;
+    table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:960px;
     }
 
-    select,
-    input[type="number"] {
-      padding: 9px 11px;
-      min-height: 40px;
-      font-size: 14px;
+    thead th{
+      position:sticky;
+      top:0;
+      z-index:2;
+      background:#f7fbff;
+      color:var(--muted);
+      font-size:12px;
+      font-weight:800;
+      text-align:left;
+      padding:10px 8px;
+      border-bottom:1px solid var(--border);
+      white-space:nowrap;
     }
-
-    input[type="range"] { width: 100%; }
 
-    .multi-select {
-      position: relative;
-      min-width: 100%;
+    tbody td{
+      padding:9px 8px;
+      border-bottom:1px solid #edf2f7;
+      font-size:13px;
+      white-space:nowrap;
+      vertical-align:middle;
     }
 
-    .multi-select-button {
-      width: 100%;
-      min-height: 40px;
-      padding: 9px 34px 9px 11px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--panel-solid);
-      color: var(--text);
-      text-align: left;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      cursor: pointer;
-      position: relative;
-      font-size: 13px;
-      line-height: 1.2;
-      font-weight: 400;
+    tbody tr:hover{
+      background:#fafcff;
     }
 
-    .multi-select-button::after {
-      content: "▾";
-      position: absolute;
-      right: 11px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--muted);
-      font-size: 11px;
-      pointer-events: none;
+    .rep-cell{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-weight:700;
     }
 
-    .multi-select.open .multi-select-button {
-      border-color: #b7c9d9;
-      box-shadow: 0 0 0 3px rgba(45,109,204,0.08);
+    .color-dot{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      display:inline-block;
+      flex:0 0 auto;
     }
 
-    .floating-panel {
-      position: fixed;
-      min-width: 220px;
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      box-shadow: 0 18px 32px rgba(18, 38, 63, 0.16);
-      z-index: 5000;
-      display: none;
-      overflow: hidden;
+    .selected-card{
+      display:flex;
+      flex-direction:column;
+      min-height:0;
     }
 
-    .floating-panel.open {
-      display: block;
+    .selected-head{
+      padding:10px 12px;
+      border-bottom:1px solid var(--border-soft);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
     }
 
-    .multi-select-actions {
-      display: flex;
-      gap: 8px;
-      padding: 10px;
-      border-bottom: 1px solid #edf2f7;
-      background: #f8fbff;
+    .selected-list{
+      padding:10px;
+      overflow:auto;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
     }
 
-    .multi-select-link {
-      border: 0;
-      background: transparent;
-      color: var(--primary);
-      font-size: 12px;
-      padding: 0;
-      cursor: pointer;
+    .selected-item{
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+      padding:10px 12px;
     }
 
-    .multi-select-options {
-      max-height: 240px;
-      overflow: auto;
-      padding: 8px 0;
+    .selected-item-title{
+      font-size:14px;
+      font-weight:800;
+      margin-bottom:3px;
+      line-height:1.2;
     }
 
-    .multi-select-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      font-size: 12px;
-      color: var(--text);
-      cursor: pointer;
-      white-space: normal;
-      line-height: 1.25;
+    .selected-item-meta{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.28;
     }
 
-    .multi-select-option:hover {
-      background: #f6f9fc;
+    .moved-review{
+      border-top:1px solid var(--border-soft);
+      padding:10px 12px;
+      background:#fbfdff;
     }
 
-    .multi-select-option input {
-      margin: 0;
-      cursor: pointer;
+    .moved-review-head{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:8px;
     }
 
-    .table-wrap {
-      flex: 1;
-      min-height: 220px;
-      overflow: auto;
+    .moved-review-title{
+      font-size:14px;
+      font-weight:800;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
+    .moved-review-sub{
+      color:var(--muted);
+      font-size:12px;
     }
 
-    thead th {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      background: #f8fbff;
-      color: var(--muted);
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      padding: 10px 8px;
-      white-space: nowrap;
+    .moved-review-list{
+      max-height:135px;
+      overflow:auto;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
     }
 
-    tbody td {
-      border-bottom: 1px solid #edf2f7;
-      padding: 9px 8px;
-      white-space: nowrap;
+    .moved-item{
+      border:1px solid var(--border);
+      background:#fff;
+      border-radius:10px;
+      padding:8px 10px;
+      font-size:12px;
+      line-height:1.25;
     }
 
-    tbody tr:hover { background: var(--row-hover); }
-    tbody tr.rep-focus-row { background: rgba(45,109,204,0.08); }
+    .empty{
+      color:var(--muted);
+      padding:14px;
+      font-size:13px;
+    }
 
-    .rep-cell {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: 700;
-    }
-
-    .color-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      display: inline-block;
-      border: 1px solid rgba(0,0,0,0.15);
-    }
+    .num-pos{ color:#17a564; font-weight:800; }
+    .num-neg{ color:#d84b4b; font-weight:800; }
+    .num-zero{ color:var(--muted); font-weight:700; }
 
-    .empty-state {
-      text-align: center;
-      color: var(--muted);
-      padding: 24px 12px !important;
-    }
+    .small{ font-size:12px; }
+    .muted{ color:var(--muted); }
 
-    .sidebar-sections {
-      border-top: 1px solid var(--border);
-      display: grid;
-      grid-template-rows: auto auto;
-      min-height: 0;
-      overflow: auto;
+    .multi{
+      position:relative;
+      overflow:visible;
     }
 
-    .data-preview,
-    .moved-review {
-      padding: 12px 14px 14px;
-      background: rgba(247, 250, 253, 0.7);
+    .multi-trigger{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      cursor:pointer;
+      user-select:none;
+    }
+
+    .multi-trigger-text{
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
     }
-
-    .moved-review {
-      border-top: 1px solid var(--border);
+
+    .multi-panel{
+      position:absolute;
+      top:calc(100% + 6px);
+      left:0;
+      width:max(240px,100%);
+      max-width:360px;
+      max-height:320px;
+      display:none;
+      flex-direction:column;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:14px;
+      box-shadow:0 16px 34px rgba(25,56,93,.18);
+      z-index:9999;
+      overflow:hidden;
     }
 
-    .preview-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
+    .multi.open .multi-panel{
+      display:flex;
     }
 
-    .selection-preview,
-    .moved-preview {
-      max-height: 220px;
-      overflow: auto;
-      display: grid;
-      gap: 8px;
+    .multi-actions{
+      padding:8px 10px;
+      border-bottom:1px solid var(--border-soft);
+      display:flex;
+      gap:8px;
+      align-items:center;
+      background:#fbfdff;
     }
 
-    .preview-item,
-    .moved-item {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 9px 10px;
-      background: #fff;
+    .mini-btn{
+      border:1px solid var(--border);
+      background:#fff;
+      color:var(--text);
+      border-radius:9px;
+      padding:6px 9px;
+      font-size:12px;
+      font-weight:800;
+      cursor:pointer;
+      white-space:nowrap;
     }
 
-    .preview-title,
-    .moved-title {
-      font-size: 14px;
-      font-weight: 700;
+    .multi-search{
+      flex:1 1 auto;
+      min-width:0;
+      height:30px;
+      border:1px solid var(--border);
+      border-radius:9px;
+      padding:0 10px;
+      font-size:12px;
     }
 
-    .preview-meta,
-    .moved-meta {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 3px;
+    .multi-list{
+      overflow:auto;
+      max-height:268px;
+      padding:6px;
+      display:flex;
+      flex-direction:column;
+      gap:3px;
     }
 
-    .moved-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 11px;
-      background: rgba(139, 92, 246, 0.10);
-      color: var(--moved);
-      border: 1px solid rgba(139, 92, 246, 0.18);
-      margin-top: 6px;
+    .multi-item{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 8px;
+      border-radius:9px;
+      cursor:pointer;
+      font-size:13px;
+      user-select:none;
     }
-
-    .delta-pos { color: var(--good); font-weight: 700; }
-    .delta-neg { color: var(--bad); font-weight: 700; }
-    .delta-flat { color: var(--flat); font-weight: 700; }
 
-    .toast {
-      position: absolute;
-      left: 18px;
-      bottom: 18px;
-      z-index: 1000;
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: rgba(19, 34, 54, 0.92);
-      color: #fff;
-      font-size: 13px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.22);
-      opacity: 0;
-      pointer-events: none;
-      transform: translateY(6px);
-      transition: opacity 0.18s ease, transform 0.18s ease;
+    .multi-item:hover{
+      background:#f5f9fd;
     }
 
-    .toast.show {
-      opacity: 1;
-      transform: translateY(0);
+    .multi-item input{
+      margin:0;
     }
 
-    .map-panel { position: relative; }
-
-    .leaflet-popup-content-wrapper,
-    .leaflet-popup-tip {
-      border-radius: 14px;
+    .toast{
+      position:fixed;
+      left:50%;
+      bottom:16px;
+      transform:translateX(-50%) translateY(20px);
+      opacity:0;
+      pointer-events:none;
+      transition:.2s ease;
+      background:#1f3651;
+      color:#fff;
+      border-radius:12px;
+      padding:10px 14px;
+      font-size:13px;
+      font-weight:700;
+      z-index:10000;
+      box-shadow:0 14px 30px rgba(0,0,0,.2);
     }
 
-    .leaflet-container {
-      font-family: "Tw Cen MT", "Trebuchet MS", Arial, sans-serif;
+    .toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(0);
     }
-
-    @media (max-width: 1450px) {
-      .summary-strip {
-        grid-template-columns: repeat(3, minmax(110px, 1fr));
-      }
-
-      .main-layout {
-        grid-template-columns: 1fr;
-      }
 
-      .sidebar { min-height: 700px; }
+    .leaflet-container{
+      font-family:"Tw Cen MT","Trebuchet MS","Segoe UI",Arial,sans-serif;
     }
 
-    @media (max-width: 900px) {
-      #app { height: auto; min-height: 100vh; }
-      .toolbar { flex-direction: column; align-items: stretch; }
-      .toolbar-right { justify-content: flex-start; }
-      .summary-strip { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
-      .panel-header { flex-direction: column; align-items: stretch; }
-      .map-header-right { justify-content: flex-start; }
-      .map-actions { margin-right: 0; }
+    @media (max-width:1500px){
+      body{ overflow:auto; }
+      .app{ height:auto; min-height:100%; }
+      .controls-grid{ grid-template-columns:repeat(6,minmax(0,1fr)); }
+      .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
+      .main{ grid-template-columns:1fr; }
+      .side{ grid-template-rows:minmax(280px,340px) minmax(220px,1fr); }
     }
   </style>
 </head>
 <body>
-  <div id="app">
-    <header class="toolbar">
-      <div class="toolbar-left">
-        <div class="brand-block">
-          <div class="brand-title">Territory Planning & Optimization Tool</div>
+  <div class="app">
+    <div class="topbar">
+      <div class="title">Territory Planning &amp; Optimization Tool</div>
+      <div class="topbar-actions">
+        <label class="file-label" for="file-input">Upload Excel / CSV</label>
+        <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
+        <select id="sheet-select" class="input" disabled></select>
+        <button id="load-sheet-btn" class="btn btn-subtle" disabled>Load Sheet</button>
+        <button id="undo-btn" class="btn btn-subtle" disabled>Undo</button>
+        <button id="reset-btn" class="btn btn-subtle" disabled>Reset All</button>
+        <button id="export-btn" class="btn btn-subtle" disabled>Export Excel</button>
+      </div>
+    </div>
+
+    <div class="controls-card">
+      <div class="controls-grid">
+        <div class="field">
+          <label>Assign selected to</label>
+          <select id="assign-rep-select"></select>
         </div>
-      </div>
 
-      <div class="toolbar-right">
-        <label class="file-btn">
-          <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
-          <span>Upload Excel / CSV</span>
-        </label>
-
-        <select id="sheet-select" title="Workbook sheet" disabled>
-          <option value="">Sheet</option>
-        </select>
-
-        <button id="load-sheet-btn" class="btn">Load Sheet</button>
-        <button id="undo-btn" class="btn" disabled>Undo</button>
-        <button id="reset-btn" class="btn" disabled>Reset All</button>
-        <button id="export-btn" class="btn" disabled>Export Excel</button>
-      </div>
-    </header>
-
-    <section class="controls-strip">
-      <div class="controls-scroll">
-        <div class="controls-row">
-          <div class="control-group compact">
-            <label for="assign-rep-select">Assign selected to</label>
-            <select id="assign-rep-select" disabled></select>
+        <div class="field multi" id="rep-filter-wrap">
+          <label>Rep filter</label>
+          <div class="multi-trigger" data-multi-trigger="rep">
+            <span class="multi-trigger-text" id="rep-filter-summary">All reps</span>
+            <span>▾</span>
           </div>
-
-          <div class="control-group compact">
-            <label>Rep filter</label>
-            <div id="rep-filter-wrap" class="multi-select disabled">
-              <button id="rep-filter-btn" type="button" class="multi-select-button" disabled>All reps</button>
+          <div class="multi-panel" data-multi-panel="rep">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="rep">Select All</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="rep" />
             </div>
-          </div>
-
-          <div class="control-group compact">
-            <label>Rank filter</label>
-            <div id="rank-filter-wrap" class="multi-select disabled">
-              <button id="rank-filter-btn" type="button" class="multi-select-button" disabled>All ranks</button>
-            </div>
-          </div>
-
-          <div class="control-group compact">
-            <label>Chain filter</label>
-            <div id="chain-filter-wrap" class="multi-select disabled">
-              <button id="chain-filter-btn" type="button" class="multi-select-button" disabled>All chains</button>
-            </div>
-          </div>
-
-          <div class="control-group compact">
-            <label for="segment-filter">Segment filter</label>
-            <select id="segment-filter" disabled>
-              <option value="ALL">All segments</option>
-            </select>
-          </div>
-
-          <div class="control-group compact">
-            <label for="premise-filter">Premise filter</label>
-            <select id="premise-filter" disabled>
-              <option value="ALL">All premises</option>
-            </select>
-          </div>
-
-          <div class="control-group compact">
-            <label for="protected-filter">Protected filter</label>
-            <select id="protected-filter" disabled>
-              <option value="ALL">All</option>
-              <option value="PROTECTED_ONLY">Protected only</option>
-              <option value="UNPROTECTED_ONLY">Unprotected only</option>
-            </select>
-          </div>
-
-          <div class="control-group compact">
-            <label for="moved-filter">Moved filter</label>
-            <select id="moved-filter" disabled>
-              <option value="ALL">All</option>
-              <option value="MOVED_ONLY">Moved only</option>
-              <option value="UNCHANGED_ONLY">Unchanged only</option>
-            </select>
-          </div>
-
-          <div class="control-group compact">
-            <label for="rep-count-input">Target rep count</label>
-            <input id="rep-count-input" type="number" min="1" max="100" step="1" value="16" disabled />
-          </div>
-
-          <div class="control-group compact">
-            <label for="min-stops-input">Minimum stops / rep</label>
-            <input id="min-stops-input" type="number" min="1" max="10000" step="1" value="100" disabled />
-          </div>
-
-          <div class="control-group compact">
-            <label for="max-stops-input">Maximum stops / rep</label>
-            <input id="max-stops-input" type="number" min="1" max="10000" step="1" value="200" disabled />
-          </div>
-
-          <div class="control-group compact">
-            <label for="balance-mode">Optimize by</label>
-            <select id="balance-mode" disabled>
-              <option value="hybrid">Hybrid</option>
-              <option value="stops">Stops</option>
-              <option value="revenue">Revenue</option>
-            </select>
-          </div>
-
-          <div class="control-group slider-group">
-            <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
-            <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
+            <div class="multi-list" id="rep-filter-options"></div>
           </div>
         </div>
-      </div>
-    </section>
 
-    <section class="summary-strip">
-      <div class="summary-card">
-        <div class="summary-label">Accounts</div>
-        <div class="summary-value" id="global-accounts">0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Revenue</div>
-        <div class="summary-value" id="global-revenue">$0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Protected</div>
-        <div class="summary-value" id="global-protected">0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Moved</div>
-        <div class="summary-value" id="global-moved">0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Unchanged</div>
-        <div class="summary-value" id="global-unchanged">0%</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Avg Weekly Stops</div>
-        <div class="summary-value" id="global-workload">0.0</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">Selection</div>
-        <div class="summary-value" id="selection-count">0</div>
-      </div>
-    </section>
+        <div class="field multi" id="rank-filter-wrap">
+          <label>Rank filter</label>
+          <div class="multi-trigger" data-multi-trigger="rank">
+            <span class="multi-trigger-text" id="rank-filter-summary">All ranks</span>
+            <span>▾</span>
+          </div>
+          <div class="multi-panel" data-multi-panel="rank">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="rank">Select All</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="rank" />
+            </div>
+            <div class="multi-list" id="rank-filter-options"></div>
+          </div>
+        </div>
 
-    <main class="main-layout">
-      <section class="map-panel panel">
-        <div class="panel-header">
+        <div class="field multi" id="chain-filter-wrap">
+          <label>Chain filter</label>
+          <div class="multi-trigger" data-multi-trigger="chain">
+            <span class="multi-trigger-text" id="chain-filter-summary">All chains</span>
+            <span>▾</span>
+          </div>
+          <div class="multi-panel" data-multi-panel="chain">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="chain">Select All</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="chain" />
+            </div>
+            <div class="multi-list" id="chain-filter-options"></div>
+          </div>
+        </div>
+
+        <div class="field multi" id="segment-filter-wrap">
+          <label>Segment filter</label>
+          <div class="multi-trigger" data-multi-trigger="segment">
+            <span class="multi-trigger-text" id="segment-filter-summary">All segments</span>
+            <span>▾</span>
+          </div>
+          <div class="multi-panel" data-multi-panel="segment">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="segment">Select All</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="segment" />
+            </div>
+            <div class="multi-list" id="segment-filter-options"></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Premise filter</label>
+          <select id="premise-filter"></select>
+        </div>
+
+        <div class="field">
+          <label>Protected filter</label>
+          <select id="protected-filter">
+            <option value="ALL">All</option>
+            <option value="YES">Protected only</option>
+            <option value="NO">Unprotected only</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Moved filter</label>
+          <select id="moved-filter">
+            <option value="ALL">All</option>
+            <option value="MOVED">Moved only</option>
+            <option value="UNCHANGED">Unchanged only</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Target rep count</label>
+          <input id="rep-count-input" type="number" min="1" step="1" value="1" />
+        </div>
+
+        <div class="field">
+          <label>Minimum stops / rep</label>
+          <input id="min-stops-input" type="number" min="1" step="1" value="100" />
+        </div>
+
+        <div class="field">
+          <label>Maximum stops / rep</label>
+          <input id="max-stops-input" type="number" min="1" step="1" value="200" />
+        </div>
+
+        <div class="field">
+          <label>Optimize by</label>
+          <select id="balance-mode">
+            <option value="hybrid">Hybrid</option>
+            <option value="stops">Stops</option>
+            <option value="revenue">Revenue</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Customer disruption <span id="disruption-value">100</span></label>
+          <div class="range-wrap">
+            <input id="disruption-slider" type="range" min="0" max="100" step="1" value="100" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="k">Accounts</div><div class="v" id="global-accounts">0</div></div>
+      <div class="stat"><div class="k">Revenue</div><div class="v" id="global-revenue">$0</div></div>
+      <div class="stat"><div class="k">Protected</div><div class="v" id="global-protected">0</div></div>
+      <div class="stat"><div class="k">Moved</div><div class="v" id="global-moved">0</div></div>
+      <div class="stat"><div class="k">Unchanged</div><div class="v" id="global-unchanged">0%</div></div>
+      <div class="stat"><div class="k">Avg Weekly Stops</div><div class="v" id="global-avg-weekly">0</div></div>
+      <div class="stat"><div class="k">Selection</div><div class="v" id="selection-count">0</div></div>
+    </div>
+
+    <div class="main">
+      <div class="card map-card">
+        <div class="card-head">
           <div>
-            <div class="panel-title">Map</div>
-            <div class="panel-subtitle">Use rectangle or polygon draw to lasso accounts</div>
+            <div class="card-title">Map</div>
+            <div class="card-sub">Use rectangle or polygon draw to lasso accounts</div>
           </div>
-
-          <div class="map-header-right">
-            <div class="map-actions">
-              <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
-              <button id="optimize-btn" class="btn btn-accent" disabled>Optimize Routes</button>
-            </div>
-
-            <label class="map-toggle">
-              <input id="theme-toggle-checkbox" type="checkbox" />
-              <span>Dark Map</span>
-            </label>
-            <label class="map-toggle">
-              <input id="dim-others-checkbox" type="checkbox" checked disabled />
-              <span>Dim others</span>
-            </label>
-            <label class="map-toggle">
-              <input id="show-territory-checkbox" type="checkbox" checked disabled />
-              <span>Show territories</span>
-            </label>
+          <div class="map-actions">
+            <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
+            <button id="optimize-btn" class="btn btn-green" disabled>Optimize Routes</button>
+            <label class="inline-check"><input id="theme-toggle-check" type="checkbox" /> Dark Map</label>
+            <label class="inline-check"><input id="dim-others-checkbox" type="checkbox" checked /> Dim others</label>
+            <label class="inline-check"><input id="show-territory-checkbox" type="checkbox" /> Show territories</label>
           </div>
         </div>
         <div id="map"></div>
-        <div id="toast" class="toast"></div>
-      </section>
+      </div>
 
-      <aside class="sidebar panel">
-        <div class="panel-header sidebar-header">
-          <div>
-            <div class="panel-title">Routes</div>
-            <div class="panel-subtitle">Rep metrics update as assignments change</div>
-          </div>
-          <div class="last-action" id="last-action">No actions yet</div>
-        </div>
-
-        <div class="table-wrap">
-          <table id="rep-table">
-            <thead>
-              <tr>
-                <th>Rep</th>
-                <th>Stops</th>
-                <th>+/- Stops</th>
-                <th>Revenue</th>
-                <th>+/- Revenue</th>
-                <th>A</th>
-                <th>B</th>
-                <th>C</th>
-                <th>D</th>
-                <th>Planned 4W</th>
-                <th>Avg Weekly</th>
-                <th>Protected</th>
-                <th>Moved In</th>
-                <th>Moved Out</th>
-              </tr>
-            </thead>
-            <tbody id="rep-table-body">
-              <tr><td colspan="14" class="empty-state">Upload a file to begin.</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="sidebar-sections">
-          <div class="data-preview">
-            <div class="preview-header">
-              <div class="panel-title small">Selected accounts</div>
-              <button id="clear-selection-btn" class="btn btn-small" disabled>Clear Selection</button>
+      <div class="side">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <div class="card-title">Routes</div>
+              <div class="card-sub">Rep metrics update as assignments change</div>
             </div>
-            <div id="selection-preview" class="selection-preview">No accounts selected.</div>
+            <div class="small muted" id="last-action">No actions yet</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Rep</th>
+                  <th>Stops</th>
+                  <th>+/- Stops</th>
+                  <th>Revenue</th>
+                  <th>+/- Revenue</th>
+                  <th>A</th>
+                  <th>B</th>
+                  <th>C</th>
+                  <th>D</th>
+                  <th>Planned 4W</th>
+                  <th>Avg Weekly</th>
+                  <th>Protected</th>
+                  <th>Moved In</th>
+                  <th>Moved Out</th>
+                </tr>
+              </thead>
+              <tbody id="rep-table-body">
+                <tr><td colspan="14" class="empty">Upload a file to begin.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card selected-card">
+          <div class="selected-head">
+            <div>
+              <div class="card-title">Selected accounts</div>
+              <div class="card-sub">Current lasso / clicked selection</div>
+            </div>
+            <button id="clear-selection-btn" class="btn btn-subtle" disabled>Clear Selection</button>
+          </div>
+          <div class="selected-list" id="selection-preview">
+            <div class="empty">No accounts selected.</div>
           </div>
 
           <div class="moved-review">
-            <div class="preview-header">
+            <div class="moved-review-head">
               <div>
-                <div class="panel-title small">Moved accounts review</div>
-                <div class="panel-subtitle">Accounts whose assigned rep is different from the imported rep</div>
+                <div class="moved-review-title">Moved accounts review</div>
+                <div class="moved-review-sub">Shows accounts whose assigned rep differs from imported rep</div>
               </div>
-              <div id="moved-review-count" class="last-action">0 moved</div>
+              <div class="small muted"><span id="moved-review-count">0</span> moved</div>
             </div>
-            <div id="moved-preview" class="moved-preview">No moved accounts.</div>
+            <div class="moved-review-list" id="moved-review-list">
+              <div class="empty">No moved accounts yet.</div>
+            </div>
           </div>
         </div>
-      </aside>
-    </main>
-  </div>
-
-  <div id="rep-floating-panel" class="floating-panel">
-    <div class="multi-select-actions">
-      <button type="button" class="multi-select-link" data-multi-action="all" data-target="rep">Select all</button>
-      <button type="button" class="multi-select-link" data-multi-action="none" data-target="rep">Clear</button>
+      </div>
     </div>
-    <div id="rep-filter-options" class="multi-select-options"></div>
+
+    <div id="toast" class="toast"></div>
   </div>
 
-  <div id="rank-floating-panel" class="floating-panel">
-    <div class="multi-select-actions">
-      <button type="button" class="multi-select-link" data-multi-action="all" data-target="rank">Select all</button>
-      <button type="button" class="multi-select-link" data-multi-action="none" data-target="rank">Clear</button>
-    </div>
-    <div id="rank-filter-options" class="multi-select-options"></div>
-  </div>
-
-  <div id="chain-floating-panel" class="floating-panel">
-    <div class="multi-select-actions">
-      <button type="button" class="multi-select-link" data-multi-action="all" data-target="chain">Select all</button>
-      <button type="button" class="multi-select-link" data-multi-action="none" data-target="chain">Clear</button>
-    </div>
-    <div id="chain-filter-options" class="multi-select-options"></div>
-  </div>
-
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 
   <script>
     const COLOR_PALETTE = [
@@ -845,30 +841,24 @@
       '#f03e3e','#3b5bdb','#e8590c','#1098ad','#9c36b5','#5c940d','#d9480f','#1864ab','#c2255c','#12b886'
     ];
 
-    const CADENCE_4W = {
-      A: 4,
-      B: 2,
-      C: 1,
-      D: 1 / 3
-    };
+    const RANK_WEIGHTS = { A: 4, B: 2, C: 1, D: 0.33 };
 
     const COLUMN_ALIASES = {
       latitude: ['latitude','lat','y','geo_lat','customer_latitude'],
       longitude: ['longitude','lng','lon','x','geo_longitude','customer_longitude'],
-      customerId: ['customer id','cust id','customerid','id','account id','acct id','cust #','customer #','account #'],
-      customerName: ['company','customer name','name','account name','cust name','customer','account','outlet name'],
-      premise: ['premise','premise name','outlet','location name'],
-      address: ['address','street address','addr','full address','street','address 1','customer address'],
+      customerId: ['cust id','customer id','customerid','id','account id','acct id'],
+      customerName: ['company','customer name','name','account name','cust name'],
+      address: ['address','street address','addr','full address'],
       zip: ['zip','zip code','zipcode','postal code'],
-      city: ['city'],
       chain: ['chain','chain name'],
       segment: ['segment','customer segment'],
-      currentDm: ['current dm','dm'],
-      currentRep: ['current rep','rep','sales rep','territory rep','owner rep','current sales rep','current route'],
-      assignedRep: ['new rep','assigned rep','territory','route','assigned territory','new route'],
-      overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue','total revenue','volume'],
-      rank: ['rank','class','priority rank','abc','abcd','frequency rank'],
-      protected: ['protected account','protected','locked','do not move','never move']
+      premise: ['premise','premise type','on/off premise','premise class'],
+      currentRep: ['current rep','rep','sales rep','territory rep','owner rep'],
+      assignedRep: ['assigned rep','new rep','territory','route','assigned territory'],
+      overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue'],
+      rank: ['rank','class','priority rank'],
+      cadence4w: ['cadence 4w','4w','planned 4w','cadence','frequency'],
+      protected: ['protected','protected account','locked','do not move','never move']
     };
 
     const state = {
@@ -889,14 +879,23 @@
       repColors: new Map(),
       repFocus: null,
       theme: 'light',
-      loadedFileName: 'territory_export.xlsx',
+      loadedFileName: 'territory_export_updated.xlsx',
       lastAction: 'No actions yet',
-      filterSelections: {
+      filters: {
         rep: new Set(),
-        rank: new Set(['A','B','C','D']),
-        chain: new Set()
+        rank: new Set(),
+        chain: new Set(),
+        segment: new Set(),
+        premise: 'ALL',
+        protected: 'ALL',
+        moved: 'ALL'
       },
-      activeFloatingType: null
+      multiSearch: {
+        rep: '',
+        rank: '',
+        chain: '',
+        segment: ''
+      }
     };
 
     const els = {};
@@ -907,24 +906,22 @@
       bindElements();
       initMap();
       bindEvents();
+      initMultiFilters();
       updateLastAction('No actions yet');
-      renderMultiSelectOptions('rep', [], state.filterSelections.rep, 'All reps');
-      renderMultiSelectOptions('rank', ['A','B','C','D'], state.filterSelections.rank, 'All ranks');
-      renderMultiSelectOptions('chain', [], state.filterSelections.chain, 'All chains');
+      fillSimpleSelect(els.premiseFilter, ['ALL'], 'ALL', v => 'All premises');
+      renderMultiFilterOptions();
+      syncControlState();
     }
 
     function bindElements() {
       [
         'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
         'assign-rep-select','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode',
-        'segment-filter','premise-filter','protected-filter','moved-filter',
-        'theme-toggle-checkbox','dim-others-checkbox','show-territory-checkbox',
-        'rep-table-body','selection-preview','selection-count','clear-selection-btn',
-        'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast',
-        'moved-preview','moved-review-count',
-        'rep-filter-wrap','rep-filter-btn','rep-filter-options','rep-floating-panel',
-        'rank-filter-wrap','rank-filter-btn','rank-filter-options','rank-floating-panel',
-        'chain-filter-wrap','chain-filter-btn','chain-filter-options','chain-floating-panel'
+        'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count',
+        'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly',
+        'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
+        'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
+        'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
       });
@@ -938,170 +935,36 @@
       els.resetBtn.addEventListener('click', resetAssignments);
       els.optimizeBtn.addEventListener('click', optimizeRoutes);
       els.exportBtn.addEventListener('click', exportWorkbook);
+      els.clearSelectionBtn.addEventListener('click', clearSelection);
 
-      els.themeToggleCheckbox.addEventListener('change', toggleThemeFromCheckbox);
-
-      els.segmentFilter.addEventListener('change', refreshUI);
-      els.premiseFilter.addEventListener('change', refreshUI);
-      els.protectedFilter.addEventListener('change', refreshUI);
-      els.movedFilter.addEventListener('change', refreshUI);
+      els.themeToggleCheck.addEventListener('change', toggleTheme);
       els.dimOthersCheckbox.addEventListener('change', refreshUI);
       els.showTerritoryCheckbox.addEventListener('change', refreshTerritories);
-      els.clearSelectionBtn.addEventListener('click', clearSelection);
+
+      els.premiseFilter.addEventListener('change', () => {
+        state.filters.premise = els.premiseFilter.value;
+        refreshUI();
+      });
+
+      els.protectedFilter.addEventListener('change', () => {
+        state.filters.protected = els.protectedFilter.value;
+        refreshUI();
+      });
+
+      els.movedFilter.addEventListener('change', () => {
+        state.filters.moved = els.movedFilter.value;
+        refreshUI();
+      });
 
       els.disruptionSlider.addEventListener('input', () => {
         els.disruptionValue.textContent = els.disruptionSlider.value;
       });
 
-      bindMultiSelect('rep');
-      bindMultiSelect('rank');
-      bindMultiSelect('chain');
-
-      document.addEventListener('click', handleDocumentClick, true);
-      window.addEventListener('resize', repositionActiveFloatingPanel);
-      window.addEventListener('scroll', repositionActiveFloatingPanel, true);
-    }
-
-    function bindMultiSelect(type) {
-      const wrap = els[`${type}FilterWrap`];
-      const btn = els[`${type}FilterBtn`];
-      const floatingPanel = els[`${type}FloatingPanel`];
-
-      btn.addEventListener('click', (event) => {
-        if (btn.disabled) return;
-        event.stopPropagation();
-
-        if (state.activeFloatingType === type) {
-          closeAllMultiSelects();
-          return;
-        }
-
-        closeAllMultiSelects();
-        wrap.classList.add('open');
-        floatingPanel.classList.add('open');
-        state.activeFloatingType = type;
-        positionFloatingPanel(type);
+      document.addEventListener('click', handleDocumentClickForPanels);
+      window.addEventListener('resize', closeAllMultiPanels);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeAllMultiPanels();
       });
-
-      floatingPanel.querySelectorAll('.multi-select-link').forEach(link => {
-        link.addEventListener('click', (event) => {
-          event.stopPropagation();
-          const action = link.getAttribute('data-multi-action');
-          const values = getMultiSelectValues(type);
-
-          if (action === 'all') state.filterSelections[type] = new Set(values);
-          else state.filterSelections[type] = new Set();
-
-          renderMultiSelectOptions(type, values, state.filterSelections[type], getMultiSelectAllLabel(type));
-          positionFloatingPanel(type);
-          refreshUI();
-        });
-      });
-    }
-
-    function handleDocumentClick(event) {
-      const openType = state.activeFloatingType;
-      if (!openType) return;
-
-      const wrap = els[`${openType}FilterWrap`];
-      const panel = els[`${openType}FloatingPanel`];
-
-      if (wrap.contains(event.target) || panel.contains(event.target)) return;
-      closeAllMultiSelects();
-    }
-
-    function closeAllMultiSelects() {
-      ['rep','rank','chain'].forEach(type => {
-        els[`${type}FilterWrap`]?.classList.remove('open');
-        els[`${type}FloatingPanel`]?.classList.remove('open');
-      });
-      state.activeFloatingType = null;
-    }
-
-    function repositionActiveFloatingPanel() {
-      if (!state.activeFloatingType) return;
-      positionFloatingPanel(state.activeFloatingType);
-    }
-
-    function positionFloatingPanel(type) {
-      const btn = els[`${type}FilterBtn`];
-      const panel = els[`${type}FloatingPanel`];
-      if (!btn || !panel) return;
-
-      const rect = btn.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const panelWidth = Math.max(rect.width, 240);
-      const left = Math.min(rect.left, viewportWidth - panelWidth - 12);
-      const desiredTop = rect.bottom + 6;
-      const maxTop = Math.max(12, window.innerHeight - 280);
-
-      panel.style.width = `${panelWidth}px`;
-      panel.style.left = `${Math.max(12, left)}px`;
-      panel.style.top = `${Math.max(12, Math.min(maxTop, desiredTop))}px`;
-    }
-
-    function getMultiSelectValues(type) {
-      if (type === 'rep') return getAllReps();
-      if (type === 'rank') return ['A','B','C','D'];
-      if (type === 'chain') return uniqueNonBlank(state.accounts.map(a => a.chain));
-      return [];
-    }
-
-    function getMultiSelectAllLabel(type) {
-      if (type === 'rep') return 'All reps';
-      if (type === 'rank') return 'All ranks';
-      if (type === 'chain') return 'All chains';
-      return 'All';
-    }
-
-    function renderMultiSelectOptions(type, values, selectedSet, allLabel) {
-      const optionsEl = els[`${type}FilterOptions`];
-      const buttonEl = els[`${type}FilterBtn`];
-
-      if (!optionsEl || !buttonEl) return;
-
-      if (!values.length) {
-        optionsEl.innerHTML = '<div class="multi-select-option"><span>No options</span></div>';
-        buttonEl.textContent = allLabel;
-        return;
-      }
-
-      optionsEl.innerHTML = values.map(value => `
-        <label class="multi-select-option">
-          <input type="checkbox" value="${escapeHtmlAttr(value)}" ${selectedSet.has(value) ? 'checked' : ''}>
-          <span>${escapeHtml(value)}</span>
-        </label>
-      `).join('');
-
-      optionsEl.querySelectorAll('input[type="checkbox"]').forEach(input => {
-        input.addEventListener('click', e => e.stopPropagation());
-        input.addEventListener('change', () => {
-          const checked = [...optionsEl.querySelectorAll('input[type="checkbox"]:checked')].map(el => el.value);
-          state.filterSelections[type] = new Set(checked);
-          updateMultiSelectButton(type, values, allLabel);
-          positionFloatingPanel(type);
-          refreshUI();
-        });
-      });
-
-      updateMultiSelectButton(type, values, allLabel);
-    }
-
-    function updateMultiSelectButton(type, values, allLabel) {
-      const buttonEl = els[`${type}FilterBtn`];
-      const selected = [...state.filterSelections[type]];
-
-      if (!values.length || selected.length === 0 || selected.length === values.length) {
-        buttonEl.textContent = allLabel;
-        return;
-      }
-
-      if (selected.length === 1) {
-        buttonEl.textContent = selected[0];
-        return;
-      }
-
-      buttonEl.textContent = `${selected.length} selected`;
     }
 
     function initMap() {
@@ -1154,6 +1017,42 @@
       });
     }
 
+    function initMultiFilters() {
+      ['rep','rank','chain','segment'].forEach(key => {
+        document.querySelector(`[data-multi-trigger="${key}"]`).addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleMultiPanel(key);
+        });
+
+        document.querySelector(`[data-select-all="${key}"]`).addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleSelectAllMulti(key);
+        });
+
+        document.querySelector(`[data-search="${key}"]`).addEventListener('input', (e) => {
+          state.multiSearch[key] = e.target.value || '';
+          renderMultiFilterOptions();
+        });
+      });
+    }
+
+    function handleDocumentClickForPanels(event) {
+      const openMulti = document.querySelector('.multi.open');
+      if (!openMulti) return;
+      if (!openMulti.contains(event.target)) closeAllMultiPanels();
+    }
+
+    function toggleMultiPanel(key) {
+      const wrap = document.getElementById(`${key}-filter-wrap`);
+      const alreadyOpen = wrap.classList.contains('open');
+      closeAllMultiPanels();
+      if (!alreadyOpen) wrap.classList.add('open');
+    }
+
+    function closeAllMultiPanels() {
+      document.querySelectorAll('.multi.open').forEach(el => el.classList.remove('open'));
+    }
+
     function onFileChosen(event) {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -1164,10 +1063,14 @@
       reader.onload = e => {
         const data = e.target.result;
         try {
-          const workbook = file.name.toLowerCase().endsWith('.csv')
-            ? XLSX.read(data, { type: 'binary' })
-            : XLSX.read(new Uint8Array(data), { type: 'array' });
-          loadWorkbook(workbook);
+          if (file.name.toLowerCase().endsWith('.csv')) {
+            const workbook = XLSX.read(data, { type: 'binary' });
+            loadWorkbook(workbook);
+          } else {
+            const arr = new Uint8Array(data);
+            const workbook = XLSX.read(arr, { type: 'array' });
+            loadWorkbook(workbook);
+          }
         } catch (err) {
           console.error(err);
           showToast('File could not be read. Check the format and try again.');
@@ -1193,7 +1096,7 @@
       });
 
       els.sheetSelect.disabled = false;
-      enableTopControls();
+      els.loadSheetBtn.disabled = false;
       loadSelectedSheet();
     }
 
@@ -1209,25 +1112,27 @@
 
       if (!normalized.length) {
         state.accounts = [];
-        refreshUI();
+        state.selection.clear();
+        state.undoStack = [];
+        state.changeLog = [];
+        refreshUI(true);
         showToast('No valid rows found in that sheet.');
         return;
       }
 
       state.accounts = normalized;
+      state.selection.clear();
       state.undoStack = [];
       state.changeLog = [];
-      state.selection.clear();
       state.repFocus = null;
 
       buildRepColors();
-      renderFilterControls();
+      seedFiltersFromData();
       refreshUI(true);
       fitMapToAccounts();
 
-      if (!els.repCountInput.dataset.userTouched) {
-        els.repCountInput.value = getAllReps().length || 1;
-      }
+      const repCountCurrent = getAllAssignedReps().length || 1;
+      if (!els.repCountInput.dataset.userTouched) els.repCountInput.value = repCountCurrent;
 
       showToast(`Loaded ${state.accounts.length} accounts from ${sheetName}.`);
       updateLastAction(`Loaded ${state.accounts.length} accounts from ${sheetName}`);
@@ -1239,9 +1144,28 @@
       const mapped = [];
       const headers = Object.keys(rows[0] || {});
       const headerMap = {};
+      const cleanedHeaderLookup = new Map(headers.map(h => [cleanHeader(h), h]));
 
       Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
-        headerMap[key] = findBestHeaderMatch(headers, aliases);
+        let match = null;
+        for (const alias of aliases) {
+          const cleaned = cleanHeader(alias);
+
+          if (cleanedHeaderLookup.has(cleaned)) {
+            match = cleanedHeaderLookup.get(cleaned);
+            break;
+          }
+
+          for (const original of headers) {
+            const c = cleanHeader(original);
+            if (c === cleaned || c.includes(cleaned) || cleaned.includes(c)) {
+              match = original;
+              break;
+            }
+          }
+          if (match) break;
+        }
+        headerMap[key] = match;
       });
 
       let generatedId = 1;
@@ -1252,13 +1176,12 @@
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 
         const customerId = safeString(row[headerMap.customerId]) || `AUTO_${generatedId++}`;
-        const customerName = safeString(row[headerMap.customerName]) || safeString(row[headerMap.premise]) || customerId;
-        const premise = safeString(row[headerMap.premise]);
-        const segment = safeString(row[headerMap.segment]);
-        const chain = safeString(row[headerMap.chain]);
+        const customerName = safeString(row[headerMap.customerName]) || customerId;
         const currentRep = safeString(row[headerMap.currentRep]) || 'Unassigned';
         const assignedRep = safeString(row[headerMap.assignedRep]) || currentRep || 'Unassigned';
         const rank = normalizeRank(row[headerMap.rank]);
+        const premise = safeString(row[headerMap.premise]) || 'Unknown';
+        const cadence4w = normalizeCadence4W(row[headerMap.cadence4w], rank);
         const overallSales = toNumber(row[headerMap.overallSales]);
 
         mapped.push({
@@ -1267,19 +1190,17 @@
           longitude: lng,
           customerId,
           customerName,
-          premise,
           address: safeString(row[headerMap.address]),
           zip: safeString(row[headerMap.zip]),
-          city: safeString(row[headerMap.city]),
-          company: customerName,
-          chain,
-          segment,
-          currentDm: safeString(row[headerMap.currentDm]),
+          chain: safeString(row[headerMap.chain]) || 'Independent',
+          segment: safeString(row[headerMap.segment]) || 'Unknown',
+          premise,
           currentRep,
           assignedRep,
           originalAssignedRep: assignedRep,
           overallSales: Number.isFinite(overallSales) ? overallSales : 0,
           rank,
+          cadence4w,
           protected: toBoolean(row[headerMap.protected]),
           raw: row
         });
@@ -1288,121 +1209,150 @@
       return mapped;
     }
 
-    function buildRepColors() {
-      state.repColors.clear();
-      getAllReps().forEach((rep, idx) => {
-        state.repColors.set(rep, COLOR_PALETTE[idx % COLOR_PALETTE.length]);
-      });
+    function seedFiltersFromData() {
+      state.filters.rep = new Set(getAllAssignedReps());
+      state.filters.rank = new Set(getDistinctValues(state.accounts, a => a.rank));
+      state.filters.chain = new Set(getDistinctValues(state.accounts, a => a.chain));
+      state.filters.segment = new Set(getDistinctValues(state.accounts, a => a.segment));
+      state.filters.premise = 'ALL';
+      state.filters.protected = 'ALL';
+      state.filters.moved = 'ALL';
+
+      fillSimpleSelect(
+        els.premiseFilter,
+        ['ALL', ...getDistinctValues(state.accounts, a => a.premise)],
+        'ALL',
+        v => v === 'ALL' ? 'All premises' : v
+      );
+
+      renderMultiFilterOptions();
     }
 
-    function renderFilterControls() {
-      const reps = getAllReps();
-      const chains = uniqueNonBlank(state.accounts.map(a => a.chain));
-      const segments = uniqueNonBlank(state.accounts.map(a => a.segment));
-      const premises = uniqueNonBlank(state.accounts.map(a => a.premise));
+    function renderMultiFilterOptions() {
+      renderSingleMultiFilter('rep', getAllAssignedReps(), els.repFilterOptions, els.repFilterSummary, 'All reps');
+      renderSingleMultiFilter('rank', getDistinctValues(state.accounts, a => a.rank), els.rankFilterOptions, els.rankFilterSummary, 'All ranks');
+      renderSingleMultiFilter('chain', getDistinctValues(state.accounts, a => a.chain), els.chainFilterOptions, els.chainFilterSummary, 'All chains');
+      renderSingleMultiFilter('segment', getDistinctValues(state.accounts, a => a.segment), els.segmentFilterOptions, els.segmentFilterSummary, 'All segments');
+    }
 
-      fillSelect(els.assignRepSelect, reps, reps[0]);
-      fillSelect(els.segmentFilter, ['ALL', ...segments], 'ALL', v => v === 'ALL' ? 'All segments' : v);
-      fillSelect(els.premiseFilter, ['ALL', ...premises], 'ALL', v => v === 'ALL' ? 'All premises' : v);
+    function renderSingleMultiFilter(key, values, container, summaryEl, allLabel) {
+      const selected = state.filters[key];
+      const search = (state.multiSearch[key] || '').toLowerCase().trim();
+      const visibleValues = values.filter(v => String(v).toLowerCase().includes(search));
 
-      state.filterSelections.rep = new Set(reps);
-      state.filterSelections.rank = new Set(['A','B','C','D']);
-      state.filterSelections.chain = new Set(chains);
+      container.innerHTML = visibleValues.length
+        ? visibleValues.map(value => {
+            const checked = selected.has(value) ? 'checked' : '';
+            return `
+              <label class="multi-item">
+                <input type="checkbox" data-multi-key="${key}" value="${escapeHtmlAttr(value)}" ${checked}/>
+                <span>${escapeHtml(value)}</span>
+              </label>
+            `;
+          }).join('')
+        : `<div class="empty">No matches.</div>`;
 
-      renderMultiSelectOptions('rep', reps, state.filterSelections.rep, 'All reps');
-      renderMultiSelectOptions('rank', ['A','B','C','D'], state.filterSelections.rank, 'All ranks');
-      renderMultiSelectOptions('chain', chains, state.filterSelections.chain, 'All chains');
+      container.querySelectorAll(`input[data-multi-key="${key}"]`).forEach(input => {
+        input.addEventListener('change', (e) => {
+          const val = e.target.value;
+          if (e.target.checked) state.filters[key].add(val);
+          else state.filters[key].delete(val);
 
-      els.protectedFilter.value = 'ALL';
-      els.movedFilter.value = 'ALL';
+          if (state.filters[key].size === 0) {
+            values.forEach(v => state.filters[key].add(v));
+          }
+
+          updateMultiFilterSummary(key, values, summaryEl, allLabel);
+          refreshUI();
+          renderSingleMultiFilter(key, values, container, summaryEl, allLabel);
+        });
+      });
+
+      updateMultiFilterSummary(key, values, summaryEl, allLabel);
+    }
+
+    function updateMultiFilterSummary(key, values, summaryEl, allLabel) {
+      const selected = state.filters[key];
+      const total = values.length;
+      const count = selected.size;
+
+      if (!total || count === total) {
+        summaryEl.textContent = allLabel;
+        return;
+      }
+
+      if (count === 1) {
+        summaryEl.textContent = [...selected][0];
+        return;
+      }
+
+      summaryEl.textContent = `${count} selected`;
+    }
+
+    function toggleSelectAllMulti(key) {
+      const values = getMultiValuesForKey(key);
+      const selected = state.filters[key];
+      const isAllSelected = selected.size === values.length && values.every(v => selected.has(v));
+
+      selected.clear();
+      if (!isAllSelected) values.forEach(v => selected.add(v));
+
+      renderMultiFilterOptions();
+      refreshUI();
+    }
+
+    function getMultiValuesForKey(key) {
+      if (key === 'rep') return getAllAssignedReps();
+      if (key === 'rank') return getDistinctValues(state.accounts, a => a.rank);
+      if (key === 'chain') return getDistinctValues(state.accounts, a => a.chain);
+      if (key === 'segment') return getDistinctValues(state.accounts, a => a.segment);
+      return [];
     }
 
     function refreshUI(rebuildMap = false) {
       syncControlState();
       renderRepControls();
-
       if (rebuildMap) rebuildMarkers();
-
       refreshMarkerStyles();
       renderRepTable();
       renderSelectionPreview();
-      renderMovedReview();
       renderSummary();
+      renderMovedReview();
       refreshTerritories();
     }
 
     function syncControlState() {
       const hasData = state.accounts.length > 0;
-
-      [
-        els.assignBtn, els.undoBtn, els.resetBtn, els.optimizeBtn, els.exportBtn,
-        els.assignRepSelect, els.repCountInput, els.minStopsInput, els.maxStopsInput,
-        els.disruptionSlider, els.balanceMode,
-        els.segmentFilter, els.premiseFilter, els.protectedFilter, els.movedFilter,
-        els.dimOthersCheckbox, els.showTerritoryCheckbox, els.clearSelectionBtn
-      ].forEach(el => {
-        if (el === els.assignBtn) el.disabled = !hasData || state.selection.size === 0;
-        else el.disabled = !hasData;
-      });
-
-      ['rep','rank','chain'].forEach(type => {
-        els[`${type}FilterBtn`].disabled = !hasData;
-        els[`${type}FilterWrap`].classList.toggle('disabled', !hasData);
-      });
-
-      if (!hasData) closeAllMultiSelects();
-
+      els.assignBtn.disabled = !hasData || state.selection.size === 0;
       els.undoBtn.disabled = !hasData || state.undoStack.length === 0;
+      els.resetBtn.disabled = !hasData;
+      els.optimizeBtn.disabled = !hasData;
+      els.exportBtn.disabled = !hasData;
       els.clearSelectionBtn.disabled = !hasData || state.selection.size === 0;
+      els.assignRepSelect.disabled = !hasData;
+      els.repCountInput.disabled = !hasData;
+      els.minStopsInput.disabled = !hasData;
+      els.maxStopsInput.disabled = !hasData;
+      els.balanceMode.disabled = !hasData;
+      els.disruptionSlider.disabled = !hasData;
+      els.premiseFilter.disabled = !hasData;
+      els.protectedFilter.disabled = !hasData;
+      els.movedFilter.disabled = !hasData;
+      els.dimOthersCheckbox.disabled = !hasData;
+      els.showTerritoryCheckbox.disabled = !hasData;
     }
 
     function renderRepControls() {
-      const reps = getAllReps();
-      const chains = uniqueNonBlank(state.accounts.map(a => a.chain));
-      const segments = uniqueNonBlank(state.accounts.map(a => a.segment));
-      const premises = uniqueNonBlank(state.accounts.map(a => a.premise));
-
-      fillSelect(
-        els.assignRepSelect,
-        reps,
-        els.assignRepSelect.value && reps.includes(els.assignRepSelect.value) ? els.assignRepSelect.value : reps[0]
-      );
-
-      fillSelect(
-        els.segmentFilter,
-        ['ALL', ...segments],
-        ['ALL', ...segments].includes(els.segmentFilter.value) ? els.segmentFilter.value : 'ALL',
-        v => v === 'ALL' ? 'All segments' : v
-      );
-
-      fillSelect(
-        els.premiseFilter,
-        ['ALL', ...premises],
-        ['ALL', ...premises].includes(els.premiseFilter.value) ? els.premiseFilter.value : 'ALL',
-        v => v === 'ALL' ? 'All premises' : v
-      );
-
-      state.filterSelections.rep = normalizeSelectionSet(state.filterSelections.rep, reps);
-      state.filterSelections.rank = normalizeSelectionSet(state.filterSelections.rank, ['A','B','C','D']);
-      state.filterSelections.chain = normalizeSelectionSet(state.filterSelections.chain, chains);
-
-      renderMultiSelectOptions('rep', reps, state.filterSelections.rep, 'All reps');
-      renderMultiSelectOptions('rank', ['A','B','C','D'], state.filterSelections.rank, 'All ranks');
-      renderMultiSelectOptions('chain', chains, state.filterSelections.chain, 'All chains');
-
-      if (state.activeFloatingType) positionFloatingPanel(state.activeFloatingType);
+      const reps = getAllAssignedReps();
+      fillSimpleSelect(els.assignRepSelect, reps, reps[0] || '');
 
       if (!els.repCountInput.dataset.userTouched) {
-        els.repCountInput.value = reps.length || 1;
+        els.repCountInput.value = Math.max(1, reps.length || 1);
       }
+
       els.repCountInput.oninput = () => {
         els.repCountInput.dataset.userTouched = '1';
       };
-    }
-
-    function normalizeSelectionSet(currentSet, validValues) {
-      const filtered = [...currentSet].filter(v => validValues.includes(v));
-      return filtered.length ? new Set(filtered) : new Set(validValues);
     }
 
     function rebuildMarkers() {
@@ -1424,7 +1374,6 @@
       for (const account of state.accounts) {
         const marker = state.markerById.get(account._id);
         if (!marker) continue;
-
         marker.setStyle(markerStyleForAccount(account));
         marker.setRadius(state.selection.has(account._id) ? 8 : 6);
         marker.getPopup()?.setContent(buildPopupHtml(account));
@@ -1432,38 +1381,54 @@
     }
 
     function markerStyleForAccount(account) {
+      const matches = passesFilters(account);
       const dimOthers = els.dimOthersCheckbox.checked;
       const isSelected = state.selection.has(account._id);
-      const color = state.repColors.get(account.assignedRep) || '#4a5568';
-      const visible = passesAllFilters(account);
-      const focusDim = dimOthers && !visible;
+      const color = state.repColors.get(account.assignedRep) || '#64748b';
+      const dimmed = dimOthers && !matches;
 
       return {
         radius: isSelected ? 8 : 6,
         color: isSelected ? '#1e293b' : color,
-        weight: isSelected ? 2.4 : 1.2,
-        opacity: visible ? 0.96 : 0.05,
+        weight: isSelected ? 2.5 : 1.2,
+        opacity: matches ? 0.96 : (dimmed ? 0.05 : 0.16),
         fillColor: color,
-        fillOpacity: focusDim ? 0.03 : (account.protected ? 0.86 : 0.72)
+        fillOpacity: dimmed ? 0.03 : (account.protected ? 0.88 : 0.74)
       };
     }
 
-    function buildPopupHtml(account) {
-      const title = account.customerName || account.customerId || 'Unknown Account';
-      const addressLine = [account.address, account.city, account.zip].filter(Boolean).join(', ').replace(', ,', ', ');
+    function passesFilters(account) {
+      const repPass = state.filters.rep.size === 0 || state.filters.rep.has(account.assignedRep);
+      const rankPass = state.filters.rank.size === 0 || state.filters.rank.has(account.rank);
+      const chainPass = state.filters.chain.size === 0 || state.filters.chain.has(account.chain);
+      const segmentPass = state.filters.segment.size === 0 || state.filters.segment.has(account.segment);
+      const premisePass = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
+      const protectedPass =
+        state.filters.protected === 'ALL' ||
+        (state.filters.protected === 'YES' && account.protected) ||
+        (state.filters.protected === 'NO' && !account.protected);
+      const movedPass =
+        state.filters.moved === 'ALL' ||
+        (state.filters.moved === 'MOVED' && account.assignedRep !== account.originalAssignedRep) ||
+        (state.filters.moved === 'UNCHANGED' && account.assignedRep === account.originalAssignedRep);
 
+      return repPass && rankPass && chainPass && segmentPass && premisePass && protectedPass && movedPass;
+    }
+
+    function buildPopupHtml(account) {
+      const addressLine = [account.address, account.zip].filter(Boolean).join(' ');
       return `
-        <div style="min-width:240px;">
-          <div style="font-size:15px;font-weight:700;">${escapeHtml(title)}</div>
-          <div style="margin-top:6px;color:#5d7286;font-size:12px;">${escapeHtml(addressLine)}</div>
-          <div style="margin-top:10px;"><strong>Premise:</strong> ${escapeHtml(account.premise || '—')}</div>
-          <div><strong>Segment:</strong> ${escapeHtml(account.segment || '—')}</div>
-          <div><strong>Chain:</strong> ${escapeHtml(account.chain || '—')}</div>
+        <div style="min-width:250px;">
+          <div style="font-size:15px;font-weight:800;">${escapeHtml(account.customerName || account.customerId)}</div>
+          <div style="margin-top:5px;color:#5d7286;font-size:12px;">${escapeHtml(addressLine)}</div>
+          <div style="margin-top:8px;"><strong>Premise:</strong> ${escapeHtml(account.premise)}</div>
+          <div><strong>Segment:</strong> ${escapeHtml(account.segment)}</div>
+          <div><strong>Chain:</strong> ${escapeHtml(account.chain)}</div>
           <div><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
           <div><strong>Current Rep:</strong> ${escapeHtml(account.currentRep)}</div>
           <div><strong>Revenue:</strong> ${formatCurrency(account.overallSales)}</div>
           <div><strong>Rank:</strong> ${escapeHtml(account.rank)}</div>
-          <div><strong>Cadence 4W:</strong> ${cadence4WForRank(account.rank).toFixed(2)}</div>
+          <div><strong>Cadence 4W:</strong> ${formatNumber(account.cadence4w, 2)}</div>
           <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
         </div>
       `;
@@ -1473,28 +1438,28 @@
       const rows = summarizeByRep();
 
       if (!rows.length) {
-        els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty-state">No accounts match the current filters.</td></tr>';
+        els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty">Upload a file to begin.</td></tr>';
         return;
       }
 
       els.repTableBody.innerHTML = rows.map(row => `
-        <tr data-rep-row="${escapeHtmlAttr(row.rep)}" class="${state.repFocus === row.rep ? 'rep-focus-row' : ''}">
+        <tr data-rep-row="${escapeHtmlAttr(row.rep)}">
           <td>
             <div class="rep-cell">
-              <span class="color-dot" style="background:${row.color}"></span>
+              <span class="color-dot" style="background:${escapeHtmlAttr(row.color)}"></span>
               <span>${escapeHtml(row.rep)}</span>
             </div>
           </td>
           <td>${row.stops}</td>
-          <td class="${deltaClass(row.stopDelta)}">${signedNumber(row.stopDelta)}</td>
+          <td>${renderDeltaCount(row.deltaStops)}</td>
           <td>${formatCurrency(row.revenue)}</td>
-          <td class="${deltaClass(row.revenueDelta)}">${signedCurrency(row.revenueDelta)}</td>
+          <td>${renderDeltaMoney(row.deltaRevenue)}</td>
           <td>${row.A}</td>
           <td>${row.B}</td>
           <td>${row.C}</td>
           <td>${row.D}</td>
-          <td>${row.plannedFourWeekStops.toFixed(2)}</td>
-          <td>${row.avgWeeklyStops.toFixed(2)}</td>
+          <td>${formatNumber(row.planned4W, 2)}</td>
+          <td>${formatNumber(row.avgWeekly, 2)}</td>
           <td>${row.protected}</td>
           <td>${row.movedIn}</td>
           <td>${row.movedOut}</td>
@@ -1505,70 +1470,68 @@
         tr.addEventListener('click', () => {
           const rep = tr.getAttribute('data-rep-row');
           state.repFocus = state.repFocus === rep ? null : rep;
-
-          if (state.repFocus) state.filterSelections.rep = new Set([rep]);
-          else state.filterSelections.rep = new Set(getAllReps());
-
-          renderMultiSelectOptions('rep', getAllReps(), state.filterSelections.rep, 'All reps');
-          refreshUI();
           zoomToRep(rep);
         });
       });
     }
 
     function renderSelectionPreview() {
-      const selected = getFilteredAccounts().filter(a => state.selection.has(a._id)).slice(0, 40);
+      const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 50);
       els.selectionCount.textContent = String(state.selection.size);
 
       if (!selected.length) {
-        els.selectionPreview.textContent = 'No accounts selected.';
+        els.selectionPreview.innerHTML = '<div class="empty">No accounts selected.</div>';
         return;
       }
 
       els.selectionPreview.innerHTML = selected.map(a => `
-        <div class="preview-item">
-          <div class="preview-title">${escapeHtml(a.customerName)}</div>
-          <div class="preview-meta">${escapeHtml(a.premise || '—')} • ${escapeHtml(a.segment || '—')} • ${escapeHtml(a.assignedRep)} • ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)} • 4W ${cadence4WForRank(a.rank).toFixed(2)}${a.protected ? ' • Protected' : ''}</div>
+        <div class="selected-item">
+          <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
+          <div class="selected-item-meta">
+            ${escapeHtml(a.premise)} • ${escapeHtml(a.segment)} • ${escapeHtml(a.assignedRep)} •
+            ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)} • 4W ${formatNumber(a.cadence4w, 2)}
+            ${a.protected ? ' • Protected' : ''}
+          </div>
         </div>
       `).join('');
     }
 
     function renderMovedReview() {
-      const movedAccounts = getFilteredAccounts()
+      const moved = state.accounts
         .filter(a => a.assignedRep !== a.originalAssignedRep)
-        .sort((a, b) => b.overallSales - a.overallSales);
+        .slice(0, 200);
 
-      els.movedReviewCount.textContent = `${movedAccounts.length} moved`;
+      els.movedReviewCount.textContent = String(moved.length);
 
-      if (!movedAccounts.length) {
-        els.movedPreview.textContent = 'No moved accounts.';
+      if (!moved.length) {
+        els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
         return;
       }
 
-      els.movedPreview.innerHTML = movedAccounts.slice(0, 100).map(a => `
+      els.movedReviewList.innerHTML = moved.map(a => `
         <div class="moved-item">
-          <div class="moved-title">${escapeHtml(a.customerName)}</div>
-          <div class="moved-meta">${escapeHtml(a.premise || '—')} • ${escapeHtml(a.segment || '—')} • ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)}</div>
-          <div class="moved-pill">${escapeHtml(a.originalAssignedRep)} → ${escapeHtml(a.assignedRep)}</div>
+          <strong>${escapeHtml(a.customerName)}</strong><br/>
+          ${escapeHtml(a.originalAssignedRep)} → ${escapeHtml(a.assignedRep)} •
+          ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)}
         </div>
       `).join('');
     }
 
     function renderSummary() {
-      const accounts = getFilteredAccounts();
-      const totalAccounts = accounts.length;
-      const totalRevenue = accounts.reduce((sum, a) => sum + a.overallSales, 0);
-      const protectedCount = accounts.filter(a => a.protected).length;
-      const movedCount = accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
-      const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts * 100) : 0;
-      const avgWeeklyStops = totalAccounts ? accounts.reduce((sum, a) => sum + (cadence4WForRank(a.rank) / 4), 0) : 0;
+      const totalAccounts = state.accounts.length;
+      const totalRevenue = state.accounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
+      const protectedCount = state.accounts.filter(a => a.protected).length;
+      const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
+      const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts) * 100 : 0;
+      const totalPlanned4W = state.accounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
+      const avgWeekly = totalPlanned4W / 4;
 
       els.globalAccounts.textContent = totalAccounts.toLocaleString();
       els.globalRevenue.textContent = formatCurrency(totalRevenue);
       els.globalProtected.textContent = protectedCount.toLocaleString();
       els.globalMoved.textContent = movedCount.toLocaleString();
       els.globalUnchanged.textContent = `${unchangedPct.toFixed(1)}%`;
-      els.globalWorkload.textContent = avgWeeklyStops.toFixed(1);
+      els.globalAvgWeekly.textContent = formatNumber(avgWeekly, 1);
     }
 
     function handleDrawCreated(event) {
@@ -1582,7 +1545,7 @@
 
       state.selection.clear();
 
-      for (const account of getFilteredAccounts()) {
+      for (const account of state.accounts) {
         const point = turf.point([account.longitude, account.latitude]);
         if (turf.booleanPointInPolygon(point, polygon)) state.selection.add(account._id);
       }
@@ -1639,19 +1602,16 @@
     }
 
     function applyChanges(changes, label) {
-      if (!changes.length) return;
-
       changes.forEach(change => {
         const account = state.accounts.find(a => a._id === change.id);
         if (!account) return;
 
         account.assignedRep = change.to;
+
         state.changeLog.push({
           timestamp: new Date().toISOString(),
           customerId: account.customerId,
           customerName: account.customerName,
-          premise: account.premise,
-          segment: account.segment,
           fromRep: change.from,
           toRep: change.to,
           protected: account.protected ? 'Yes' : 'No'
@@ -1686,6 +1646,7 @@
 
     function resetAssignments() {
       const changes = [];
+
       for (const account of state.accounts) {
         if (account.assignedRep !== account.originalAssignedRep) {
           changes.push({
@@ -1701,31 +1662,26 @@
         return;
       }
 
-      applyChanges(changes, 'Reset all assignments to imported values');
+      applyChanges(changes, 'Reset assignments to imported values');
+      state.undoStack = [];
+      updateLastAction('Reset assignments to imported values');
+      refreshUI();
     }
 
     function optimizeRoutes() {
       if (!state.accounts.length) return;
 
-      const targetCount = Math.max(1, Math.min(100, parseInt(els.repCountInput.value || '1', 10)));
-      const minStops = Math.max(1, parseInt(els.minStopsInput.value || '1', 10));
-      const maxStops = Math.max(minStops, parseInt(els.maxStopsInput.value || '999999', 10));
+      const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
+      const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
+      const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
 
-      const workingAccounts = getFilteredAccounts();
-      const totalAccounts = workingAccounts.length;
-
-      if (!totalAccounts) {
-        showToast('No accounts match the current filters.');
-        return;
-      }
+      const targetCount = Math.max(1, Math.min(100, targetCountRaw || 1));
+      const minStops = Math.max(1, minStopsRaw || 1);
+      const maxStops = Math.max(minStops, maxStopsRaw || minStops);
+      const totalAccounts = state.accounts.length;
 
       if (targetCount * minStops > totalAccounts) {
-        showToast(`Minimum stops too high. ${targetCount} reps x ${minStops} minimum exceeds ${totalAccounts} filtered accounts.`);
-        return;
-      }
-
-      if (targetCount * maxStops < totalAccounts) {
-        showToast(`Maximum stops too low. ${targetCount} reps x ${maxStops} maximum is below ${totalAccounts} filtered accounts.`);
+        showToast(`Minimum stops too high. ${targetCount} reps × ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
         return;
       }
 
@@ -1733,7 +1689,9 @@
       const geographyWeight = 1 - continuityWeight;
       const balanceMode = els.balanceMode.value;
 
-      const currentReps = uniqueNonBlank(workingAccounts.flatMap(a => [a.assignedRep, a.currentRep]));
+      const protectedAccounts = state.accounts.filter(a => a.protected);
+      const movableAccounts = state.accounts.filter(a => !a.protected);
+      const currentReps = getAllAssignedReps();
       const targetRepNames = buildTargetRepNames(targetCount, currentReps);
 
       targetRepNames.forEach(rep => {
@@ -1742,51 +1700,51 @@
         }
       });
 
-      const accountLookup = new Map(workingAccounts.map(a => [a._id, a]));
-      const neighborLookup = buildNeighborLookup(workingAccounts, 12);
-
       const assignments = new Map();
-      for (const account of workingAccounts) assignments.set(account._id, account.assignedRep);
+      const centroids = initializeCentroids(targetRepNames);
 
-      seedEmptyReps(assignments, targetRepNames, workingAccounts, minStops);
+      protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
 
-      let centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
+      for (let iter = 0; iter < 7; iter += 1) {
+        const repStats = buildFullRepStats(targetRepNames);
+        const adjacency = buildNeighborMap();
 
-      for (let iter = 0; iter < 12; iter += 1) {
-        const { countMap, revenueMap } = buildRepLoadMaps(assignments, targetRepNames, workingAccounts);
+        for (const account of protectedAccounts) {
+          const rep = assignments.get(account._id) || account.assignedRep;
+          addFullStats(repStats.get(rep), account);
+        }
 
-        const orderedMovable = [...workingAccounts]
-          .filter(a => !a.protected)
-          .sort((a, b) => {
-            if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
-            return a.customerName.localeCompare(b.customerName);
-          });
-
-        let movedThisIter = 0;
+        const orderedMovable = [...movableAccounts].sort((a, b) => {
+          if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
+          if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
+          return a.customerName.localeCompare(b.customerName);
+        });
 
         for (const account of orderedMovable) {
-          const currentRep = assignments.get(account._id);
-          let bestRep = currentRep;
+          let bestRep = null;
           let bestScore = Infinity;
 
           for (const rep of targetRepNames) {
-            const score = scoreRepAssignment({
-              account,
-              candidateRep: rep,
-              currentRep,
-              assignments,
-              targetRepNames,
-              centroids,
-              countMap,
-              revenueMap,
-              accountLookup,
-              neighborLookup,
-              continuityWeight,
-              geographyWeight,
-              balanceMode,
-              minStops,
-              maxStops
-            });
+            const centroid = centroids.get(rep);
+            const repStat = repStats.get(rep);
+            const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+
+            const compactnessScore = dist * (1.08 + geographyWeight * 1.15);
+            const continuityPenalty = account.currentRep === rep ? 0 : (continuityWeight * 0.95);
+            const existingPenalty = account.assignedRep === rep ? 0 : (continuityWeight * 0.28);
+
+            let balancePenalty = 0;
+            if (balanceMode === 'stops') {
+              balancePenalty = Math.max(0, repStat.stops - maxStops) * 0.7 + repStat.stops * 0.007;
+            } else if (balanceMode === 'revenue') {
+              balancePenalty = repStat.revenue * 0.0000013;
+            } else {
+              balancePenalty = repStat.stops * 0.0055 + repStat.revenue * 0.00000065;
+            }
+
+            const localPenalty = localDominancePenalty(account, rep, assignments, adjacency);
+            const maxStopsPenalty = repStat.stops >= maxStops ? 8 : 0;
+            const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + maxStopsPenalty;
 
             if (score < bestScore) {
               bestScore = score;
@@ -1794,52 +1752,28 @@
             }
           }
 
-          if (bestRep !== currentRep) {
-            if ((countMap.get(currentRep) || 0) - 1 >= Math.min(minStops, totalAccounts)) {
-              assignments.set(account._id, bestRep);
-              countMap.set(currentRep, countMap.get(currentRep) - 1);
-              countMap.set(bestRep, (countMap.get(bestRep) || 0) + 1);
-              revenueMap.set(currentRep, (revenueMap.get(currentRep) || 0) - account.overallSales);
-              revenueMap.set(bestRep, (revenueMap.get(bestRep) || 0) + account.overallSales);
-              movedThisIter += 1;
-            }
-          }
+          assignments.set(account._id, bestRep);
+          addFullStats(repStats.get(bestRep), account);
         }
 
-        centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
-        if (!movedThisIter) break;
+        recomputeCentroidsFromAssignments(centroids, assignments, targetRepNames);
       }
 
-      cleanupEnclaves({
-        assignments, targetRepNames, workingAccounts, minStops, maxStops,
-        accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode
-      });
-
-      majoritySmoothAssignments({
-        assignments, targetRepNames, workingAccounts, minStops, maxStops,
-        accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode,
-        passes: 4
-      });
-
-      enforceMinimumStops(assignments, targetRepNames, minStops, maxStops, workingAccounts, accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode);
-      enforceMaximumStops(assignments, targetRepNames, minStops, maxStops, workingAccounts, accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode);
-
-      cleanupEnclaves({
-        assignments, targetRepNames, workingAccounts, minStops, maxStops,
-        accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode
-      });
-
-      majoritySmoothAssignments({
-        assignments, targetRepNames, workingAccounts, minStops, maxStops,
-        accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode,
-        passes: 3
-      });
+      enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
+      runBorderCleanup(assignments, targetRepNames, continuityWeight);
+      runBorderCleanup(assignments, targetRepNames, continuityWeight);
+      runEnclaveCleanup(assignments);
+      runMajoritySmoothing(assignments);
 
       const changes = [];
-      for (const account of workingAccounts) {
+      for (const account of state.accounts) {
         const nextRep = assignments.get(account._id) || account.assignedRep;
         if (nextRep !== account.assignedRep) {
-          changes.push({ id: account._id, from: account.assignedRep, to: nextRep });
+          changes.push({
+            id: account._id,
+            from: account.assignedRep,
+            to: nextRep
+          });
         }
       }
 
@@ -1848,484 +1782,200 @@
         return;
       }
 
-      applyChanges(changes, `Optimized routes (${changes.length} changes)`);
+      applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
     }
 
-    function seedEmptyReps(assignments, targetRepNames, workingAccounts, minStops) {
-      const counts = countAssignments(assignments, targetRepNames, workingAccounts);
-      const emptyReps = targetRepNames.filter(rep => (counts.get(rep) || 0) === 0);
-      if (!emptyReps.length) return;
+    function runBorderCleanup(assignments, targetRepNames, continuityWeight) {
+      const neighborMap = buildNeighborMap();
+      const counts = countAssignments(assignments, targetRepNames);
+      let moved = true;
+      let pass = 0;
 
-      const movable = workingAccounts.filter(a => !a.protected);
-      if (!movable.length) return;
+      while (moved && pass < 4) {
+        pass += 1;
+        moved = false;
 
-      const currentCentroids = initializeCentroidsFromAssignments(
-        assignments,
-        targetRepNames.filter(rep => (counts.get(rep) || 0) > 0),
-        workingAccounts
-      );
+        const borderAccounts = state.accounts
+          .filter(a => !a.protected)
+          .map(a => ({ account: a, detail: dominantNeighborRep(a, assignments, neighborMap) }))
+          .filter(x => x.detail && x.detail.borderStrength >= 0.6 && x.detail.rep !== assignments.get(x.account._id))
+          .sort((a, b) => b.detail.borderStrength - a.detail.borderStrength);
 
-      const usedIds = new Set();
+        for (const { account, detail } of borderAccounts) {
+          const from = assignments.get(account._id);
+          const to = detail.rep;
+          if (!to || from === to) continue;
+          if ((counts.get(from) || 0) <= 1) continue;
 
-      for (const emptyRep of emptyReps) {
-        let best = null;
+          const currentScore = borderCleanupScore(account, from, assignments, neighborMap, continuityWeight);
+          const nextScore = borderCleanupScore(account, to, assignments, neighborMap, continuityWeight);
 
-        for (const account of movable) {
-          if (usedIds.has(account._id)) continue;
-
-          const currentRep = assignments.get(account._id);
-          if ((counts.get(currentRep) || 0) <= Math.max(1, minStops)) continue;
-
-          let minDist = Infinity;
-          for (const centroid of currentCentroids.values()) {
-            const d = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
-            if (d < minDist) minDist = d;
+          if (nextScore + 0.18 < currentScore) {
+            assignments.set(account._id, to);
+            counts.set(from, (counts.get(from) || 0) - 1);
+            counts.set(to, (counts.get(to) || 0) + 1);
+            moved = true;
           }
-
-          if (!best || minDist > best.score) best = { id: account._id, score: minDist };
-        }
-
-        if (best) {
-          const account = workingAccounts.find(a => a._id === best.id);
-          const fromRep = assignments.get(best.id);
-          assignments.set(best.id, emptyRep);
-          counts.set(fromRep, (counts.get(fromRep) || 0) - 1);
-          counts.set(emptyRep, 1);
-          usedIds.add(best.id);
-          currentCentroids.set(emptyRep, { lat: account.latitude, lng: account.longitude });
         }
       }
     }
 
-    function buildNeighborLookup(accounts, k = 12) {
-      const lookup = new Map();
+    function runEnclaveCleanup(assignments) {
+      const neighborMap = buildNeighborMap();
+      for (const account of state.accounts.filter(a => !a.protected)) {
+        const own = assignments.get(account._id);
+        const neighbors = neighborMap.get(account._id) || [];
+        if (!neighbors.length) continue;
 
-      for (let i = 0; i < accounts.length; i += 1) {
-        const a = accounts[i];
-        const best = [];
-
-        for (let j = 0; j < accounts.length; j += 1) {
-          if (i === j) continue;
-          const b = accounts[j];
-          const dist = squaredDistance(a.latitude, a.longitude, b.latitude, b.longitude);
-          insertTopNeighbor(best, { id: b._id, dist }, k);
-        }
-
-        lookup.set(a._id, best);
-      }
-
-      return lookup;
-    }
-
-    function insertTopNeighbor(arr, candidate, maxLen) {
-      let inserted = false;
-      for (let i = 0; i < arr.length; i += 1) {
-        if (candidate.dist < arr[i].dist) {
-          arr.splice(i, 0, candidate);
-          inserted = true;
-          break;
-        }
-      }
-      if (!inserted) arr.push(candidate);
-      if (arr.length > maxLen) arr.length = maxLen;
-    }
-
-    function getAssignedRep(accountId, assignments, accountLookup) {
-      return assignments.get(accountId) || accountLookup.get(accountId)?.assignedRep || 'Unassigned';
-    }
-
-    function getNeighborInfo(accountId, assignments, accountLookup, neighborLookup) {
-      const all = neighborLookup.get(accountId) || [];
-      const inner = all.slice(0, 6);
-      const outer = all.slice(0, 12);
-
-      function summarize(neighbors) {
         const repCounts = new Map();
-        const nearestByRep = new Map();
-
-        for (const neighbor of neighbors) {
-          const rep = getAssignedRep(neighbor.id, assignments, accountLookup);
+        neighbors.forEach(nid => {
+          const rep = assignments.get(nid);
           repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
-          if (!nearestByRep.has(rep) || neighbor.dist < nearestByRep.get(rep)) {
-            nearestByRep.set(rep, neighbor.dist);
-          }
-        }
+        });
 
-        let dominantRep = null;
-        let dominantCount = 0;
-        for (const [rep, count] of repCounts.entries()) {
-          if (count > dominantCount) {
-            dominantCount = count;
-            dominantRep = rep;
-          }
-        }
+        const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+        const topRep = sorted[0]?.[0];
+        const topCount = sorted[0]?.[1] || 0;
+        const ownCount = repCounts.get(own) || 0;
 
-        return {
-          total: neighbors.length,
-          repCounts,
-          nearestByRep,
-          dominantRep,
-          dominantShare: neighbors.length ? dominantCount / neighbors.length : 0
-        };
+        if (topRep && topRep !== own && topCount >= 4 && ownCount <= 1) {
+          assignments.set(account._id, topRep);
+        }
       }
+    }
+
+    function runMajoritySmoothing(assignments) {
+      const neighborMap = buildNeighborMap();
+      for (let pass = 0; pass < 2; pass += 1) {
+        const moves = [];
+        for (const account of state.accounts.filter(a => !a.protected)) {
+          const own = assignments.get(account._id);
+          const neighbors = neighborMap.get(account._id) || [];
+          if (neighbors.length < 3) continue;
+
+          const repCounts = new Map();
+          neighbors.forEach(nid => {
+            const rep = assignments.get(nid);
+            repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+          });
+
+          const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+          const topRep = sorted[0]?.[0];
+          const topCount = sorted[0]?.[1] || 0;
+          const ownCount = repCounts.get(own) || 0;
+
+          if (topRep && topRep !== own && topCount >= 5 && ownCount <= 1) {
+            moves.push({ id: account._id, to: topRep });
+          }
+        }
+
+        moves.forEach(m => assignments.set(m.id, m.to));
+      }
+    }
+
+    function borderCleanupScore(account, rep, assignments, neighborMap, continuityWeight) {
+      const neighbors = neighborMap.get(account._id) || [];
+      const centroid = centroidForRepFromAssignments(assignments, rep);
+      const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+
+      let same = 0;
+      let other = 0;
+      neighbors.forEach(nid => {
+        if (assignments.get(nid) === rep) same += 1;
+        else other += 1;
+      });
+
+      const continuityPenalty = account.currentRep === rep ? 0 : continuityWeight * 0.35;
+      return dist * 1.35 - same * 0.45 + other * 0.12 + continuityPenalty;
+    }
+
+    function localDominancePenalty(account, rep, assignments, adjacency) {
+      const neighbors = adjacency.get(account._id) || [];
+      if (!neighbors.length) return 0;
+
+      let same = 0;
+      let other = 0;
+      const repCounts = new Map();
+
+      neighbors.forEach(nid => {
+        const nrep = assignments.get(nid);
+        repCounts.set(nrep, (repCounts.get(nrep) || 0) + 1);
+        if (nrep === rep) same += 1;
+        else other += 1;
+      });
+
+      const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+      const dominantRep = sorted[0]?.[0];
+      const dominantCount = sorted[0]?.[1] || 0;
+
+      let penalty = 0;
+      if (dominantRep && dominantRep !== rep) penalty += dominantCount * 0.48;
+      if (same === 0) penalty += 2.4;
+      if (same <= 1 && neighbors.length >= 4) penalty += 1.25;
+      if (other > same) penalty += (other - same) * 0.28;
+      return penalty;
+    }
+
+    function dominantNeighborRep(account, assignments, neighborMap) {
+      const neighbors = neighborMap.get(account._id) || [];
+      if (!neighbors.length) return null;
+
+      const counts = new Map();
+      neighbors.forEach(id => {
+        const rep = assignments.get(id);
+        counts.set(rep, (counts.get(rep) || 0) + 1);
+      });
+
+      const sorted = [...counts.entries()].sort((a,b) => b[1] - a[1]);
+      if (!sorted.length) return null;
 
       return {
-        inner: summarize(inner),
-        outer: summarize(outer)
+        rep: sorted[0][0],
+        borderStrength: sorted[0][1] / neighbors.length
       };
     }
 
-    function buildRepLoadMaps(assignments, reps, workingAccounts) {
-      const countMap = new Map();
-      const revenueMap = new Map();
-
-      reps.forEach(rep => {
-        countMap.set(rep, 0);
-        revenueMap.set(rep, 0);
-      });
-
-      for (const account of workingAccounts) {
-        const rep = assignments.get(account._id) || account.assignedRep;
-        countMap.set(rep, (countMap.get(rep) || 0) + 1);
-        revenueMap.set(rep, (revenueMap.get(rep) || 0) + account.overallSales);
-      }
-
-      return { countMap, revenueMap };
-    }
-
-    function scoreRepAssignment({
-      account,
-      candidateRep,
-      currentRep,
-      assignments,
-      targetRepNames,
-      centroids,
-      countMap,
-      revenueMap,
-      accountLookup,
-      neighborLookup,
-      continuityWeight,
-      geographyWeight,
-      balanceMode,
-      minStops,
-      maxStops
-    }) {
-      const centroid = centroids.get(candidateRep) || { lat: account.latitude, lng: account.longitude };
-      const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
-
-      const neighborInfo = getNeighborInfo(account._id, assignments, accountLookup, neighborLookup);
-      const inner = neighborInfo.inner;
-      const outer = neighborInfo.outer;
-
-      const innerSameCount = inner.repCounts.get(candidateRep) || 0;
-      const outerSameCount = outer.repCounts.get(candidateRep) || 0;
-
-      const innerSameShare = inner.total ? innerSameCount / inner.total : 0;
-      const outerSameShare = outer.total ? outerSameCount / outer.total : 0;
-
-      let localPenalty = geographyWeight * (1 - innerSameShare) * 4.6;
-      localPenalty += geographyWeight * (1 - outerSameShare) * 1.75;
-
-      if (inner.dominantRep && inner.dominantRep !== candidateRep) {
-        localPenalty += geographyWeight * inner.dominantShare * 5.2;
-      }
-
-      if (outer.dominantRep && outer.dominantRep !== candidateRep) {
-        localPenalty += geographyWeight * outer.dominantShare * 1.8;
-      }
-
-      if (innerSameCount <= 1 && inner.total >= 5) {
-        localPenalty += geographyWeight * 2.7;
-      }
-
-      if (innerSameCount === 0 && outerSameCount <= 2) {
-        localPenalty += geographyWeight * 3.2;
-      }
-
-      const nearestSameInner = inner.nearestByRep.get(candidateRep);
-      const nearestSameOuter = outer.nearestByRep.get(candidateRep);
-
-      const nearestPenalty =
-        (Number.isFinite(nearestSameInner) ? nearestSameInner * (0.85 + geographyWeight * 0.65) : geographyWeight * 0.9) +
-        (Number.isFinite(nearestSameOuter) ? nearestSameOuter * 0.22 : 0.15);
-
-      const currentCount = countMap.get(candidateRep) || 0;
-      const currentRevenue = revenueMap.get(candidateRep) || 0;
-      const projectedCount = currentCount + (candidateRep === currentRep ? 0 : 1);
-      const projectedRevenue = currentRevenue + (candidateRep === currentRep ? 0 : account.overallSales);
-
-      let balancePenalty = 0;
-      if (balanceMode === 'stops') balancePenalty = projectedCount * 0.014;
-      else if (balanceMode === 'revenue') balancePenalty = projectedRevenue * 0.0000017;
-      else balancePenalty = (projectedCount * 0.008) + (projectedRevenue * 0.00000085);
-
-      let continuityPenalty = 0;
-      if (account.currentRep !== candidateRep) continuityPenalty += continuityWeight * 0.75;
-      if (account.assignedRep !== candidateRep) continuityPenalty += continuityWeight * 0.20;
-
-      let minGuardPenalty = 0;
-      if (candidateRep !== currentRep) {
-        const currentRepCount = countMap.get(currentRep) || 0;
-        if (currentRepCount - 1 < minStops) minGuardPenalty += 999999;
-      }
-
-      const overMaxPenalty = projectedCount > maxStops ? 999999 : 0;
-
-      return (
-        dist * (0.55 + geographyWeight * 1.7) +
-        nearestPenalty +
-        localPenalty +
-        balancePenalty +
-        continuityPenalty +
-        minGuardPenalty +
-        overMaxPenalty
-      );
-    }
-
-    function cleanupEnclaves({
-      assignments,
-      targetRepNames,
-      workingAccounts,
-      minStops,
-      maxStops,
-      accountLookup,
-      neighborLookup,
-      continuityWeight,
-      geographyWeight,
-      balanceMode
-    }) {
-      for (let pass = 0; pass < 5; pass += 1) {
-        const { countMap, revenueMap } = buildRepLoadMaps(assignments, targetRepNames, workingAccounts);
-        const centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
-
-        const candidates = workingAccounts
-          .filter(a => !a.protected)
-          .map(account => {
-            const currentRep = assignments.get(account._id);
-            const info = getNeighborInfo(account._id, assignments, accountLookup, neighborLookup);
-            const innerOwnShare = info.inner.total ? ((info.inner.repCounts.get(currentRep) || 0) / info.inner.total) : 0;
-
-            return {
-              account,
-              currentRep,
-              dominantRep: info.inner.dominantRep || info.outer.dominantRep,
-              dominantShare: info.inner.dominantShare || info.outer.dominantShare,
-              innerOwnShare
-            };
-          })
-          .filter(x =>
-            x.dominantRep &&
-            x.dominantRep !== x.currentRep &&
-            x.dominantShare >= 0.66 &&
-            x.innerOwnShare <= 0.20
-          )
-          .sort((a, b) => b.dominantShare - a.dominantShare);
-
-        let moved = 0;
-
-        for (const item of candidates) {
-          const account = item.account;
-          const currentRep = item.currentRep;
-          const candidateRep = item.dominantRep;
-
-          if ((countMap.get(currentRep) || 0) - 1 < minStops) continue;
-          if ((countMap.get(candidateRep) || 0) + 1 > maxStops) continue;
-
-          const currentScore = scoreRepAssignment({
-            account, candidateRep: currentRep, currentRep, assignments, targetRepNames,
-            centroids, countMap, revenueMap, accountLookup, neighborLookup,
-            continuityWeight, geographyWeight, balanceMode, minStops, maxStops
-          });
-
-          const candidateScore = scoreRepAssignment({
-            account, candidateRep, currentRep, assignments, targetRepNames,
-            centroids, countMap, revenueMap, accountLookup, neighborLookup,
-            continuityWeight, geographyWeight, balanceMode, minStops, maxStops
-          });
-
-          if (candidateScore + 0.8 < currentScore) {
-            assignments.set(account._id, candidateRep);
-            countMap.set(currentRep, countMap.get(currentRep) - 1);
-            countMap.set(candidateRep, (countMap.get(candidateRep) || 0) + 1);
-            revenueMap.set(currentRep, (revenueMap.get(currentRep) || 0) - account.overallSales);
-            revenueMap.set(candidateRep, (revenueMap.get(candidateRep) || 0) + account.overallSales);
-            moved += 1;
-          }
-        }
-
-        if (!moved) break;
-      }
-    }
-
-    function majoritySmoothAssignments({
-      assignments,
-      targetRepNames,
-      workingAccounts,
-      minStops,
-      maxStops,
-      accountLookup,
-      neighborLookup,
-      continuityWeight,
-      geographyWeight,
-      balanceMode,
-      passes = 3
-    }) {
-      for (let pass = 0; pass < passes; pass += 1) {
-        const { countMap, revenueMap } = buildRepLoadMaps(assignments, targetRepNames, workingAccounts);
-        const centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
-        let moved = 0;
-
-        const candidates = workingAccounts
-          .filter(a => !a.protected)
-          .map(account => {
-            const currentRep = assignments.get(account._id);
-            const info = getNeighborInfo(account._id, assignments, accountLookup, neighborLookup);
-            return { account, currentRep, info };
-          })
-          .sort((a, b) => (b.info.inner.dominantShare - a.info.inner.dominantShare));
-
-        for (const item of candidates) {
-          const { account, currentRep, info } = item;
-          const candidateRep = info.inner.dominantRep;
-
-          if (!candidateRep || candidateRep === currentRep) continue;
-          if (info.inner.dominantShare < 0.67) continue;
-          if ((countMap.get(currentRep) || 0) - 1 < minStops) continue;
-          if ((countMap.get(candidateRep) || 0) + 1 > maxStops) continue;
-
-          const currentScore = scoreRepAssignment({
-            account, candidateRep: currentRep, currentRep, assignments, targetRepNames,
-            centroids, countMap, revenueMap, accountLookup, neighborLookup,
-            continuityWeight, geographyWeight, balanceMode, minStops, maxStops
-          });
-
-          const candidateScore = scoreRepAssignment({
-            account, candidateRep, currentRep, assignments, targetRepNames,
-            centroids, countMap, revenueMap, accountLookup, neighborLookup,
-            continuityWeight, geographyWeight, balanceMode, minStops, maxStops
-          });
-
-          if (candidateScore + 0.5 < currentScore) {
-            assignments.set(account._id, candidateRep);
-            countMap.set(currentRep, countMap.get(currentRep) - 1);
-            countMap.set(candidateRep, (countMap.get(candidateRep) || 0) + 1);
-            revenueMap.set(currentRep, (revenueMap.get(currentRep) || 0) - account.overallSales);
-            revenueMap.set(candidateRep, (revenueMap.get(candidateRep) || 0) + account.overallSales);
-            moved += 1;
-          }
-        }
-
-        if (!moved) break;
-      }
-    }
-
-    function enforceMinimumStops(assignments, targetRepNames, minStops, maxStops, workingAccounts, accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode) {
-      const maxPasses = 1000;
+    function enforceMinimumStops(assignments, targetRepNames, minStops, maxStops) {
       let pass = 0;
+      const maxPasses = 1000;
 
       while (pass < maxPasses) {
         pass += 1;
-
-        const { countMap, revenueMap } = buildRepLoadMaps(assignments, targetRepNames, workingAccounts);
-        const centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
-
+        const counts = countAssignments(assignments, targetRepNames);
         const underfilled = targetRepNames
-          .filter(rep => (countMap.get(rep) || 0) < minStops)
-          .sort((a, b) => (countMap.get(a) || 0) - (countMap.get(b) || 0));
+          .filter(rep => (counts.get(rep) || 0) < minStops)
+          .sort((a,b) => (counts.get(a) || 0) - (counts.get(b) || 0));
 
         if (!underfilled.length) break;
 
         let movedThisPass = false;
 
         for (const needyRep of underfilled) {
+          const needyCentroid = centroidForRepFromAssignments(assignments, needyRep);
+
+          const donorCandidates = targetRepNames
+            .filter(rep => rep !== needyRep && (counts.get(rep) || 0) > minStops)
+            .sort((a,b) => (counts.get(b) || 0) - (counts.get(a) || 0));
+
           let bestMove = null;
 
-          for (const account of workingAccounts) {
-            if (account.protected) continue;
-            const fromRep = assignments.get(account._id);
-            if (fromRep === needyRep) continue;
-            if ((countMap.get(fromRep) || 0) - 1 < minStops) continue;
-            if ((countMap.get(needyRep) || 0) + 1 > maxStops) continue;
-
-            const currentScore = scoreRepAssignment({
-              account, candidateRep: fromRep, currentRep: fromRep, assignments, targetRepNames,
-              centroids, countMap, revenueMap, accountLookup, neighborLookup,
-              continuityWeight, geographyWeight, balanceMode, minStops, maxStops
-            });
-
-            const nextScore = scoreRepAssignment({
-              account, candidateRep: needyRep, currentRep: fromRep, assignments, targetRepNames,
-              centroids, countMap, revenueMap, accountLookup, neighborLookup,
-              continuityWeight, geographyWeight, balanceMode, minStops, maxStops
-            });
-
-            const penalty = nextScore - currentScore;
-            if (!bestMove || penalty < bestMove.penalty) {
-              bestMove = { accountId: account._id, fromRep, toRep: needyRep, penalty };
-            }
-          }
-
-          if (bestMove) {
-            assignments.set(bestMove.accountId, bestMove.toRep);
-            movedThisPass = true;
-          }
-        }
-
-        if (!movedThisPass) break;
-      }
-    }
-
-    function enforceMaximumStops(assignments, targetRepNames, minStops, maxStops, workingAccounts, accountLookup, neighborLookup, continuityWeight, geographyWeight, balanceMode) {
-      const maxPasses = 1000;
-      let pass = 0;
-
-      while (pass < maxPasses) {
-        pass += 1;
-
-        const { countMap, revenueMap } = buildRepLoadMaps(assignments, targetRepNames, workingAccounts);
-        const centroids = initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts);
-
-        const overfilled = targetRepNames
-          .filter(rep => (countMap.get(rep) || 0) > maxStops)
-          .sort((a, b) => (countMap.get(b) || 0) - (countMap.get(a) || 0));
-
-        if (!overfilled.length) break;
-
-        let movedThisPass = false;
-
-        for (const donorRep of overfilled) {
-          let bestMove = null;
-
-          for (const account of workingAccounts) {
-            if (account.protected) continue;
-            if (assignments.get(account._id) !== donorRep) continue;
-
-            for (const targetRep of targetRepNames) {
-              if (targetRep === donorRep) continue;
-              if ((countMap.get(targetRep) || 0) + 1 > maxStops) continue;
-              if ((countMap.get(donorRep) || 0) - 1 < minStops) continue;
-
-              const currentScore = scoreRepAssignment({
-                account, candidateRep: donorRep, currentRep: donorRep, assignments, targetRepNames,
-                centroids, countMap, revenueMap, accountLookup, neighborLookup,
-                continuityWeight, geographyWeight, balanceMode, minStops, maxStops
-              });
-
-              const nextScore = scoreRepAssignment({
-                account, candidateRep: targetRep, currentRep: donorRep, assignments, targetRepNames,
-                centroids, countMap, revenueMap, accountLookup, neighborLookup,
-                continuityWeight, geographyWeight, balanceMode, minStops, maxStops
-              });
-
-              const penalty = nextScore - currentScore;
-              if (!bestMove || penalty < bestMove.penalty) {
-                bestMove = { accountId: account._id, fromRep: donorRep, toRep: targetRep, penalty };
+          for (const donorRep of donorCandidates) {
+            const donorAccounts = state.accounts.filter(a => assignments.get(a._id) === donorRep && !a.protected);
+            for (const account of donorAccounts) {
+              if ((counts.get(needyRep) || 0) >= maxStops) continue;
+              const dist = squaredDistance(account.latitude, account.longitude, needyCentroid.lat, needyCentroid.lng);
+              const continuityPenalty = account.currentRep === donorRep ? 0.22 : 0;
+              const score = dist + continuityPenalty;
+              if (!bestMove || score < bestMove.score) {
+                bestMove = { accountId: account._id, from: donorRep, to: needyRep, score };
               }
             }
           }
 
           if (bestMove) {
-            assignments.set(bestMove.accountId, bestMove.toRep);
+            assignments.set(bestMove.accountId, bestMove.to);
+            counts.set(bestMove.from, (counts.get(bestMove.from) || 0) - 1);
+            counts.set(bestMove.to, (counts.get(bestMove.to) || 0) + 1);
             movedThisPass = true;
           }
         }
@@ -2334,28 +1984,80 @@
       }
     }
 
-    function initializeCentroidsFromAssignments(assignments, targetRepNames, workingAccounts) {
+    function initializeCentroids(targetRepNames) {
       const centroids = new Map();
+      const byRep = groupBy(state.accounts, a => a.assignedRep);
 
-      for (const rep of targetRepNames) {
-        const members = workingAccounts.filter(a => (assignments.get(a._id) || a.assignedRep) === rep);
-        if (members.length) {
+      targetRepNames.forEach((rep, idx) => {
+        const currentGroup = byRep.get(rep);
+
+        if (currentGroup?.length) {
           centroids.set(rep, {
-            lat: avg(members.map(a => a.latitude)),
-            lng: avg(members.map(a => a.longitude))
+            lat: avg(currentGroup.map(a => a.latitude)),
+            lng: avg(currentGroup.map(a => a.longitude))
           });
+          return;
         }
-      }
 
-      for (let i = 0; i < targetRepNames.length; i += 1) {
-        const rep = targetRepNames[i];
-        if (!centroids.has(rep)) {
-          const fallback = workingAccounts[Math.floor(i * workingAccounts.length / Math.max(1, targetRepNames.length))] || workingAccounts[0];
-          centroids.set(rep, { lat: fallback.latitude, lng: fallback.longitude });
-        }
-      }
+        const fallback = state.accounts[Math.floor(idx * state.accounts.length / Math.max(1, targetRepNames.length))] || state.accounts[0];
+        centroids.set(rep, { lat: fallback.latitude, lng: fallback.longitude });
+      });
 
       return centroids;
+    }
+
+    function recomputeCentroidsFromAssignments(centroids, assignments, targetRepNames) {
+      for (const rep of targetRepNames) {
+        const members = state.accounts.filter(a => assignments.get(a._id) === rep);
+        if (!members.length) continue;
+        centroids.set(rep, {
+          lat: members.reduce((s,a) => s + a.latitude, 0) / members.length,
+          lng: members.reduce((s,a) => s + a.longitude, 0) / members.length
+        });
+      }
+    }
+
+    function centroidForRepFromAssignments(assignments, rep) {
+      const members = state.accounts.filter(a => assignments.get(a._id) === rep);
+      if (!members.length) {
+        const fallback = state.accounts[0];
+        return { lat: fallback?.latitude || 0, lng: fallback?.longitude || 0 };
+      }
+
+      return {
+        lat: members.reduce((s,a) => s + a.latitude, 0) / members.length,
+        lng: members.reduce((s,a) => s + a.longitude, 0) / members.length
+      };
+    }
+
+    function buildNeighborMap() {
+      const sorted = [...state.accounts];
+      const map = new Map();
+
+      for (const account of sorted) {
+        const nearest = sorted
+          .filter(a => a._id !== account._id)
+          .map(a => ({ id: a._id, d: squaredDistance(account.latitude, account.longitude, a.latitude, a.longitude) }))
+          .sort((a,b) => a.d - b.d)
+          .slice(0, 8)
+          .map(x => x.id);
+
+        map.set(account._id, nearest);
+      }
+
+      return map;
+    }
+
+    function countAssignments(assignments, reps) {
+      const counts = new Map();
+      reps.forEach(rep => counts.set(rep, 0));
+
+      for (const account of state.accounts) {
+        const rep = assignments.get(account._id);
+        counts.set(rep, (counts.get(rep) || 0) + 1);
+      }
+
+      return counts;
     }
 
     function buildTargetRepNames(targetCount, currentReps) {
@@ -2365,115 +2067,110 @@
       return reps.length ? reps : ['Rep 1'];
     }
 
+    function buildFullRepStats(reps) {
+      const map = new Map();
+      reps.forEach(rep => map.set(rep, { rep, stops: 0, revenue: 0 }));
+      return map;
+    }
+
+    function addFullStats(stat, account) {
+      stat.stops += 1;
+      stat.revenue += account.overallSales || 0;
+    }
+
     function refreshTerritories() {
       state.territoryLayer.clearLayers();
       if (!els.showTerritoryCheckbox.checked || !state.accounts.length) return;
 
-      const reps = uniqueNonBlank(getFilteredAccounts().map(a => a.assignedRep));
+      const reps = getAllAssignedReps().filter(rep => state.filters.rep.has(rep));
 
       reps.forEach(rep => {
-        const members = getFilteredAccounts().filter(a => a.assignedRep === rep);
+        const members = state.accounts.filter(a => a.assignedRep === rep);
         if (members.length < 3) return;
 
         const points = members.map(a => [a.longitude, a.latitude]);
         const featureCollection = turf.featureCollection(points.map(p => turf.point(p)));
 
         let hull = null;
-        try { hull = turf.convex(featureCollection); } catch (e) { hull = null; }
+        try { hull = turf.convex(featureCollection); } catch(e) { hull = null; }
         if (!hull) return;
 
-        const coords = hull.geometry.coordinates[0].map(([lng, lat]) => [lat, lng]);
-        L.polygon(coords, {
+        const coords = hull.geometry.coordinates[0].map(([lng,lat]) => [lat,lng]);
+        const poly = L.polygon(coords, {
           color: state.repColors.get(rep) || '#666',
           weight: 2,
-          fillOpacity: 0.06,
-          opacity: 0.7,
+          fillOpacity: 0.05,
+          opacity: 0.75,
           interactive: false
-        }).addTo(state.territoryLayer);
+        });
+
+        poly.addTo(state.territoryLayer);
       });
     }
 
     function summarizeByRep() {
-      return summarizeByRepFromAccounts(getFilteredAccounts(), a => a.assignedRep);
-    }
+      const currentMap = new Map();
+      const baselineMap = new Map();
+      const reps = getAllKnownReps();
 
-    function summarizeByRepFromAccounts(accounts, resolver) {
-      const map = new Map();
-
-      uniqueNonBlank(accounts.flatMap(a => [resolver(a), a.currentRep, a.originalAssignedRep])).forEach(rep => {
-        map.set(rep, emptyRepSummary(rep));
+      reps.forEach(rep => {
+        currentMap.set(rep, makeEmptyRepSummary(rep));
+        baselineMap.set(rep, makeEmptyRepSummary(rep));
       });
 
-      for (const account of accounts) {
-        const assigned = resolver(account);
-        if (!map.has(assigned)) map.set(assigned, emptyRepSummary(assigned));
+      for (const account of state.accounts) {
+        if (!currentMap.has(account.assignedRep)) currentMap.set(account.assignedRep, makeEmptyRepSummary(account.assignedRep));
+        if (!baselineMap.has(account.originalAssignedRep)) baselineMap.set(account.originalAssignedRep, makeEmptyRepSummary(account.originalAssignedRep));
 
-        const row = map.get(assigned);
-        row.stops += 1;
-        row.revenue += account.overallSales;
-        row[account.rank] = (row[account.rank] || 0) + 1;
-        row.plannedFourWeekStops += cadence4WForRank(account.rank);
+        const cur = currentMap.get(account.assignedRep);
+        cur.stops += 1;
+        cur.revenue += account.overallSales;
+        cur[account.rank] += 1;
+        cur.planned4W += account.cadence4w;
+        cur.avgWeekly = cur.planned4W / 4;
+        if (account.protected) cur.protected += 1;
+        if (account.assignedRep !== account.originalAssignedRep) cur.movedIn += 1;
 
-        if (account.protected) row.protected += 1;
-        if (assigned !== account.currentRep) row.movedIn += 1;
+        const base = baselineMap.get(account.originalAssignedRep);
+        base.stops += 1;
+        base.revenue += account.overallSales;
       }
 
-      for (const account of accounts) {
-        const assigned = resolver(account);
-        if (map.has(account.currentRep) && account.currentRep !== assigned) {
-          map.get(account.currentRep).movedOut += 1;
+      for (const account of state.accounts) {
+        if (account.assignedRep !== account.originalAssignedRep) {
+          if (!currentMap.has(account.originalAssignedRep)) currentMap.set(account.originalAssignedRep, makeEmptyRepSummary(account.originalAssignedRep));
+          currentMap.get(account.originalAssignedRep).movedOut += 1;
         }
       }
 
-      const baseline = new Map();
-      uniqueNonBlank(accounts.map(a => a.originalAssignedRep)).forEach(rep => {
-        baseline.set(rep, { stops: 0, revenue: 0 });
+      const rows = [...currentMap.values()].map(row => {
+        const base = baselineMap.get(row.rep) || makeEmptyRepSummary(row.rep);
+        return {
+          ...row,
+          deltaStops: row.stops - base.stops,
+          deltaRevenue: row.revenue - base.revenue
+        };
       });
 
-      for (const account of accounts) {
-        const baseRep = account.originalAssignedRep;
-        if (!baseline.has(baseRep)) baseline.set(baseRep, { stops: 0, revenue: 0 });
-        const row = baseline.get(baseRep);
-        row.stops += 1;
-        row.revenue += account.overallSales;
-      }
-
-      const rows = [...map.values()]
-        .filter(r => r.stops > 0 || baseline.has(r.rep))
-        .sort((a, b) => a.rep.localeCompare(b.rep, undefined, { numeric: true }));
-
-      rows.forEach(r => {
-        const base = baseline.get(r.rep) || { stops: 0, revenue: 0 };
-        r.avgWeeklyStops = r.plannedFourWeekStops / 4;
-        r.stopDelta = r.stops - base.stops;
-        r.revenueDelta = r.revenue - base.revenue;
-      });
-
-      return rows;
+      return rows.sort((a,b) => a.rep.localeCompare(b.rep, undefined, { numeric:true }));
     }
 
-    function emptyRepSummary(rep) {
+    function makeEmptyRepSummary(rep) {
       return {
         rep,
-        color: state.repColors.get(rep) || '#4a5568',
+        color: state.repColors.get(rep) || '#64748b',
         stops: 0,
         revenue: 0,
-        stopDelta: 0,
-        revenueDelta: 0,
         A: 0,
         B: 0,
         C: 0,
         D: 0,
-        plannedFourWeekStops: 0,
-        avgWeeklyStops: 0,
+        planned4W: 0,
+        avgWeekly: 0,
         protected: 0,
         movedIn: 0,
         movedOut: 0
       };
-    }
-
-    function cadence4WForRank(rank) {
-      return CADENCE_4W[rank] ?? 1;
     }
 
     function exportWorkbook() {
@@ -2485,53 +2182,50 @@
         ...a.raw,
         Customer_ID: a.customerId,
         Customer_Name: a.customerName,
-        Premise: a.premise,
-        Segment: a.segment,
+        Address: a.address,
+        ZIP: a.zip,
         Chain: a.chain,
-        Current_DM: a.currentDm,
+        Segment: a.segment,
+        Premise: a.premise,
         Current_Rep: a.currentRep,
         Assigned_Rep: a.assignedRep,
         Original_Assigned_Rep: a.originalAssignedRep,
         Protected: a.protected ? 'Yes' : 'No',
         Rank: a.rank,
-        Four_Week_Cadence_Stops: round2(cadence4WForRank(a.rank)),
-        Avg_Weekly_Stops: round2(cadence4WForRank(a.rank) / 4),
         Latitude: a.latitude,
         Longitude: a.longitude,
         Overall_Sales: a.overallSales,
+        Cadence_4W: round2(a.cadence4w),
         Moved: a.assignedRep !== a.originalAssignedRep ? 'Yes' : 'No'
       }));
 
-      const summary = summarizeByRep().map(r => ({
+      const repSummary = summarizeByRep().map(r => ({
         Rep: r.rep,
         Stops: r.stops,
-        Delta_Stops: r.stopDelta,
+        Delta_Stops: r.deltaStops,
         Revenue: round2(r.revenue),
-        Delta_Revenue: round2(r.revenueDelta),
+        Delta_Revenue: round2(r.deltaRevenue),
         A: r.A,
         B: r.B,
         C: r.C,
         D: r.D,
-        Planned_Four_Week_Stops: round2(r.plannedFourWeekStops),
-        Avg_Weekly_Stops: round2(r.avgWeeklyStops),
+        Planned_4W: round2(r.planned4W),
+        Avg_Weekly: round2(r.avgWeekly),
         Protected: r.protected,
         Moved_In: r.movedIn,
         Moved_Out: r.movedOut
       }));
 
-      const movedAudit = state.accounts
+      const movedAccounts = state.accounts
         .filter(a => a.assignedRep !== a.originalAssignedRep)
         .map(a => ({
           Customer_ID: a.customerId,
           Customer_Name: a.customerName,
-          Premise: a.premise,
-          Segment: a.segment,
-          Chain: a.chain,
+          Original_Assigned_Rep: a.originalAssignedRep,
+          Assigned_Rep: a.assignedRep,
+          Current_Rep: a.currentRep,
           Revenue: round2(a.overallSales),
           Rank: a.rank,
-          Four_Week_Cadence_Stops: round2(cadence4WForRank(a.rank)),
-          Original_Assigned_Rep: a.originalAssignedRep,
-          Current_Assigned_Rep: a.assignedRep,
           Protected: a.protected ? 'Yes' : 'No'
         }));
 
@@ -2539,138 +2233,70 @@
         timestamp: '',
         customerId: '',
         customerName: '',
-        premise: '',
-        segment: '',
         fromRep: '',
         toRep: '',
         protected: ''
       }];
 
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assignments), 'Assignments');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Rep Summary');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movedAudit.length ? movedAudit : [{}]), 'Moved Accounts');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(repSummary), 'Rep Summary');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movedAccounts.length ? movedAccounts : [{}]), 'Moved Accounts');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(changeLog), 'Change Log');
 
-      XLSX.writeFile(wb, state.loadedFileName || 'territory_export.xlsx');
+      XLSX.writeFile(wb, state.loadedFileName || 'territory_export_updated.xlsx');
       showToast('Excel export created.');
       updateLastAction('Exported workbook');
     }
 
     function fitMapToAccounts() {
-      const accounts = getFilteredAccounts().length ? getFilteredAccounts() : state.accounts;
-      if (!accounts.length) return;
-      state.map.fitBounds(accounts.map(a => [a.latitude, a.longitude]), { padding: [25, 25] });
+      if (!state.accounts.length) return;
+      const latlngs = state.accounts.map(a => [a.latitude, a.longitude]);
+      state.map.fitBounds(latlngs, { padding: [25, 25] });
     }
 
     function zoomToRep(rep) {
-      const points = getFilteredAccounts().filter(a => a.assignedRep === rep).map(a => [a.latitude, a.longitude]);
+      const points = state.accounts.filter(a => a.assignedRep === rep).map(a => [a.latitude, a.longitude]);
       if (points.length) state.map.fitBounds(points, { padding: [30, 30] });
     }
 
-    function toggleThemeFromCheckbox() {
-      if (els.themeToggleCheckbox.checked) {
-        if (state.theme !== 'dark') {
-          state.map.removeLayer(state.lightLayer);
-          state.darkLayer.addTo(state.map);
-          state.theme = 'dark';
-        }
-      } else {
-        if (state.theme !== 'light') {
-          state.map.removeLayer(state.darkLayer);
-          state.lightLayer.addTo(state.map);
-          state.theme = 'light';
-        }
+    function toggleTheme() {
+      if (els.themeToggleCheck.checked && state.theme === 'light') {
+        state.map.removeLayer(state.lightLayer);
+        state.darkLayer.addTo(state.map);
+        state.theme = 'dark';
+      } else if (!els.themeToggleCheck.checked && state.theme === 'dark') {
+        state.map.removeLayer(state.darkLayer);
+        state.lightLayer.addTo(state.map);
+        state.theme = 'light';
       }
     }
 
-    function enableTopControls() {
-      [els.sheetSelect, els.loadSheetBtn].forEach(el => { el.disabled = false; });
+    function buildRepColors() {
+      state.repColors.clear();
+      getAllKnownReps().forEach((rep, idx) => {
+        state.repColors.set(rep, COLOR_PALETTE[idx % COLOR_PALETTE.length]);
+      });
     }
 
-    function getAllReps() {
+    function getAllAssignedReps() {
+      const set = new Set();
+      state.accounts.forEach(a => { if (a.assignedRep) set.add(a.assignedRep); });
+      return [...set].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
+    }
+
+    function getAllKnownReps() {
       const set = new Set();
       state.accounts.forEach(a => {
         if (a.assignedRep) set.add(a.assignedRep);
         if (a.currentRep) set.add(a.currentRep);
+        if (a.originalAssignedRep) set.add(a.originalAssignedRep);
       });
-      return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      return [...set].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
     }
 
-    function getFilteredAccounts() {
-      return state.accounts.filter(passesAllFilters);
-    }
-
-    function passesAllFilters(account) {
-      const segmentFilter = els.segmentFilter?.value || 'ALL';
-      const premiseFilter = els.premiseFilter?.value || 'ALL';
-      const protectedFilter = els.protectedFilter?.value || 'ALL';
-      const movedFilter = els.movedFilter?.value || 'ALL';
-
-      if (state.filterSelections.rep.size > 0 && !state.filterSelections.rep.has(account.assignedRep)) return false;
-      if (state.filterSelections.rank.size > 0 && !state.filterSelections.rank.has(account.rank)) return false;
-      if (state.filterSelections.chain.size > 0 && !state.filterSelections.chain.has(account.chain || '')) return false;
-
-      if (segmentFilter !== 'ALL' && (account.segment || '') !== segmentFilter) return false;
-      if (premiseFilter !== 'ALL' && (account.premise || '') !== premiseFilter) return false;
-
-      if (protectedFilter === 'PROTECTED_ONLY' && !account.protected) return false;
-      if (protectedFilter === 'UNPROTECTED_ONLY' && account.protected) return false;
-
-      const isMoved = account.assignedRep !== account.originalAssignedRep;
-      if (movedFilter === 'MOVED_ONLY' && !isMoved) return false;
-      if (movedFilter === 'UNCHANGED_ONLY' && isMoved) return false;
-
-      return true;
-    }
-
-    function fillSelect(selectEl, values, selectedValue, labelFn = v => v) {
+    function fillSimpleSelect(selectEl, values, selectedValue, labelFn = v => v) {
       selectEl.innerHTML = values.map(v => `<option value="${escapeHtmlAttr(v)}">${escapeHtml(labelFn(v))}</option>`).join('');
-      if (selectedValue && values.includes(selectedValue)) selectEl.value = selectedValue;
-    }
-
-    function findBestHeaderMatch(headers, aliases) {
-      if (!headers?.length) return null;
-
-      const scored = [];
-
-      for (const header of headers) {
-        const h = cleanHeader(header);
-
-        for (const alias of aliases) {
-          const a = cleanHeader(alias);
-          let score = 0;
-
-          if (h === a) score = 100;
-          else if (h.startsWith(a) || a.startsWith(h)) score = 90;
-          else if (h.includes(a) || a.includes(h)) score = 75;
-          else {
-            const hWords = h.split(' ').filter(Boolean);
-            const aWords = a.split(' ').filter(Boolean);
-            const overlap = aWords.filter(word => hWords.includes(word)).length;
-            if (overlap > 0) score = overlap * 20;
-          }
-
-          if (score > 0) scored.push({ header, score });
-        }
-      }
-
-      scored.sort((a, b) => b.score - a.score);
-      return scored.length ? scored[0].header : null;
-    }
-
-    function uniqueNonBlank(values) {
-      return [...new Set(values.map(v => safeString(v)).filter(Boolean))]
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    }
-
-    function countAssignments(assignments, reps, workingAccounts) {
-      const counts = new Map();
-      reps.forEach(rep => counts.set(rep, 0));
-      for (const account of workingAccounts) {
-        const rep = assignments.get(account._id) || account.assignedRep;
-        counts.set(rep, (counts.get(rep) || 0) + 1);
-      }
-      return counts;
+      if (selectedValue != null && values.includes(selectedValue)) selectEl.value = selectedValue;
     }
 
     function updateLastAction(text) {
@@ -2686,22 +2312,38 @@
       toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2200);
     }
 
-    function deltaClass(value) {
-      if (value > 0) return 'delta-pos';
-      if (value < 0) return 'delta-neg';
-      return 'delta-flat';
+    function getDistinctValues(arr, fn) {
+      const set = new Set();
+      arr.forEach(item => {
+        const v = fn(item);
+        if (safeString(v)) set.add(v);
+      });
+      return [...set].sort((a,b) => String(a).localeCompare(String(b), undefined, { numeric:true }));
     }
 
-    function signedNumber(value) {
-      if (value > 0) return `+${value}`;
-      if (value < 0) return `${value}`;
-      return '0';
+    function renderDeltaCount(value) {
+      if (value > 0) return `<span class="num-pos">+${value}</span>`;
+      if (value < 0) return `<span class="num-neg">${value}</span>`;
+      return `<span class="num-zero">0</span>`;
     }
 
-    function signedCurrency(value) {
-      if (value > 0) return `+${formatCurrency(value)}`;
-      if (value < 0) return `-${formatCurrency(Math.abs(value))}`;
-      return '$0';
+    function renderDeltaMoney(value) {
+      if (value > 0) return `<span class="num-pos">+${formatCurrency(value)}</span>`;
+      if (value < 0) return `<span class="num-neg">-${formatCurrency(Math.abs(value))}</span>`;
+      return `<span class="num-zero">$0</span>`;
+    }
+
+    function normalizeCadence4W(value, rank) {
+      const n = toNumber(value);
+      if (Number.isFinite(n) && n >= 0) return n;
+      if (rank === 'A') return 4;
+      if (rank === 'B') return 2;
+      if (rank === 'C') return 1;
+      return 0.33;
+    }
+
+    function rankSortValue(rank) {
+      return { A:0, B:1, C:2, D:3 }[rank] ?? 9;
     }
 
     function toCamel(id) {
@@ -2727,27 +2369,44 @@
       return ['true','yes','y','1','protected','locked'].includes(v);
     }
 
-    function normalizeRank(rankValue) {
-      const raw = safeString(rankValue).toUpperCase();
+    function normalizeRank(value) {
+      const raw = safeString(value).toUpperCase();
       return ['A','B','C','D'].includes(raw) ? raw : 'C';
     }
 
     function formatCurrency(value) {
       return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0
+        style:'currency',
+        currency:'USD',
+        maximumFractionDigits:0
       }).format(value || 0);
     }
 
+    function formatNumber(value, digits = 0) {
+      return Number(value || 0).toLocaleString('en-US', {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+      });
+    }
+
     function avg(values) {
-      return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+      return values.length ? values.reduce((a,b) => a + b, 0) / values.length : 0;
     }
 
     function squaredDistance(lat1, lng1, lat2, lng2) {
       const dx = lng1 - lng2;
       const dy = lat1 - lat2;
       return dx * dx + dy * dy;
+    }
+
+    function groupBy(arr, fn) {
+      const map = new Map();
+      arr.forEach(item => {
+        const key = fn(item);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(item);
+      });
+      return map;
     }
 
     function round2(v) {
