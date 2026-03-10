@@ -81,12 +81,12 @@
       padding: 10px 14px;
       overflow: visible;
       position: relative;
-      z-index: 40;
+      z-index: 20;
     }
 
     .controls-scroll {
       overflow-x: auto;
-      overflow-y: visible;
+      overflow-y: hidden;
       white-space: nowrap;
       padding-bottom: 2px;
     }
@@ -110,7 +110,7 @@
 
     .control-group.compact { min-width: 116px; }
     .control-group.wide { min-width: 220px; }
-    .control-group.slider-group { min-width: 260px; }
+    .control-group.slider-group { min-width: 180px; }
 
     .control-group label {
       font-size: 12px;
@@ -198,6 +198,14 @@
       gap: 14px;
       flex-wrap: wrap;
       justify-content: flex-end;
+    }
+
+    .map-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-right: 4px;
     }
 
     .map-toggle {
@@ -313,22 +321,19 @@
       box-shadow: 0 0 0 3px rgba(45,109,204,0.08);
     }
 
-    .multi-select-panel {
-      position: absolute;
-      top: calc(100% + 6px);
-      left: 0;
-      width: 100%;
+    .floating-panel {
+      position: fixed;
       min-width: 220px;
       background: #fff;
       border: 1px solid var(--border);
       border-radius: 14px;
       box-shadow: 0 18px 32px rgba(18, 38, 63, 0.16);
-      z-index: 3000;
+      z-index: 5000;
       display: none;
       overflow: hidden;
     }
 
-    .multi-select.open .multi-select-panel {
+    .floating-panel.open {
       display: block;
     }
 
@@ -549,6 +554,7 @@
       .summary-strip { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
       .panel-header { flex-direction: column; align-items: stretch; }
       .map-header-right { justify-content: flex-start; }
+      .map-actions { margin-right: 0; }
     }
   </style>
 </head>
@@ -572,10 +578,8 @@
         </select>
 
         <button id="load-sheet-btn" class="btn">Load Sheet</button>
-        <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
         <button id="undo-btn" class="btn" disabled>Undo</button>
         <button id="reset-btn" class="btn" disabled>Reset All</button>
-        <button id="optimize-btn" class="btn btn-accent" disabled>Optimize Routes</button>
         <button id="export-btn" class="btn" disabled>Export Excel</button>
       </div>
     </header>
@@ -592,13 +596,6 @@
             <label>Rep filter</label>
             <div id="rep-filter-wrap" class="multi-select disabled">
               <button id="rep-filter-btn" type="button" class="multi-select-button" disabled>All reps</button>
-              <div id="rep-filter-panel" class="multi-select-panel">
-                <div class="multi-select-actions">
-                  <button type="button" class="multi-select-link" data-multi-action="all" data-target="rep">Select all</button>
-                  <button type="button" class="multi-select-link" data-multi-action="none" data-target="rep">Clear</button>
-                </div>
-                <div id="rep-filter-options" class="multi-select-options"></div>
-              </div>
             </div>
           </div>
 
@@ -606,13 +603,6 @@
             <label>Rank filter</label>
             <div id="rank-filter-wrap" class="multi-select disabled">
               <button id="rank-filter-btn" type="button" class="multi-select-button" disabled>All ranks</button>
-              <div id="rank-filter-panel" class="multi-select-panel">
-                <div class="multi-select-actions">
-                  <button type="button" class="multi-select-link" data-multi-action="all" data-target="rank">Select all</button>
-                  <button type="button" class="multi-select-link" data-multi-action="none" data-target="rank">Clear</button>
-                </div>
-                <div id="rank-filter-options" class="multi-select-options"></div>
-              </div>
             </div>
           </div>
 
@@ -620,13 +610,6 @@
             <label>Chain filter</label>
             <div id="chain-filter-wrap" class="multi-select disabled">
               <button id="chain-filter-btn" type="button" class="multi-select-button" disabled>All chains</button>
-              <div id="chain-filter-panel" class="multi-select-panel">
-                <div class="multi-select-actions">
-                  <button type="button" class="multi-select-link" data-multi-action="all" data-target="chain">Select all</button>
-                  <button type="button" class="multi-select-link" data-multi-action="none" data-target="chain">Clear</button>
-                </div>
-                <div id="chain-filter-options" class="multi-select-options"></div>
-              </div>
             </div>
           </div>
 
@@ -677,11 +660,6 @@
             <input id="max-stops-input" type="number" min="1" max="10000" step="1" value="200" disabled />
           </div>
 
-          <div class="control-group slider-group">
-            <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
-            <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
-          </div>
-
           <div class="control-group compact">
             <label for="balance-mode">Optimize by</label>
             <select id="balance-mode" disabled>
@@ -689,6 +667,11 @@
               <option value="stops">Stops</option>
               <option value="revenue">Revenue</option>
             </select>
+          </div>
+
+          <div class="control-group slider-group">
+            <label for="disruption-slider">Customer disruption <span id="disruption-value">70</span></label>
+            <input id="disruption-slider" type="range" min="0" max="100" step="1" value="70" disabled />
           </div>
         </div>
       </div>
@@ -734,6 +717,11 @@
           </div>
 
           <div class="map-header-right">
+            <div class="map-actions">
+              <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
+              <button id="optimize-btn" class="btn btn-accent" disabled>Optimize Routes</button>
+            </div>
+
             <label class="map-toggle">
               <input id="theme-toggle-checkbox" type="checkbox" />
               <span>Dark Map</span>
@@ -813,6 +801,30 @@
     </main>
   </div>
 
+  <div id="rep-floating-panel" class="floating-panel">
+    <div class="multi-select-actions">
+      <button type="button" class="multi-select-link" data-multi-action="all" data-target="rep">Select all</button>
+      <button type="button" class="multi-select-link" data-multi-action="none" data-target="rep">Clear</button>
+    </div>
+    <div id="rep-filter-options" class="multi-select-options"></div>
+  </div>
+
+  <div id="rank-floating-panel" class="floating-panel">
+    <div class="multi-select-actions">
+      <button type="button" class="multi-select-link" data-multi-action="all" data-target="rank">Select all</button>
+      <button type="button" class="multi-select-link" data-multi-action="none" data-target="rank">Clear</button>
+    </div>
+    <div id="rank-filter-options" class="multi-select-options"></div>
+  </div>
+
+  <div id="chain-floating-panel" class="floating-panel">
+    <div class="multi-select-actions">
+      <button type="button" class="multi-select-link" data-multi-action="all" data-target="chain">Select all</button>
+      <button type="button" class="multi-select-link" data-multi-action="none" data-target="chain">Clear</button>
+    </div>
+    <div id="chain-filter-options" class="multi-select-options"></div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
@@ -875,7 +887,8 @@
         rep: new Set(),
         rank: new Set(['A','B','C','D']),
         chain: new Set()
-      }
+      },
+      activeFloatingType: null
     };
 
     const els = {};
@@ -901,9 +914,9 @@
         'rep-table-body','selection-preview','selection-count','clear-selection-btn',
         'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','last-action','toast',
         'moved-preview','moved-review-count',
-        'rep-filter-wrap','rep-filter-btn','rep-filter-panel','rep-filter-options',
-        'rank-filter-wrap','rank-filter-btn','rank-filter-panel','rank-filter-options',
-        'chain-filter-wrap','chain-filter-btn','chain-filter-panel','chain-filter-options'
+        'rep-filter-wrap','rep-filter-btn','rep-filter-options','rep-floating-panel',
+        'rank-filter-wrap','rank-filter-btn','rank-filter-options','rank-floating-panel',
+        'chain-filter-wrap','chain-filter-btn','chain-filter-options','chain-floating-panel'
       ].forEach(id => {
         els[toCamel(id)] = document.getElementById(id);
       });
@@ -936,21 +949,33 @@
       bindMultiSelect('rank');
       bindMultiSelect('chain');
 
-      document.addEventListener('click', handleDocumentClick);
+      document.addEventListener('click', handleDocumentClick, true);
+      window.addEventListener('resize', repositionActiveFloatingPanel);
+      window.addEventListener('scroll', repositionActiveFloatingPanel, true);
     }
 
     function bindMultiSelect(type) {
       const wrap = els[`${type}FilterWrap`];
       const btn = els[`${type}FilterBtn`];
+      const floatingPanel = els[`${type}FloatingPanel`];
 
       btn.addEventListener('click', (event) => {
         if (btn.disabled) return;
         event.stopPropagation();
-        closeAllMultiSelects(type);
-        wrap.classList.toggle('open');
+
+        if (state.activeFloatingType === type) {
+          closeAllMultiSelects();
+          return;
+        }
+
+        closeAllMultiSelects();
+        wrap.classList.add('open');
+        floatingPanel.classList.add('open');
+        state.activeFloatingType = type;
+        positionFloatingPanel(type);
       });
 
-      wrap.querySelectorAll('.multi-select-link').forEach(link => {
+      floatingPanel.querySelectorAll('.multi-select-link').forEach(link => {
         link.addEventListener('click', (event) => {
           event.stopPropagation();
           const action = link.getAttribute('data-multi-action');
@@ -963,23 +988,49 @@
           }
 
           renderMultiSelectOptions(type, values, state.filterSelections[type], getMultiSelectAllLabel(type));
+          positionFloatingPanel(type);
           refreshUI();
         });
       });
     }
 
     function handleDocumentClick(event) {
-      const roots = [els.repFilterWrap, els.rankFilterWrap, els.chainFilterWrap];
-      const inside = roots.some(root => root && root.contains(event.target));
-      if (!inside) closeAllMultiSelects();
+      const openType = state.activeFloatingType;
+      if (!openType) return;
+
+      const wrap = els[`${openType}FilterWrap`];
+      const panel = els[`${openType}FloatingPanel`];
+
+      if (wrap.contains(event.target) || panel.contains(event.target)) return;
+      closeAllMultiSelects();
     }
 
-    function closeAllMultiSelects(exceptType = null) {
+    function closeAllMultiSelects() {
       ['rep','rank','chain'].forEach(type => {
-        if (type !== exceptType) {
-          els[`${type}FilterWrap`]?.classList.remove('open');
-        }
+        els[`${type}FilterWrap`]?.classList.remove('open');
+        els[`${type}FloatingPanel`]?.classList.remove('open');
       });
+      state.activeFloatingType = null;
+    }
+
+    function repositionActiveFloatingPanel() {
+      if (!state.activeFloatingType) return;
+      positionFloatingPanel(state.activeFloatingType);
+    }
+
+    function positionFloatingPanel(type) {
+      const btn = els[`${type}FilterBtn`];
+      const panel = els[`${type}FloatingPanel`];
+      if (!btn || !panel) return;
+
+      const rect = btn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const panelWidth = Math.max(rect.width, 240);
+      const left = Math.min(rect.left, viewportWidth - panelWidth - 12);
+
+      panel.style.width = `${panelWidth}px`;
+      panel.style.left = `${Math.max(12, left)}px`;
+      panel.style.top = `${Math.min(window.innerHeight - 260, rect.bottom + 6)}px`;
     }
 
     function getMultiSelectValues(type) {
@@ -1021,6 +1072,7 @@
           const checked = [...optionsEl.querySelectorAll('input[type="checkbox"]:checked')].map(el => el.value);
           state.filterSelections[type] = new Set(checked);
           updateMultiSelectButton(type, values, allLabel);
+          positionFloatingPanel(type);
           refreshUI();
         });
       });
@@ -1325,8 +1377,9 @@
       ['rep','rank','chain'].forEach(type => {
         els[`${type}FilterBtn`].disabled = !hasData;
         els[`${type}FilterWrap`].classList.toggle('disabled', !hasData);
-        if (!hasData) els[`${type}FilterWrap`].classList.remove('open');
       });
+
+      if (!hasData) closeAllMultiSelects();
 
       els.undoBtn.disabled = !hasData || state.undoStack.length === 0;
       els.clearSelectionBtn.disabled = !hasData || state.selection.size === 0;
@@ -1365,6 +1418,10 @@
       renderMultiSelectOptions('rep', reps, state.filterSelections.rep, 'All reps');
       renderMultiSelectOptions('rank', ['A','B','C','D'], state.filterSelections.rank, 'All ranks');
       renderMultiSelectOptions('chain', chains, state.filterSelections.chain, 'All chains');
+
+      if (state.activeFloatingType) {
+        positionFloatingPanel(state.activeFloatingType);
+      }
 
       if (!els.repCountInput.dataset.userTouched) {
         els.repCountInput.value = reps.length || 1;
