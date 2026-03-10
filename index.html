@@ -2425,6 +2425,15 @@
       return centroids;
     }
 
+    function buildTargetRepNames(targetCount, currentReps) {
+      const reps = [...currentReps];
+      while (reps.length < targetCount) {
+        reps.push(`Rep ${reps.length + 1}`);
+      }
+      if (reps.length > targetCount) return reps.slice(0, targetCount);
+      return reps.length ? reps : ['Rep 1'];
+    }
+
     function refreshTerritories() {
       state.territoryLayer.clearLayers();
       if (!els.showTerritoryCheckbox.checked || !state.accounts.length) return;
