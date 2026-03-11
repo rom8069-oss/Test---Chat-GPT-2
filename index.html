@@ -69,7 +69,21 @@
       white-space:nowrap;
       padding-left:2px;
     }
+    .brand-wrap{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width:0;
+      flex:0 1 auto;
+}
 
+    .brand-logo{
+      height:40px;
+      width:auto;
+      display:block;
+      flex:0 0 auto;
+      object-fit:contain;
+}
     .topbar-actions{
       display:flex;
       align-items:center;
@@ -654,7 +668,10 @@
 <body>
   <div class="app">
     <div class="topbar">
-      <div class="title">Territory Planning &amp; Optimization Tool</div>
+      <div class="brand-wrap">
+  <img class="brand-logo" alt="Romano Beverage" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfoAAAB4CAYAAABW8N8KAAAACXBIWXMAAAsSAAALEgHS3X78AAAgAElEQVR4nO2de3BU1f3HP7ObfQm7JCGQwCBKgBLQKqCgUYoKqFW0P1qtVqv1Y1W91D9aW1HrH7V2W+utpVY9rXWl9bXWWr12q9XW1mqlXirKijJwCwEJgQQICdk3s7vP7497J5vdmZnd2e2emdn7/Xw+Hjm7c+655557zjn3nHPOec6hYRiGgYGBgYGBoYfQfE9gYGBgYGBo0mDgYGBgYGhSYOBoYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhvb/ATl72L6omdKjAAAAAElFTkSuQmCC" />
+  <div class="title">Territory Planning &amp; Optimization Tool</div>
+</div>
       <div class="topbar-actions">
         <label class="file-label" for="file-input">Upload Excel / CSV</label>
         <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
@@ -1881,7 +1898,69 @@
       enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
       runBorderCleanup(assignments, targetRepNames, continuityWeight, minStops);
       enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
+      enforceMaximumStops(assignments, targetRepNames, minStops, maxStops);
+      enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
+      enforceMaximumStops(assignments, targetRepNames, minStops, maxStops);
+    function enforceMaximumStops(assignments, targetRepNames, minStops, maxStops) {
+      let pass = 0;
+      const maxPasses = 1000;
 
+      while (pass < maxPasses) {
+        pass += 1;
+        const counts = countAssignments(assignments, targetRepNames);
+        const overfilled = targetRepNames
+          .filter(rep => (counts.get(rep) || 0) > maxStops)
+          .sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0));
+
+        if (!overfilled.length) break;
+
+        let movedThisPass = false;
+
+        for (const donorRep of overfilled) {
+          const donorAccounts = state.accounts
+            .filter(a => assignments.get(a._id) === donorRep && !a.protected)
+            .sort((a, b) => {
+              const donorCentroid = centroidForRepFromAssignments(assignments, donorRep);
+              const ad = squaredDistance(a.latitude, a.longitude, donorCentroid.lat, donorCentroid.lng);
+              const bd = squaredDistance(b.latitude, b.longitude, donorCentroid.lat, donorCentroid.lng);
+              return bd - ad;
+            });
+
+          let bestMove = null;
+
+          for (const account of donorAccounts) {
+            for (const targetRep of targetRepNames) {
+              if (targetRep === donorRep) continue;
+              if ((counts.get(targetRep) || 0) >= maxStops) continue;
+
+              const targetCentroid = centroidForRepFromAssignments(assignments, targetRep);
+              const score =
+                squaredDistance(account.latitude, account.longitude, targetCentroid.lat, targetCentroid.lng) +
+                (account.currentRep === targetRep ? 0 : 0.25) +
+                ((counts.get(targetRep) || 0) < minStops ? -1.5 : 0);
+
+              if (!bestMove || score < bestMove.score) {
+                bestMove = {
+                  accountId: account._id,
+                  from: donorRep,
+                  to: targetRep,
+                  score
+                };
+              }
+            }
+          }
+
+          if (bestMove) {
+            assignments.set(bestMove.accountId, bestMove.to);
+            counts.set(bestMove.from, (counts.get(bestMove.from) || 0) - 1);
+            counts.set(bestMove.to, (counts.get(bestMove.to) || 0) + 1);
+            movedThisPass = true;
+          }
+        }
+
+        if (!movedThisPass) break;
+      }
+    }
       const changes = [];
       for (const account of state.accounts) {
         const nextRep = assignments.get(account._id) || account.assignedRep;
