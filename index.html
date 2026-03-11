@@ -62,30 +62,14 @@
       z-index:30;
     }
 
-    .brand-wrap{
-     display:flex;
-     align-items:center;
-     gap:12px;
-     min-width:0;
-     flex:0 1 auto;
+    .title{
+      font-size:19px;
+      font-weight:800;
+      letter-spacing:.2px;
+      white-space:nowrap;
+      padding-left:2px;
     }
 
-   .brand-logo{
-     height:40px;
-     width:auto;
-     display:block;
-     flex:0 0 auto;
-     object-fit:contain;
-}
-
-.title{
-  font-size:19px;
-  font-weight:800;
-  letter-spacing:.2px;
-  white-space:nowrap;
-  padding-left:2px;
-  min-width:0;
-}
     .topbar-actions{
       display:flex;
       align-items:center;
@@ -424,71 +408,26 @@
       flex:0 0 96px;
     }
 
-.selected-item,
-.moved-item{
-  border:1px solid var(--border);
-  background:#fff;
-  border-radius:10px;
-  padding:8px 10px;
-  min-height:52px;
-  flex:0 0 auto;
-}
+    .selected-item{
+      border:1px solid var(--border);
+      border-radius:10px;
+      background:#fff;
+      padding:8px 10px;
+      min-height:54px;
+      flex:0 0 auto;
+    }
 
-.selected-item-title,
-.moved-item-title{
-  font-size:14px;
-  font-weight:800;
-  margin-bottom:2px;
-  line-height:1.18;
-  color:var(--text);
-}
+    .selected-item-title{
+      font-size:14px;
+      font-weight:800;
+      margin-bottom:2px;
+      line-height:1.18;
+    }
 
-.selected-item-meta,
-.moved-item-meta{
-  color:var(--muted);
-  font-size:12px;
-  line-height:1.24;
-}
-
-.transfer-line{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  flex-wrap:wrap;
-  margin-top:3px;
-}
-
-.rep-chip{
-  display:inline-flex;
-  align-items:center;
-  padding:2px 8px;
-  border-radius:999px;
-  background:#eef4fb;
-  border:1px solid #d7e3f0;
-  color:var(--text);
-  font-size:11px;
-  font-weight:800;
-  line-height:1;
-}
-
-.rep-arrow{
-  color:var(--muted);
-  font-size:12px;
-  font-weight:800;
-}
-
-.metric-chip{
-  display:inline-flex;
-  align-items:center;
-  padding:2px 8px;
-  border-radius:999px;
-  background:#f6f9fc;
-  border:1px solid #e0e8f1;
-  color:var(--muted);
-  font-size:11px;
-  font-weight:700;
-  line-height:1;
-}
+    .selected-item-meta{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.24;
     }
 
     .moved-review{
@@ -715,12 +654,7 @@
 <body>
   <div class="app">
     <div class="topbar">
-      <div class="brand-wrap">
-  <img class="brand-logo" alt="Romano Beverage" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfoAAAB4CAYAAABW8N8KAAAACXBIWXMAAAsSAAALEgHS3X78AAAgAElEQVR4nO2de3BU1f3HP7ObfQm7JCGQwCBKgBLQKqCgUYoKqFW0P1qtVqv1Y1W91D9aW1HrH7V2W+utpVY9rXWl9bXWWr12q9XW1mqlXirKijJwCwEJgQQICdk3s7vP7497J5vdmZnd2e2emdn7/Xw+Hjm7c+655557zjn3nHPOec6hYRiGgYGBgYGBoYfQfE9gYGBgYGBo0mDgYGBgYGhSYOBoYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhvb/ATl72L6omdKjAAAAAElFTkSuQmCC" />
-  <div class="brand-wrap">
-  <img class="brand-logo" alt="Romano Beverage" src="romano-beverage-logo.png" />
-  <div class="title">Territory Planning &amp; Optimization Tool</div>
-</div>
+      <div class="title">Territory Planning &amp; Optimization Tool</div>
       <div class="topbar-actions">
         <label class="file-label" for="file-input">Upload Excel / CSV</label>
         <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
@@ -1656,56 +1590,46 @@
     }
 
     function renderSelectionPreview() {
-  const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 250);
-  els.selectionCount.textContent = String(state.selection.size);
+      const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 250);
+      els.selectionCount.textContent = String(state.selection.size);
 
-  if (!selected.length) {
-    els.selectionPreview.innerHTML = '<div class="empty">No accounts selected.</div>';
-    return;
-  }
+      if (!selected.length) {
+        els.selectionPreview.innerHTML = '<div class="empty">No accounts selected.</div>';
+        return;
+      }
 
-  els.selectionPreview.innerHTML = selected.map(a => `
-    <div class="selected-item">
-      <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
-      <div class="transfer-line">
-        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
-        <span class="metric-chip">${escapeHtml(a.premise)}</span>
-        <span class="metric-chip">${escapeHtml(a.segment)}</span>
-        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
-        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
-        <span class="metric-chip">4W ${formatNumber(a.cadence4w, 2)}</span>
-        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
-      </div>
-    </div>
-  `).join('');
-}
+      els.selectionPreview.innerHTML = selected.map(a => `
+        <div class="selected-item">
+          <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
+          <div class="selected-item-meta">
+            ${escapeHtml(a.premise)} • ${escapeHtml(a.segment)} • ${escapeHtml(a.assignedRep)} •
+            ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)} • 4W ${formatNumber(a.cadence4w, 2)}
+            ${a.protected ? ' • Protected' : ''}
+          </div>
+        </div>
+      `).join('');
+    }
 
     function renderMovedReview() {
-  const moved = state.accounts
-    .filter(a => a.assignedRep !== a.originalAssignedRep)
-    .slice(0, 250);
+      const moved = state.accounts
+        .filter(a => a.assignedRep !== a.originalAssignedRep)
+        .slice(0, 250);
 
-  els.movedReviewCount.textContent = String(moved.length);
+      els.movedReviewCount.textContent = String(moved.length);
 
-  if (!moved.length) {
-    els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
-    return;
-  }
+      if (!moved.length) {
+        els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
+        return;
+      }
 
-  els.movedReviewList.innerHTML = moved.map(a => `
-    <div class="moved-item">
-      <div class="moved-item-title">${escapeHtml(a.customerName)}</div>
-      <div class="transfer-line">
-        <span class="rep-chip">${escapeHtml(a.originalAssignedRep)}</span>
-        <span class="rep-arrow">→</span>
-        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
-        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
-        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
-        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
-      </div>
-    </div>
-  `).join('');
-}
+      els.movedReviewList.innerHTML = moved.map(a => `
+        <div class="moved-item">
+          <strong>${escapeHtml(a.customerName)}</strong><br/>
+          ${escapeHtml(a.originalAssignedRep)} → ${escapeHtml(a.assignedRep)} •
+          ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)}
+        </div>
+      `).join('');
+    }
 
     function renderSummary() {
       const totalAccounts = state.accounts.length;
@@ -1957,69 +1881,7 @@
       enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
       runBorderCleanup(assignments, targetRepNames, continuityWeight, minStops);
       enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
-      enforceMaximumStops(assignments, targetRepNames, minStops, maxStops);
-      enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
-      enforceMaximumStops(assignments, targetRepNames, minStops, maxStops);
-    function enforceMaximumStops(assignments, targetRepNames, minStops, maxStops) {
-      let pass = 0;
-      const maxPasses = 1000;
 
-      while (pass < maxPasses) {
-        pass += 1;
-        const counts = countAssignments(assignments, targetRepNames);
-        const overfilled = targetRepNames
-          .filter(rep => (counts.get(rep) || 0) > maxStops)
-          .sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0));
-
-        if (!overfilled.length) break;
-
-        let movedThisPass = false;
-
-        for (const donorRep of overfilled) {
-          const donorAccounts = state.accounts
-            .filter(a => assignments.get(a._id) === donorRep && !a.protected)
-            .sort((a, b) => {
-              const donorCentroid = centroidForRepFromAssignments(assignments, donorRep);
-              const ad = squaredDistance(a.latitude, a.longitude, donorCentroid.lat, donorCentroid.lng);
-              const bd = squaredDistance(b.latitude, b.longitude, donorCentroid.lat, donorCentroid.lng);
-              return bd - ad;
-            });
-
-          let bestMove = null;
-
-          for (const account of donorAccounts) {
-            for (const targetRep of targetRepNames) {
-              if (targetRep === donorRep) continue;
-              if ((counts.get(targetRep) || 0) >= maxStops) continue;
-
-              const targetCentroid = centroidForRepFromAssignments(assignments, targetRep);
-              const score =
-                squaredDistance(account.latitude, account.longitude, targetCentroid.lat, targetCentroid.lng) +
-                (account.currentRep === targetRep ? 0 : 0.25) +
-                ((counts.get(targetRep) || 0) < minStops ? -1.5 : 0);
-
-              if (!bestMove || score < bestMove.score) {
-                bestMove = {
-                  accountId: account._id,
-                  from: donorRep,
-                  to: targetRep,
-                  score
-                };
-              }
-            }
-          }
-
-          if (bestMove) {
-            assignments.set(bestMove.accountId, bestMove.to);
-            counts.set(bestMove.from, (counts.get(bestMove.from) || 0) - 1);
-            counts.set(bestMove.to, (counts.get(bestMove.to) || 0) + 1);
-            movedThisPass = true;
-          }
-        }
-
-        if (!movedThisPass) break;
-      }
-    }
       const changes = [];
       for (const account of state.accounts) {
         const nextRep = assignments.get(account._id) || account.assignedRep;
