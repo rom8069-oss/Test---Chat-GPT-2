@@ -43,6 +43,8 @@
       flex-direction:column;
       gap:10px;
       padding:10px;
+      position:relative;
+      overflow:visible;
     }
 
     .topbar{
@@ -56,6 +58,8 @@
       justify-content:space-between;
       gap:10px;
       flex:0 0 auto;
+      position:relative;
+      z-index:30;
     }
 
     .title{
@@ -130,7 +134,8 @@
       flex:0 0 auto;
       position:relative;
       overflow:visible;
-      z-index:30;
+      z-index:6000;
+      isolation:isolate;
     }
 
     .controls-grid{
@@ -202,6 +207,8 @@
       grid-template-columns:repeat(7,minmax(0,1fr));
       gap:10px;
       flex:0 0 auto;
+      position:relative;
+      z-index:1;
     }
 
     .stat{
@@ -233,6 +240,9 @@
       display:grid;
       grid-template-columns:minmax(0,1.72fr) minmax(560px,.98fr);
       gap:10px;
+      position:relative;
+      z-index:1;
+      overflow:visible;
     }
 
     .card{
@@ -242,12 +252,14 @@
       box-shadow:var(--shadow);
       min-height:0;
       overflow:hidden;
+      position:relative;
     }
 
     .map-card{
       display:flex;
       flex-direction:column;
       min-height:0;
+      z-index:1;
     }
 
     .card-head{
@@ -294,12 +306,14 @@
       width:100%;
       min-height:420px;
       flex:1 1 auto;
+      position:relative;
+      z-index:1;
     }
 
     .side{
       min-height:0;
       display:grid;
-      grid-template-rows:minmax(320px,62%) minmax(280px,38%);
+      grid-template-rows:minmax(320px,62%) minmax(320px,38%);
       gap:10px;
     }
 
@@ -365,9 +379,10 @@
     }
 
     .selected-card{
-      display:flex;
-      flex-direction:column;
+      display:grid;
+      grid-template-rows:auto minmax(170px, 1fr) auto minmax(150px, 1fr);
       min-height:0;
+      overflow:hidden;
     }
 
     .selected-head{
@@ -382,12 +397,12 @@
     .selected-list{
       padding:10px;
       overflow:auto;
-      min-height:162px;
-      max-height:220px;
+      min-height:170px;
+      max-height:none;
       display:flex;
       flex-direction:column;
       gap:8px;
-      flex:0 0 auto;
+      min-width:0;
     }
 
     .selected-item{
@@ -396,6 +411,7 @@
       background:#fff;
       padding:10px 12px;
       min-height:66px;
+      flex:0 0 auto;
     }
 
     .selected-item-title{
@@ -415,9 +431,11 @@
       border-top:1px solid var(--border-soft);
       padding:10px 12px;
       background:#fbfdff;
-      display:flex;
-      flex-direction:column;
+      display:grid;
+      grid-template-rows:auto minmax(150px, 1fr);
       gap:8px;
+      min-height:0;
+      overflow:hidden;
     }
 
     .moved-review-head{
@@ -438,13 +456,13 @@
     }
 
     .moved-review-list{
-      min-height:138px;
-      max-height:190px;
+      min-height:150px;
+      max-height:none;
       overflow:auto;
       display:flex;
       flex-direction:column;
       gap:6px;
-      flex:0 0 auto;
+      min-width:0;
     }
 
     .moved-item{
@@ -455,6 +473,7 @@
       font-size:12px;
       line-height:1.25;
       min-height:52px;
+      flex:0 0 auto;
     }
 
     .empty{
@@ -496,14 +515,14 @@
       left:-9999px;
       width:220px;
       max-width:min(260px, calc(100vw - 20px));
-      max-height:min(300px, calc(100vh - 20px));
+      max-height:min(360px, calc(100vh - 20px));
       display:none;
       flex-direction:column;
       background:#fff;
       border:1px solid var(--border);
       border-radius:14px;
       box-shadow:0 16px 34px rgba(25,56,93,.18);
-      z-index:10001;
+      z-index:20000;
       overflow:hidden;
       isolation:isolate;
     }
@@ -545,7 +564,7 @@
 
     .multi-list{
       overflow:auto;
-      max-height:252px;
+      max-height:300px;
       padding:6px 6px 8px;
       display:flex;
       flex-direction:column;
@@ -595,7 +614,7 @@
       padding:10px 14px;
       font-size:13px;
       font-weight:700;
-      z-index:10000;
+      z-index:30000;
       box-shadow:0 14px 30px rgba(0,0,0,.2);
     }
 
@@ -606,6 +625,14 @@
 
     .leaflet-container{
       font-family:"Tw Cen MT","Trebuchet MS","Segoe UI",Arial,sans-serif;
+      z-index:1;
+    }
+
+    .leaflet-control-container,
+    .leaflet-pane,
+    .leaflet-top,
+    .leaflet-bottom{
+      z-index:1;
     }
 
     @media (max-width:1500px){
@@ -615,6 +642,9 @@
       .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
       .main{ grid-template-columns:1fr; }
       .side{ grid-template-rows:minmax(320px,360px) minmax(320px,1fr); }
+      .selected-card{
+        grid-template-rows:auto minmax(170px, 220px) auto minmax(150px, 210px);
+      }
     }
   </style>
 </head>
@@ -863,8 +893,6 @@
       '#f03e3e','#3b5bdb','#e8590c','#1098ad','#9c36b5','#5c940d','#d9480f','#1864ab','#c2255c','#12b886'
     ];
 
-    const RANK_WEIGHTS = { A: 4, B: 2, C: 1, D: 0.33 };
-
     const COLUMN_ALIASES = {
       latitude: ['latitude','lat','y','geo_lat','customer_latitude'],
       longitude: ['longitude','lng','lon','x','geo_longitude','customer_longitude'],
@@ -879,7 +907,10 @@
       assignedRep: ['assigned rep','new rep','territory','route','assigned territory'],
       overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue'],
       rank: ['rank','class','priority rank'],
-      cadence4w: ['cadence 4w','4w','planned 4w','cadence','frequency'],
+      cadence4w: [
+        'cadence 4w','cadence_4w','cadence4w','4w','planned 4w','planned_4w','planned4w',
+        'cadence','frequency','visit cadence 4w'
+      ],
       protected: ['protected','protected account','locked','do not move','never move']
     };
 
@@ -1106,15 +1137,26 @@
       if (left < 10) left = 10;
 
       let top = rect.bottom + 6;
-      const maxHeight = Math.min(300, Math.max(180, viewportHeight - top - 12));
-      if (top + maxHeight > viewportHeight - 10) {
-        top = Math.max(10, rect.top - Math.min(300, maxHeight) - 6);
+      let availableBelow = viewportHeight - top - 12;
+      let maxHeight = Math.min(360, Math.max(220, availableBelow));
+
+      if (availableBelow < 220) {
+        const desiredAbove = Math.min(360, Math.max(220, rect.top - 16));
+        top = Math.max(10, rect.top - desiredAbove - 6);
+        maxHeight = desiredAbove;
       }
 
       panel.style.width = `${width}px`;
       panel.style.maxHeight = `${maxHeight}px`;
       panel.style.left = `${left}px`;
       panel.style.top = `${top}px`;
+
+      const list = panel.querySelector('.multi-list');
+      if (list) {
+        const searchRow = panel.querySelector('.multi-actions');
+        const searchHeight = searchRow ? searchRow.offsetHeight : 46;
+        list.style.maxHeight = `${Math.max(140, maxHeight - searchHeight - 8)}px`;
+      }
     }
 
     function onFileChosen(event) {
@@ -1545,7 +1587,7 @@
     }
 
     function renderSelectionPreview() {
-      const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 100);
+      const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 250);
       els.selectionCount.textContent = String(state.selection.size);
 
       if (!selected.length) {
@@ -2198,7 +2240,7 @@
         cur.stops += 1;
         cur.revenue += account.overallSales;
         cur[account.rank] += 1;
-        cur.planned4W += account.cadence4w;
+        cur.planned4W += Number(account.cadence4w || 0);
         cur.avgWeekly = cur.planned4W / 4;
         if (account.protected) cur.protected += 1;
         if (account.assignedRep !== account.originalAssignedRep) cur.movedIn += 1;
@@ -2217,6 +2259,7 @@
 
       const rows = [...currentMap.values()].map(row => {
         const base = baselineMap.get(row.rep) || makeEmptyRepSummary(row.rep);
+        row.avgWeekly = row.planned4W / 4;
         return {
           ...row,
           deltaStops: row.stops - base.stops,
@@ -2408,8 +2451,16 @@
     }
 
     function normalizeCadence4W(value, rank) {
-      const n = toNumber(value);
+      const raw = safeString(value);
+      const n = toNumber(raw);
       if (Number.isFinite(n) && n >= 0) return n;
+
+      const normalized = raw.toLowerCase();
+      if (normalized === 'weekly') return 4;
+      if (normalized === 'biweekly' || normalized === 'every other week') return 2;
+      if (normalized === 'monthly') return 1;
+      if (normalized === 'quarterly') return 0.33;
+
       if (rank === 'A') return 4;
       if (rank === 'B') return 2;
       if (rank === 'C') return 1;
