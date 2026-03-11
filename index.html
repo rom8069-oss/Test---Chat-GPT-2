@@ -62,27 +62,29 @@
       z-index:30;
     }
 
-    .title{
-      font-size:19px;
-      font-weight:800;
-      letter-spacing:.2px;
-      white-space:nowrap;
-      padding-left:2px;
-    }
     .brand-wrap{
-      display:flex;
-      align-items:center;
-      gap:12px;
-      min-width:0;
-      flex:0 1 auto;
+     display:flex;
+     align-items:center;
+     gap:12px;
+     min-width:0;
+     flex:0 1 auto;
+    }
+
+   .brand-logo{
+     height:40px;
+     width:auto;
+     display:block;
+     flex:0 0 auto;
+     object-fit:contain;
 }
 
-    .brand-logo{
-      height:40px;
-      width:auto;
-      display:block;
-      flex:0 0 auto;
-      object-fit:contain;
+.title{
+  font-size:19px;
+  font-weight:800;
+  letter-spacing:.2px;
+  white-space:nowrap;
+  padding-left:2px;
+  min-width:0;
 }
     .topbar-actions{
       display:flex;
@@ -422,26 +424,71 @@
       flex:0 0 96px;
     }
 
-    .selected-item{
-      border:1px solid var(--border);
-      border-radius:10px;
-      background:#fff;
-      padding:8px 10px;
-      min-height:54px;
-      flex:0 0 auto;
-    }
+.selected-item,
+.moved-item{
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius:10px;
+  padding:8px 10px;
+  min-height:52px;
+  flex:0 0 auto;
+}
 
-    .selected-item-title{
-      font-size:14px;
-      font-weight:800;
-      margin-bottom:2px;
-      line-height:1.18;
-    }
+.selected-item-title,
+.moved-item-title{
+  font-size:14px;
+  font-weight:800;
+  margin-bottom:2px;
+  line-height:1.18;
+  color:var(--text);
+}
 
-    .selected-item-meta{
-      color:var(--muted);
-      font-size:12px;
-      line-height:1.24;
+.selected-item-meta,
+.moved-item-meta{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.24;
+}
+
+.transfer-line{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:3px;
+}
+
+.rep-chip{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 8px;
+  border-radius:999px;
+  background:#eef4fb;
+  border:1px solid #d7e3f0;
+  color:var(--text);
+  font-size:11px;
+  font-weight:800;
+  line-height:1;
+}
+
+.rep-arrow{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:800;
+}
+
+.metric-chip{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 8px;
+  border-radius:999px;
+  background:#f6f9fc;
+  border:1px solid #e0e8f1;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+  line-height:1;
+}
     }
 
     .moved-review{
@@ -670,6 +717,8 @@
     <div class="topbar">
       <div class="brand-wrap">
   <img class="brand-logo" alt="Romano Beverage" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfoAAAB4CAYAAABW8N8KAAAACXBIWXMAAAsSAAALEgHS3X78AAAgAElEQVR4nO2de3BU1f3HP7ObfQm7JCGQwCBKgBLQKqCgUYoKqFW0P1qtVqv1Y1W91D9aW1HrH7V2W+utpVY9rXWl9bXWWr12q9XW1mqlXirKijJwCwEJgQQICdk3s7vP7497J5vdmZnd2e2emdn7/Xw+Hjm7c+655557zjn3nHPOec6hYRiGgYGBgYGBoYfQfE9gYGBgYGBo0mDgYGBgYGhSYOBoYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhiYNBgYGBgaGJg0GBgYGBoYmDQYGBgYGhvb/ATl72L6omdKjAAAAAElFTkSuQmCC" />
+  <div class="brand-wrap">
+  <img class="brand-logo" alt="Romano Beverage" src="romano-beverage-logo.png" />
   <div class="title">Territory Planning &amp; Optimization Tool</div>
 </div>
       <div class="topbar-actions">
@@ -1607,46 +1656,56 @@
     }
 
     function renderSelectionPreview() {
-      const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 250);
-      els.selectionCount.textContent = String(state.selection.size);
+  const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 250);
+  els.selectionCount.textContent = String(state.selection.size);
 
-      if (!selected.length) {
-        els.selectionPreview.innerHTML = '<div class="empty">No accounts selected.</div>';
-        return;
-      }
+  if (!selected.length) {
+    els.selectionPreview.innerHTML = '<div class="empty">No accounts selected.</div>';
+    return;
+  }
 
-      els.selectionPreview.innerHTML = selected.map(a => `
-        <div class="selected-item">
-          <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
-          <div class="selected-item-meta">
-            ${escapeHtml(a.premise)} • ${escapeHtml(a.segment)} • ${escapeHtml(a.assignedRep)} •
-            ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)} • 4W ${formatNumber(a.cadence4w, 2)}
-            ${a.protected ? ' • Protected' : ''}
-          </div>
-        </div>
-      `).join('');
-    }
+  els.selectionPreview.innerHTML = selected.map(a => `
+    <div class="selected-item">
+      <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
+      <div class="transfer-line">
+        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
+        <span class="metric-chip">${escapeHtml(a.premise)}</span>
+        <span class="metric-chip">${escapeHtml(a.segment)}</span>
+        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
+        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
+        <span class="metric-chip">4W ${formatNumber(a.cadence4w, 2)}</span>
+        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
+      </div>
+    </div>
+  `).join('');
+}
 
     function renderMovedReview() {
-      const moved = state.accounts
-        .filter(a => a.assignedRep !== a.originalAssignedRep)
-        .slice(0, 250);
+  const moved = state.accounts
+    .filter(a => a.assignedRep !== a.originalAssignedRep)
+    .slice(0, 250);
 
-      els.movedReviewCount.textContent = String(moved.length);
+  els.movedReviewCount.textContent = String(moved.length);
 
-      if (!moved.length) {
-        els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
-        return;
-      }
+  if (!moved.length) {
+    els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
+    return;
+  }
 
-      els.movedReviewList.innerHTML = moved.map(a => `
-        <div class="moved-item">
-          <strong>${escapeHtml(a.customerName)}</strong><br/>
-          ${escapeHtml(a.originalAssignedRep)} → ${escapeHtml(a.assignedRep)} •
-          ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)}
-        </div>
-      `).join('');
-    }
+  els.movedReviewList.innerHTML = moved.map(a => `
+    <div class="moved-item">
+      <div class="moved-item-title">${escapeHtml(a.customerName)}</div>
+      <div class="transfer-line">
+        <span class="rep-chip">${escapeHtml(a.originalAssignedRep)}</span>
+        <span class="rep-arrow">→</span>
+        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
+        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
+        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
+        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
+      </div>
+    </div>
+  `).join('');
+}
 
     function renderSummary() {
       const totalAccounts = state.accounts.length;
