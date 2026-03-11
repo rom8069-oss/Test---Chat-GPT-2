@@ -313,7 +313,7 @@
     .side{
       min-height:0;
       display:grid;
-      grid-template-rows:minmax(320px,62%) minmax(320px,38%);
+      grid-template-rows:minmax(320px,62%) minmax(330px,38%);
       gap:10px;
     }
 
@@ -380,7 +380,7 @@
 
     .selected-card{
       display:grid;
-      grid-template-rows:auto minmax(170px, 1fr) auto minmax(150px, 1fr);
+      grid-template-rows:auto minmax(138px, .9fr) auto minmax(170px, 1.1fr);
       min-height:0;
       overflow:hidden;
     }
@@ -395,9 +395,9 @@
     }
 
     .selected-list{
-      padding:10px;
+      padding:8px 10px;
       overflow:auto;
-      min-height:170px;
+      min-height:138px;
       max-height:none;
       display:flex;
       flex-direction:column;
@@ -407,24 +407,24 @@
 
     .selected-item{
       border:1px solid var(--border);
-      border-radius:12px;
+      border-radius:10px;
       background:#fff;
-      padding:10px 12px;
-      min-height:66px;
+      padding:8px 10px;
+      min-height:54px;
       flex:0 0 auto;
     }
 
     .selected-item-title{
       font-size:14px;
       font-weight:800;
-      margin-bottom:3px;
-      line-height:1.2;
+      margin-bottom:2px;
+      line-height:1.18;
     }
 
     .selected-item-meta{
       color:var(--muted);
       font-size:12px;
-      line-height:1.28;
+      line-height:1.24;
     }
 
     .moved-review{
@@ -432,7 +432,7 @@
       padding:10px 12px;
       background:#fbfdff;
       display:grid;
-      grid-template-rows:auto minmax(150px, 1fr);
+      grid-template-rows:auto minmax(170px, 1fr);
       gap:8px;
       min-height:0;
       overflow:hidden;
@@ -443,6 +443,7 @@
       justify-content:space-between;
       gap:8px;
       margin-bottom:0;
+      flex:0 0 auto;
     }
 
     .moved-review-title{
@@ -456,13 +457,14 @@
     }
 
     .moved-review-list{
-      min-height:150px;
+      min-height:170px;
       max-height:none;
       overflow:auto;
       display:flex;
       flex-direction:column;
       gap:6px;
       min-width:0;
+      padding-right:2px;
     }
 
     .moved-item{
@@ -471,7 +473,7 @@
       border-radius:10px;
       padding:8px 10px;
       font-size:12px;
-      line-height:1.25;
+      line-height:1.24;
       min-height:52px;
       flex:0 0 auto;
     }
@@ -641,9 +643,9 @@
       .controls-grid{ grid-template-columns:repeat(6,minmax(0,1fr)); }
       .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
       .main{ grid-template-columns:1fr; }
-      .side{ grid-template-rows:minmax(320px,360px) minmax(320px,1fr); }
+      .side{ grid-template-rows:minmax(320px,360px) minmax(340px,1fr); }
       .selected-card{
-        grid-template-rows:auto minmax(170px, 220px) auto minmax(150px, 210px);
+        grid-template-rows:auto minmax(138px, 190px) auto minmax(170px, 220px);
       }
     }
   </style>
@@ -909,7 +911,7 @@
       rank: ['rank','class','priority rank'],
       cadence4w: [
         'cadence 4w','cadence_4w','cadence4w','4w','planned 4w','planned_4w','planned4w',
-        'cadence','frequency','visit cadence 4w'
+        'calls 4w','call cadence 4w','visit cadence 4w','planned calls 4w','frequency','cadence'
       ],
       protected: ['protected','protected account','locked','do not move','never move']
     };
@@ -2452,14 +2454,26 @@
 
     function normalizeCadence4W(value, rank) {
       const raw = safeString(value);
+      if (!raw) {
+        if (rank === 'A') return 4;
+        if (rank === 'B') return 2;
+        if (rank === 'C') return 1;
+        return 0.33;
+      }
+
+      const normalized = raw.toLowerCase();
       const n = toNumber(raw);
       if (Number.isFinite(n) && n >= 0) return n;
 
-      const normalized = raw.toLowerCase();
-      if (normalized === 'weekly') return 4;
-      if (normalized === 'biweekly' || normalized === 'every other week') return 2;
-      if (normalized === 'monthly') return 1;
-      if (normalized === 'quarterly') return 0.33;
+      if (normalized === 'weekly' || normalized === 'wkly' || normalized === 'week') return 4;
+      if (normalized === 'biweekly' || normalized === 'every other week' || normalized === 'eow' || normalized === 'bi-weekly') return 2;
+      if (normalized === 'monthly' || normalized === 'month') return 1;
+      if (normalized === 'quarterly' || normalized === 'qtr' || normalized === 'quarter') return 0.33;
+
+      if (normalized.includes('weekly')) return 4;
+      if (normalized.includes('biweekly') || normalized.includes('every other')) return 2;
+      if (normalized.includes('monthly')) return 1;
+      if (normalized.includes('quarter')) return 0.33;
 
       if (rank === 'A') return 4;
       if (rank === 'B') return 2;
@@ -2484,8 +2498,10 @@
     }
 
     function toNumber(value) {
-      if (typeof value === 'number') return value;
-      const n = Number(String(value ?? '').replace(/[$,%\s,]/g, ''));
+      if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+      const raw = String(value ?? '').replace(/[$,%\s,]/g, '').trim();
+      if (!raw) return NaN;
+      const n = Number(raw);
       return Number.isFinite(n) ? n : NaN;
     }
 
