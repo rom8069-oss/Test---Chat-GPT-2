@@ -4,24 +4,24 @@ const COLOR_PALETTE = [
   '#f03e3e','#3b5bdb','#e8590c','#1098ad','#9c36b5','#5c940d','#d9480f','#1864ab','#c2255c','#12b886'
 ];
 
-const RANK_WEIGHTS = { A: 4, B: 2, C: 1, D: 0.33 };
-
 const COLUMN_ALIASES = {
   latitude: ['latitude','lat','y','geo_lat','customer_latitude'],
   longitude: ['longitude','lng','lon','x','geo_longitude','customer_longitude'],
   customerId: ['cust id','customer id','customerid','id','account id','acct id'],
-  customerName: ['customer name','name','account name','cust name'],
+  customerName: ['company','customer name','name','account name','cust name'],
   address: ['address','street address','addr','full address'],
   zip: ['zip','zip code','zipcode','postal code'],
   chain: ['chain','chain name'],
   segment: ['segment','customer segment'],
+  premise: ['premise','premise type','on/off premise','premise class'],
   currentRep: ['current rep','rep','sales rep','territory rep','owner rep'],
   assignedRep: ['assigned rep','new rep','territory','route','assigned territory'],
   overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue'],
-  wineSales: ['wine sales','wine','$ wine','wine revenue'],
-  spiritsSales: ['spirits sales','spirits','$ spirits','spirits revenue'],
-  thcSales: ['thc sales','thc','$ thc','thc revenue'],
   rank: ['rank','class','priority rank'],
+  cadence4w: [
+    'cadence 4w','cadence_4w','cadence4w','4w','planned 4w','planned_4w','planned4w',
+    'calls 4w','call cadence 4w','visit cadence 4w','planned calls 4w','frequency','cadence'
+  ],
   protected: ['protected','protected account','locked','do not move','never move']
 };
 
@@ -43,8 +43,24 @@ const state = {
   repColors: new Map(),
   repFocus: null,
   theme: 'light',
-  loadedFileName: 'territory_export.xlsx',
-  lastAction: 'No actions yet'
+  loadedFileName: 'territory_export_updated.xlsx',
+  lastAction: 'No actions yet',
+  filters: {
+    rep: new Set(),
+    rank: new Set(),
+    chain: new Set(),
+    segment: new Set(),
+    premise: 'ALL',
+    protected: 'ALL',
+    moved: 'ALL'
+  },
+  multiSearch: {
+    rep: '',
+    rank: '',
+    chain: '',
+    segment: ''
+  },
+  openMultiKey: null
 };
 
 const els = {};
@@ -55,15 +71,23 @@ function init() {
   bindElements();
   initMap();
   bindEvents();
+  initMultiFilters();
   updateLastAction('No actions yet');
+  fillSimpleSelect(els.premiseFilter, ['ALL'], 'ALL', v => 'All premises');
+  renderMultiFilterOptions();
+  syncControlState();
 }
 
 function bindElements() {
   [
-    'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn','theme-toggle',
-    'assign-rep-select','rep-filter','rep-count-input','min-stops-input','disruption-slider','disruption-value','balance-mode','rank-filter',
-    'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count','clear-selection-btn',
-    'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-workload','map-legend','last-action','toast'
+    'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
+    'assign-rep-select','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode',
+    'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count',
+    'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly',
+    'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
+    'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
+    'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
+    'routes-table-wrap'
   ].forEach(id => {
     els[toCamel(id)] = document.getElementById(id);
   });
@@ -77,17 +101,40 @@ function bindEvents() {
   els.resetBtn.addEventListener('click', resetAssignments);
   els.optimizeBtn.addEventListener('click', optimizeRoutes);
   els.exportBtn.addEventListener('click', exportWorkbook);
-  els.themeToggle.addEventListener('click', toggleTheme);
-  els.repFilter.addEventListener('change', () => {
-    state.repFocus = null;
-    refreshUI();
-  });
-  els.rankFilter.addEventListener('change', refreshUI);
+  els.clearSelectionBtn.addEventListener('click', clearSelection);
+
+  els.themeToggleCheck.addEventListener('change', toggleTheme);
   els.dimOthersCheckbox.addEventListener('change', refreshUI);
   els.showTerritoryCheckbox.addEventListener('change', refreshTerritories);
-  els.clearSelectionBtn.addEventListener('click', clearSelection);
+
+  els.premiseFilter.addEventListener('change', () => {
+    state.filters.premise = els.premiseFilter.value;
+    refreshUI();
+  });
+
+  els.protectedFilter.addEventListener('change', () => {
+    state.filters.protected = els.protectedFilter.value;
+    refreshUI();
+  });
+
+  els.movedFilter.addEventListener('change', () => {
+    state.filters.moved = els.movedFilter.value;
+    refreshUI();
+  });
+
   els.disruptionSlider.addEventListener('input', () => {
     els.disruptionValue.textContent = els.disruptionSlider.value;
+  });
+
+  document.addEventListener('click', handleDocumentClickForPanels);
+  window.addEventListener('resize', () => {
+    if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+  });
+  window.addEventListener('scroll', () => {
+    if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+  }, true);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeAllMultiPanels();
   });
 }
 
@@ -141,6 +188,88 @@ function initMap() {
   });
 }
 
+function initMultiFilters() {
+  ['rep','rank','chain','segment'].forEach(key => {
+    document.querySelector(`[data-multi-trigger="${key}"]`).addEventListener('click', e => {
+      e.stopPropagation();
+      toggleMultiPanel(key);
+    });
+
+    document.querySelector(`[data-select-all="${key}"]`).addEventListener('click', e => {
+      e.stopPropagation();
+      toggleSelectAllMulti(key);
+      positionMultiPanel(key);
+    });
+
+    document.querySelector(`[data-search="${key}"]`).addEventListener('input', e => {
+      state.multiSearch[key] = e.target.value || '';
+      renderMultiFilterOptions();
+      positionMultiPanel(key);
+    });
+  });
+}
+
+function handleDocumentClickForPanels(event) {
+  const openMulti = document.querySelector('.multi.open');
+  if (!openMulti) return;
+  if (!openMulti.contains(event.target)) closeAllMultiPanels();
+}
+
+function toggleMultiPanel(key) {
+  const wrap = document.getElementById(`${key}-filter-wrap`);
+  const alreadyOpen = wrap.classList.contains('open');
+  closeAllMultiPanels();
+
+  if (!alreadyOpen) {
+    wrap.classList.add('open');
+    state.openMultiKey = key;
+    positionMultiPanel(key);
+  }
+}
+
+function closeAllMultiPanels() {
+  document.querySelectorAll('.multi.open').forEach(el => el.classList.remove('open'));
+  state.openMultiKey = null;
+}
+
+function positionMultiPanel(key) {
+  const wrap = document.getElementById(`${key}-filter-wrap`);
+  const trigger = wrap?.querySelector('.multi-trigger');
+  const panel = wrap?.querySelector('.multi-panel');
+  if (!wrap || !trigger || !panel || !wrap.classList.contains('open')) return;
+
+  const rect = trigger.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  const width = 220;
+  let left = rect.left;
+  if (left + width > viewportWidth - 12) left = viewportWidth - width - 12;
+  if (left < 10) left = 10;
+
+  let top = rect.bottom + 6;
+  let availableBelow = viewportHeight - top - 12;
+  let maxHeight = Math.min(360, Math.max(220, availableBelow));
+
+  if (availableBelow < 220) {
+    const desiredAbove = Math.min(360, Math.max(220, rect.top - 16));
+    top = Math.max(10, rect.top - desiredAbove - 6);
+    maxHeight = desiredAbove;
+  }
+
+  panel.style.width = `${width}px`;
+  panel.style.maxHeight = `${maxHeight}px`;
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+
+  const list = panel.querySelector('.multi-list');
+  if (list) {
+    const searchRow = panel.querySelector('.multi-actions');
+    const searchHeight = searchRow ? searchRow.offsetHeight : 46;
+    list.style.maxHeight = `${Math.max(140, maxHeight - searchHeight - 8)}px`;
+  }
+}
+
 function onFileChosen(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -165,11 +294,8 @@ function onFileChosen(event) {
     }
   };
 
-  if (file.name.toLowerCase().endsWith('.csv')) {
-    reader.readAsBinaryString(file);
-  } else {
-    reader.readAsArrayBuffer(file);
-  }
+  if (file.name.toLowerCase().endsWith('.csv')) reader.readAsBinaryString(file);
+  else reader.readAsArrayBuffer(file);
 }
 
 function loadWorkbook(workbook) {
@@ -179,7 +305,6 @@ function loadWorkbook(workbook) {
 
   workbook.SheetNames.forEach((sheetName, idx) => {
     state.workbookSheets[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
-
     const option = document.createElement('option');
     option.value = sheetName;
     option.textContent = sheetName;
@@ -188,7 +313,7 @@ function loadWorkbook(workbook) {
   });
 
   els.sheetSelect.disabled = false;
-  enableTopControls();
+  els.loadSheetBtn.disabled = false;
   loadSelectedSheet();
 }
 
@@ -204,23 +329,27 @@ function loadSelectedSheet() {
 
   if (!normalized.length) {
     state.accounts = [];
-    refreshUI();
+    state.selection.clear();
+    state.undoStack = [];
+    state.changeLog = [];
+    refreshUI(true);
     showToast('No valid rows found in that sheet.');
     return;
   }
 
   state.accounts = normalized;
+  state.selection.clear();
   state.undoStack = [];
   state.changeLog = [];
-  state.selection.clear();
   state.repFocus = null;
 
   buildRepColors();
+  seedFiltersFromData();
   refreshUI(true);
   fitMapToAccounts();
 
   if (!els.repCountInput.dataset.userTouched) {
-    els.repCountInput.value = getAllReps().length || 1;
+    els.repCountInput.value = getAllAssignedReps().length || 1;
   }
 
   showToast(`Loaded ${state.accounts.length} accounts from ${sheetName}.`);
@@ -231,13 +360,12 @@ function normalizeRows(rows) {
   if (!rows?.length) return [];
 
   const mapped = [];
-  const headers = Object.keys(rows[0]);
+  const headers = Object.keys(rows[0] || {});
   const headerMap = {};
   const cleanedHeaderLookup = new Map(headers.map(h => [cleanHeader(h), h]));
 
   Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
     let match = null;
-
     for (const alias of aliases) {
       const cleaned = cleanHeader(alias);
 
@@ -248,14 +376,13 @@ function normalizeRows(rows) {
 
       for (const original of headers) {
         const c = cleanHeader(original);
-        if (c.includes(cleaned) || cleaned.includes(c)) {
+        if (c === cleaned || c.includes(cleaned) || cleaned.includes(c)) {
           match = original;
           break;
         }
       }
       if (match) break;
     }
-
     headerMap[key] = match;
   });
 
@@ -264,7 +391,6 @@ function normalizeRows(rows) {
   for (const row of rows) {
     const lat = toNumber(row[headerMap.latitude]);
     const lng = toNumber(row[headerMap.longitude]);
-
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 
     const customerId = safeString(row[headerMap.customerId]) || `AUTO_${generatedId++}`;
@@ -272,11 +398,9 @@ function normalizeRows(rows) {
     const currentRep = safeString(row[headerMap.currentRep]) || 'Unassigned';
     const assignedRep = safeString(row[headerMap.assignedRep]) || currentRep || 'Unassigned';
     const rank = normalizeRank(row[headerMap.rank]);
-
+    const premise = safeString(row[headerMap.premise]) || 'Unknown';
+    const cadence4w = normalizeCadence4W(row[headerMap.cadence4w], rank);
     const overallSales = toNumber(row[headerMap.overallSales]);
-    const wineSales = toNumber(row[headerMap.wineSales]);
-    const spiritsSales = toNumber(row[headerMap.spiritsSales]);
-    const thcSales = toNumber(row[headerMap.thcSales]);
 
     mapped.push({
       _id: customerId,
@@ -286,16 +410,15 @@ function normalizeRows(rows) {
       customerName,
       address: safeString(row[headerMap.address]),
       zip: safeString(row[headerMap.zip]),
-      chain: safeString(row[headerMap.chain]),
-      segment: safeString(row[headerMap.segment]),
+      chain: safeString(row[headerMap.chain]) || 'Independent',
+      segment: safeString(row[headerMap.segment]) || 'Unknown',
+      premise,
       currentRep,
       assignedRep,
       originalAssignedRep: assignedRep,
       overallSales: Number.isFinite(overallSales) ? overallSales : 0,
-      wineSales: Number.isFinite(wineSales) ? wineSales : 0,
-      spiritsSales: Number.isFinite(spiritsSales) ? spiritsSales : 0,
-      thcSales: Number.isFinite(thcSales) ? thcSales : 0,
       rank,
+      cadence4w,
       protected: toBoolean(row[headerMap.protected]),
       raw: row
     });
@@ -304,62 +427,149 @@ function normalizeRows(rows) {
   return mapped;
 }
 
-function buildRepColors() {
-  state.repColors.clear();
-  const reps = getAllReps();
-  reps.forEach((rep, idx) => {
-    state.repColors.set(rep, COLOR_PALETTE[idx % COLOR_PALETTE.length]);
+function seedFiltersFromData() {
+  state.filters.rep = new Set(getAllAssignedReps());
+  state.filters.rank = new Set(getDistinctValues(state.accounts, a => a.rank));
+  state.filters.chain = new Set(getDistinctValues(state.accounts, a => a.chain));
+  state.filters.segment = new Set(getDistinctValues(state.accounts, a => a.segment));
+  state.filters.premise = 'ALL';
+  state.filters.protected = 'ALL';
+  state.filters.moved = 'ALL';
+
+  fillSimpleSelect(
+    els.premiseFilter,
+    ['ALL', ...getDistinctValues(state.accounts, a => a.premise)],
+    'ALL',
+    v => v === 'ALL' ? 'All premises' : v
+  );
+
+  renderMultiFilterOptions();
+}
+
+function renderMultiFilterOptions() {
+  renderSingleMultiFilter('rep', getAllAssignedReps(), els.repFilterOptions, els.repFilterSummary, 'All reps');
+  renderSingleMultiFilter('rank', getDistinctValues(state.accounts, a => a.rank), els.rankFilterOptions, els.rankFilterSummary, 'All ranks');
+  renderSingleMultiFilter('chain', getDistinctValues(state.accounts, a => a.chain), els.chainFilterOptions, els.chainFilterSummary, 'All chains');
+  renderSingleMultiFilter('segment', getDistinctValues(state.accounts, a => a.segment), els.segmentFilterOptions, els.segmentFilterSummary, 'All segments');
+
+  if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+}
+
+function renderSingleMultiFilter(key, values, container, summaryEl, allLabel) {
+  const selected = state.filters[key];
+  const search = (state.multiSearch[key] || '').toLowerCase().trim();
+  const visibleValues = values.filter(v => String(v).toLowerCase().includes(search));
+
+  container.innerHTML = visibleValues.length
+    ? visibleValues.map(value => {
+        const checked = selected.has(value) ? 'checked' : '';
+        return `
+          <label class="multi-item">
+            <input type="checkbox" data-multi-key="${key}" value="${escapeHtmlAttr(value)}" ${checked}/>
+            <span title="${escapeHtmlAttr(value)}">${escapeHtml(value)}</span>
+          </label>
+        `;
+      }).join('')
+    : `<div class="empty">No matches.</div>`;
+
+  container.querySelectorAll(`input[data-multi-key="${key}"]`).forEach(input => {
+    input.addEventListener('change', e => {
+      const val = e.target.value;
+      if (e.target.checked) state.filters[key].add(val);
+      else state.filters[key].delete(val);
+
+      if (state.filters[key].size === 0) {
+        values.forEach(v => state.filters[key].add(v));
+      }
+
+      updateMultiFilterSummary(key, values, summaryEl, allLabel);
+      refreshUI();
+      renderSingleMultiFilter(key, values, container, summaryEl, allLabel);
+      positionMultiPanel(key);
+    });
   });
+
+  updateMultiFilterSummary(key, values, summaryEl, allLabel);
+}
+
+function updateMultiFilterSummary(key, values, summaryEl, allLabel) {
+  const selected = state.filters[key];
+  const total = values.length;
+  const count = selected.size;
+
+  if (!total || count === total) {
+    summaryEl.textContent = allLabel;
+    return;
+  }
+
+  if (count === 1) {
+    summaryEl.textContent = [...selected][0];
+    return;
+  }
+
+  summaryEl.textContent = `${count} selected`;
+}
+
+function toggleSelectAllMulti(key) {
+  const values = getMultiValuesForKey(key);
+  const selected = state.filters[key];
+  const isAllSelected = selected.size === values.length && values.every(v => selected.has(v));
+
+  selected.clear();
+  if (!isAllSelected) values.forEach(v => selected.add(v));
+
+  renderMultiFilterOptions();
+  refreshUI();
+}
+
+function getMultiValuesForKey(key) {
+  if (key === 'rep') return getAllAssignedReps();
+  if (key === 'rank') return getDistinctValues(state.accounts, a => a.rank);
+  if (key === 'chain') return getDistinctValues(state.accounts, a => a.chain);
+  if (key === 'segment') return getDistinctValues(state.accounts, a => a.segment);
+  return [];
 }
 
 function refreshUI(rebuildMap = false) {
   syncControlState();
-  renderLegend();
   renderRepControls();
-
   if (rebuildMap) rebuildMarkers();
-
   refreshMarkerStyles();
   renderRepTable();
   renderSelectionPreview();
   renderSummary();
+  renderMovedReview();
   refreshTerritories();
+  if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
 }
 
 function syncControlState() {
   const hasData = state.accounts.length > 0;
-
-  [
-    els.assignBtn, els.undoBtn, els.resetBtn, els.optimizeBtn, els.exportBtn,
-    els.assignRepSelect, els.repFilter, els.repCountInput, els.minStopsInput,
-    els.disruptionSlider, els.balanceMode, els.rankFilter,
-    els.dimOthersCheckbox, els.showTerritoryCheckbox, els.clearSelectionBtn
-  ].forEach(el => {
-    if (el === els.assignBtn) {
-      el.disabled = !hasData || state.selection.size === 0;
-    } else {
-      el.disabled = !hasData;
-    }
-  });
-
+  els.assignBtn.disabled = !hasData || state.selection.size === 0;
   els.undoBtn.disabled = !hasData || state.undoStack.length === 0;
+  els.resetBtn.disabled = !hasData;
+  els.optimizeBtn.disabled = !hasData;
+  els.exportBtn.disabled = !hasData;
   els.clearSelectionBtn.disabled = !hasData || state.selection.size === 0;
+  els.assignRepSelect.disabled = !hasData;
+  els.repCountInput.disabled = !hasData;
+  els.minStopsInput.disabled = !hasData;
+  els.maxStopsInput.disabled = !hasData;
+  els.balanceMode.disabled = !hasData;
+  els.disruptionSlider.disabled = !hasData;
+  els.premiseFilter.disabled = !hasData;
+  els.protectedFilter.disabled = !hasData;
+  els.movedFilter.disabled = !hasData;
+  els.dimOthersCheckbox.disabled = !hasData;
+  els.showTerritoryCheckbox.disabled = !hasData;
 }
 
 function renderRepControls() {
-  const reps = getAllReps();
-
-  fillSelect(els.assignRepSelect, reps, reps[0]);
-
-  fillSelect(
-    els.repFilter,
-    ['ALL', ...reps],
-    els.repFilter.value && ['ALL', ...reps].includes(els.repFilter.value) ? els.repFilter.value : 'ALL',
-    rep => rep === 'ALL' ? 'All reps' : rep
-  );
+  const reps = getAllAssignedReps();
+  fillSimpleSelect(els.assignRepSelect, reps, reps[0] || '');
 
   if (!els.repCountInput.dataset.userTouched) {
-    els.repCountInput.value = reps.length || 1;
+    els.repCountInput.value = Math.max(1, reps.length || 1);
   }
 
   els.repCountInput.oninput = () => {
@@ -386,7 +596,6 @@ function refreshMarkerStyles() {
   for (const account of state.accounts) {
     const marker = state.markerById.get(account._id);
     if (!marker) continue;
-
     marker.setStyle(markerStyleForAccount(account));
     marker.setRadius(state.selection.has(account._id) ? 8 : 6);
     marker.getPopup()?.setContent(buildPopupHtml(account));
@@ -394,133 +603,167 @@ function refreshMarkerStyles() {
 }
 
 function markerStyleForAccount(account) {
-  const repFilter = els.repFilter.value || 'ALL';
-  const rankFilter = els.rankFilter.value || 'ALL';
+  const matches = passesFilters(account);
   const dimOthers = els.dimOthersCheckbox.checked;
   const isSelected = state.selection.has(account._id);
-  const color = state.repColors.get(account.assignedRep) || '#4a5568';
-
-  const repPass = repFilter === 'ALL' || account.assignedRep === repFilter;
-  const rankPass = rankFilter === 'ALL' || account.rank === rankFilter;
-  const visible = repPass && rankPass;
-  const focusDim = dimOthers && !visible;
+  const color = state.repColors.get(account.assignedRep) || '#64748b';
+  const dimmed = dimOthers && !matches;
 
   return {
     radius: isSelected ? 8 : 6,
     color: isSelected ? '#1e293b' : color,
-    weight: isSelected ? 2.4 : 1.2,
-    opacity: visible ? 0.95 : 0.18,
+    weight: isSelected ? 2.5 : 1.2,
+    opacity: matches ? 0.96 : (dimmed ? 0.05 : 0.16),
     fillColor: color,
-    fillOpacity: focusDim ? 0.10 : (account.protected ? 0.85 : 0.72)
+    fillOpacity: dimmed ? 0.03 : (account.protected ? 0.88 : 0.74)
   };
+}
+
+function passesFilters(account) {
+  const repPass = state.filters.rep.size === 0 || state.filters.rep.has(account.assignedRep);
+  const rankPass = state.filters.rank.size === 0 || state.filters.rank.has(account.rank);
+  const chainPass = state.filters.chain.size === 0 || state.filters.chain.has(account.chain);
+  const segmentPass = state.filters.segment.size === 0 || state.filters.segment.has(account.segment);
+  const premisePass = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
+  const protectedPass =
+    state.filters.protected === 'ALL' ||
+    (state.filters.protected === 'YES' && account.protected) ||
+    (state.filters.protected === 'NO' && !account.protected);
+  const movedPass =
+    state.filters.moved === 'ALL' ||
+    (state.filters.moved === 'MOVED' && account.assignedRep !== account.originalAssignedRep) ||
+    (state.filters.moved === 'UNCHANGED' && account.assignedRep === account.originalAssignedRep);
+
+  return repPass && rankPass && chainPass && segmentPass && premisePass && protectedPass && movedPass;
 }
 
 function buildPopupHtml(account) {
   const addressLine = [account.address, account.zip].filter(Boolean).join(' ');
-
   return `
-    <div style="min-width:220px;">
-      <div style="font-size:15px;font-weight:700;">${escapeHtml(account.customerName || account.customerId)}</div>
-      <div style="margin-top:6px;color:#5d7286;font-size:12px;">${escapeHtml(addressLine)}</div>
-      <div style="margin-top:10px;"><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
+    <div style="min-width:250px;">
+      <div style="font-size:15px;font-weight:800;">${escapeHtml(account.customerName || account.customerId)}</div>
+      <div style="margin-top:5px;color:#5d7286;font-size:12px;">${escapeHtml(addressLine)}</div>
+      <div style="margin-top:8px;"><strong>Premise:</strong> ${escapeHtml(account.premise)}</div>
+      <div><strong>Segment:</strong> ${escapeHtml(account.segment)}</div>
+      <div><strong>Chain:</strong> ${escapeHtml(account.chain)}</div>
+      <div><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
       <div><strong>Current Rep:</strong> ${escapeHtml(account.currentRep)}</div>
       <div><strong>Revenue:</strong> ${formatCurrency(account.overallSales)}</div>
       <div><strong>Rank:</strong> ${escapeHtml(account.rank)}</div>
+      <div><strong>Cadence 4W:</strong> ${formatNumber(account.cadence4w, 2)}</div>
       <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
     </div>
   `;
-}
-
-function renderLegend() {
-  const reps = getAllReps();
-  els.mapLegend.innerHTML = reps.slice(0, 10).map(rep => `
-    <div class="legend-chip">
-      <span class="color-dot" style="background:${state.repColors.get(rep)}"></span>
-      <span>${escapeHtml(rep)}</span>
-    </div>
-  `).join('');
 }
 
 function renderRepTable() {
   const rows = summarizeByRep();
 
   if (!rows.length) {
-    els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty-state">Upload a file to begin.</td></tr>';
+    els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty">Upload a file to begin.</td></tr>';
     return;
   }
 
-  els.repTableBody.innerHTML = rows.map(row => {
-    const focused = state.repFocus === row.rep ? 'rep-focus-row' : '';
-    return `
-      <tr class="${focused}" data-rep-row="${escapeHtmlAttr(row.rep)}">
-        <td>
-          <div class="rep-cell">
-            <span class="color-dot" style="background:${row.color}"></span>
-            <span>${escapeHtml(row.rep)}</span>
-          </div>
-        </td>
-        <td>${row.stops}</td>
-        <td>${formatCurrency(row.revenue)}</td>
-        <td>${formatCurrency(row.wine)}</td>
-        <td>${formatCurrency(row.spirits)}</td>
-        <td>${formatCurrency(row.thc)}</td>
-        <td>${row.A}</td>
-        <td>${row.B}</td>
-        <td>${row.C}</td>
-        <td>${row.D}</td>
-        <td>${row.protected}</td>
-        <td>${row.movedIn}</td>
-        <td>${row.movedOut}</td>
-        <td>${row.workload.toFixed(2)}</td>
-      </tr>
-    `;
-  }).join('');
+  els.repTableBody.innerHTML = rows.map(row => `
+    <tr data-rep-row="${escapeHtmlAttr(row.rep)}">
+      <td>
+        <div class="rep-cell">
+          <span class="color-dot" style="background:${escapeHtmlAttr(row.color)}"></span>
+          <span>${escapeHtml(row.rep)}</span>
+        </div>
+      </td>
+      <td>${row.stops}</td>
+      <td>${renderDeltaCount(row.deltaStops)}</td>
+      <td>${formatCurrency(row.revenue)}</td>
+      <td>${renderDeltaMoney(row.deltaRevenue)}</td>
+      <td>${row.A}</td>
+      <td>${row.B}</td>
+      <td>${row.C}</td>
+      <td>${row.D}</td>
+      <td>${formatNumber(row.planned4W, 2)}</td>
+      <td>${formatNumber(row.avgWeekly, 2)}</td>
+      <td>${row.protected}</td>
+      <td>${row.movedIn}</td>
+      <td>${row.movedOut}</td>
+    </tr>
+  `).join('');
 
   [...els.repTableBody.querySelectorAll('tr[data-rep-row]')].forEach(tr => {
     tr.addEventListener('click', () => {
       const rep = tr.getAttribute('data-rep-row');
       state.repFocus = state.repFocus === rep ? null : rep;
-      els.repFilter.value = state.repFocus || 'ALL';
-      refreshUI();
       zoomToRep(rep);
     });
   });
 }
 
 function renderSelectionPreview() {
-  const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 40);
+  const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 250);
   els.selectionCount.textContent = String(state.selection.size);
 
   if (!selected.length) {
-    els.selectionPreview.textContent = 'No accounts selected.';
-    syncControlState();
+    els.selectionPreview.innerHTML = '<div class="empty">No accounts selected.</div>';
     return;
   }
 
   els.selectionPreview.innerHTML = selected.map(a => `
-    <div class="preview-item">
-      <div class="preview-title">${escapeHtml(a.customerName)}</div>
-      <div class="preview-meta">${escapeHtml(a.assignedRep)} • ${formatCurrency(a.overallSales)} • Rank ${escapeHtml(a.rank)}${a.protected ? ' • Protected' : ''}</div>
+    <div class="selected-item">
+      <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
+      <div class="transfer-line">
+        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
+        <span class="metric-chip">${escapeHtml(a.premise)}</span>
+        <span class="metric-chip">${escapeHtml(a.segment)}</span>
+        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
+        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
+        <span class="metric-chip">4W ${formatNumber(a.cadence4w, 2)}</span>
+        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
+      </div>
     </div>
   `).join('');
+}
 
-  syncControlState();
+function renderMovedReview() {
+  const moved = state.accounts
+    .filter(a => a.assignedRep !== a.originalAssignedRep)
+    .slice(0, 250);
+
+  els.movedReviewCount.textContent = String(moved.length);
+
+  if (!moved.length) {
+    els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
+    return;
+  }
+
+  els.movedReviewList.innerHTML = moved.map(a => `
+    <div class="moved-item">
+      <div class="moved-item-title">${escapeHtml(a.customerName)}</div>
+      <div class="transfer-line">
+        <span class="rep-chip">${escapeHtml(a.originalAssignedRep)}</span>
+        <span class="rep-arrow">→</span>
+        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
+        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
+        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
+        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
+      </div>
+    </div>
+  `).join('');
 }
 
 function renderSummary() {
   const totalAccounts = state.accounts.length;
-  const totalRevenue = state.accounts.reduce((sum, a) => sum + a.overallSales, 0);
+  const totalRevenue = state.accounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
   const protectedCount = state.accounts.filter(a => a.protected).length;
   const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
-  const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts * 100) : 0;
-  const workload = state.accounts.reduce((sum, a) => sum + (RANK_WEIGHTS[a.rank] || 1), 0);
+  const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts) * 100 : 0;
+  const totalPlanned4W = state.accounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
+  const avgWeekly = totalPlanned4W / 4;
 
   els.globalAccounts.textContent = totalAccounts.toLocaleString();
   els.globalRevenue.textContent = formatCurrency(totalRevenue);
   els.globalProtected.textContent = protectedCount.toLocaleString();
   els.globalMoved.textContent = movedCount.toLocaleString();
   els.globalUnchanged.textContent = `${unchangedPct.toFixed(1)}%`;
-  els.globalWorkload.textContent = workload.toFixed(1);
+  els.globalAvgWeekly.textContent = formatNumber(avgWeekly, 1);
 }
 
 function handleDrawCreated(event) {
@@ -529,19 +772,14 @@ function handleDrawCreated(event) {
   state.drawLayer.addLayer(layer);
 
   let polygon;
-  if (layer instanceof L.Rectangle || layer instanceof L.Polygon) {
-    polygon = layer.toGeoJSON();
-  } else {
-    return;
-  }
+  if (layer instanceof L.Rectangle || layer instanceof L.Polygon) polygon = layer.toGeoJSON();
+  else return;
 
   state.selection.clear();
 
   for (const account of state.accounts) {
     const point = turf.point([account.longitude, account.latitude]);
-    if (turf.booleanPointInPolygon(point, polygon)) {
-      state.selection.add(account._id);
-    }
+    if (turf.booleanPointInPolygon(point, polygon)) state.selection.add(account._id);
   }
 
   refreshUI();
@@ -550,10 +788,8 @@ function handleDrawCreated(event) {
 
 function toggleSelection(id, additive = false) {
   if (!additive) state.selection.clear();
-
   if (state.selection.has(id)) state.selection.delete(id);
   else state.selection.add(id);
-
   refreshUI();
 }
 
@@ -566,7 +802,6 @@ function clearSelection() {
 function assignSelectionToRep() {
   const targetRep = els.assignRepSelect.value;
   const selectedIds = [...state.selection];
-
   if (!selectedIds.length || !targetRep) return;
 
   const changes = [];
@@ -670,12 +905,15 @@ function optimizeRoutes() {
 
   const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
   const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
-  const targetCount = Math.max(1, Math.min(100, targetCountRaw));
-  const minStops = Math.max(1, minStopsRaw);
+  const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
+
+  const targetCount = Math.max(1, Math.min(100, targetCountRaw || 1));
+  const minStops = Math.max(1, minStopsRaw || 1);
+  const maxStops = Math.max(minStops, maxStopsRaw || minStops);
   const totalAccounts = state.accounts.length;
 
   if (targetCount * minStops > totalAccounts) {
-    showToast(`Minimum stops too high. ${targetCount} reps x ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
+    showToast(`Minimum stops too high. ${targetCount} reps × ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
     return;
   }
 
@@ -685,7 +923,7 @@ function optimizeRoutes() {
 
   const protectedAccounts = state.accounts.filter(a => a.protected);
   const movableAccounts = state.accounts.filter(a => !a.protected);
-  const currentReps = getAllReps();
+  const currentReps = getAllAssignedReps();
   const targetRepNames = buildTargetRepNames(targetCount, currentReps);
 
   targetRepNames.forEach(rep => {
@@ -696,9 +934,11 @@ function optimizeRoutes() {
 
   const assignments = new Map();
   const centroids = initializeCentroids(targetRepNames);
+  const adjacency = buildNeighborMap();
+
   protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
 
-  for (let iter = 0; iter < 6; iter += 1) {
+  for (let iter = 0; iter < 7; iter += 1) {
     const repStats = buildFullRepStats(targetRepNames);
 
     for (const account of protectedAccounts) {
@@ -707,6 +947,7 @@ function optimizeRoutes() {
     }
 
     const orderedMovable = [...movableAccounts].sort((a, b) => {
+      if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
       if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
       return a.customerName.localeCompare(b.customerName);
     });
@@ -718,23 +959,24 @@ function optimizeRoutes() {
       for (const rep of targetRepNames) {
         const centroid = centroids.get(rep);
         const repStat = repStats.get(rep);
-
         const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
-        const compactnessScore = dist * (0.85 + geographyWeight);
 
-        const continuityPenalty = account.currentRep === rep ? 0 : (continuityWeight * 0.75);
-        const existingPenalty = account.assignedRep === rep ? 0 : (continuityWeight * 0.20);
+        const compactnessScore = dist * (1.08 + geographyWeight * 1.15);
+        const continuityPenalty = account.currentRep === rep ? 0 : (continuityWeight * 0.95);
+        const existingPenalty = account.assignedRep === rep ? 0 : (continuityWeight * 0.28);
 
         let balancePenalty = 0;
         if (balanceMode === 'stops') {
-          balancePenalty = repStat.stops * 0.010;
+          balancePenalty = Math.max(0, repStat.stops - maxStops) * 0.7 + repStat.stops * 0.007;
         } else if (balanceMode === 'revenue') {
-          balancePenalty = repStat.revenue * 0.0000015;
+          balancePenalty = repStat.revenue * 0.0000013;
         } else {
-          balancePenalty = (repStat.stops * 0.0065) + (repStat.revenue * 0.0000008);
+          balancePenalty = repStat.stops * 0.0055 + repStat.revenue * 0.00000065;
         }
 
-        const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty;
+        const localPenalty = localDominancePenalty(account, rep, assignments, adjacency);
+        const maxStopsPenalty = repStat.stops >= maxStops ? 8 : 0;
+        const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + maxStopsPenalty;
 
         if (score < bestScore) {
           bestScore = score;
@@ -749,7 +991,17 @@ function optimizeRoutes() {
     recomputeCentroidsFromAssignments(centroids, assignments, targetRepNames);
   }
 
-  enforceMinimumStops(assignments, targetRepNames, minStops);
+  enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
+  runBorderCleanup(assignments, targetRepNames, continuityWeight, minStops);
+  runBorderCleanup(assignments, targetRepNames, continuityWeight, minStops);
+  runEnclaveCleanup(assignments, targetRepNames, minStops);
+  runMajoritySmoothing(assignments, targetRepNames, minStops);
+  enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
+  runBorderCleanup(assignments, targetRepNames, continuityWeight, minStops);
+  enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
+  enforceMaximumStops(assignments, targetRepNames, minStops, maxStops);
+  enforceMinimumStops(assignments, targetRepNames, minStops, maxStops);
+  enforceMaximumStops(assignments, targetRepNames, minStops, maxStops);
 
   const changes = [];
   for (const account of state.accounts) {
@@ -771,17 +1023,181 @@ function optimizeRoutes() {
   applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
 }
 
-function enforceMinimumStops(assignments, targetRepNames, minStops) {
-  const maxPasses = 1000;
+function runBorderCleanup(assignments, targetRepNames, continuityWeight, minStops) {
+  const neighborMap = buildNeighborMap();
+  const counts = countAssignments(assignments, targetRepNames);
+  let moved = true;
   let pass = 0;
+
+  while (moved && pass < 4) {
+    pass += 1;
+    moved = false;
+
+    const borderAccounts = state.accounts
+      .filter(a => !a.protected)
+      .map(a => ({ account: a, detail: dominantNeighborRep(a, assignments, neighborMap) }))
+      .filter(x => x.detail && x.detail.borderStrength >= 0.6 && x.detail.rep !== assignments.get(x.account._id))
+      .sort((a, b) => b.detail.borderStrength - a.detail.borderStrength);
+
+    for (const { account, detail } of borderAccounts) {
+      const from = assignments.get(account._id);
+      const to = detail.rep;
+      if (!to || from === to) continue;
+      if ((counts.get(from) || 0) <= Math.max(1, minStops)) continue;
+
+      const currentScore = borderCleanupScore(account, from, assignments, neighborMap, continuityWeight);
+      const nextScore = borderCleanupScore(account, to, assignments, neighborMap, continuityWeight);
+
+      if (nextScore + 0.18 < currentScore) {
+        assignments.set(account._id, to);
+        counts.set(from, (counts.get(from) || 0) - 1);
+        counts.set(to, (counts.get(to) || 0) + 1);
+        moved = true;
+      }
+    }
+  }
+}
+
+function runEnclaveCleanup(assignments, targetRepNames, minStops) {
+  const neighborMap = buildNeighborMap();
+  const counts = countAssignments(assignments, targetRepNames);
+
+  for (const account of state.accounts.filter(a => !a.protected)) {
+    const own = assignments.get(account._id);
+    const neighbors = neighborMap.get(account._id) || [];
+    if (!neighbors.length) continue;
+
+    const repCounts = new Map();
+    neighbors.forEach(nid => {
+      const rep = assignments.get(nid);
+      repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+    });
+
+    const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+    const topRep = sorted[0]?.[0];
+    const topCount = sorted[0]?.[1] || 0;
+    const ownCount = repCounts.get(own) || 0;
+
+    if (!topRep || topRep === own) continue;
+    if (topCount < 4 || ownCount > 1) continue;
+    if ((counts.get(own) || 0) <= Math.max(1, minStops)) continue;
+
+    assignments.set(account._id, topRep);
+    counts.set(own, (counts.get(own) || 0) - 1);
+    counts.set(topRep, (counts.get(topRep) || 0) + 1);
+  }
+}
+
+function runMajoritySmoothing(assignments, targetRepNames, minStops) {
+  const neighborMap = buildNeighborMap();
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    const counts = countAssignments(assignments, targetRepNames);
+    const moves = [];
+
+    for (const account of state.accounts.filter(a => !a.protected)) {
+      const own = assignments.get(account._id);
+      const neighbors = neighborMap.get(account._id) || [];
+      if (neighbors.length < 3) continue;
+      if ((counts.get(own) || 0) <= Math.max(1, minStops)) continue;
+
+      const repCounts = new Map();
+      neighbors.forEach(nid => {
+        const rep = assignments.get(nid);
+        repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+      });
+
+      const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+      const topRep = sorted[0]?.[0];
+      const topCount = sorted[0]?.[1] || 0;
+      const ownCount = repCounts.get(own) || 0;
+
+      if (topRep && topRep !== own && topCount >= 5 && ownCount <= 1) {
+        moves.push({ id: account._id, from: own, to: topRep });
+      }
+    }
+
+    for (const move of moves) {
+      if ((counts.get(move.from) || 0) <= Math.max(1, minStops)) continue;
+      assignments.set(move.id, move.to);
+      counts.set(move.from, (counts.get(move.from) || 0) - 1);
+      counts.set(move.to, (counts.get(move.to) || 0) + 1);
+    }
+  }
+}
+
+function borderCleanupScore(account, rep, assignments, neighborMap, continuityWeight) {
+  const neighbors = neighborMap.get(account._id) || [];
+  const centroid = centroidForRepFromAssignments(assignments, rep);
+  const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+
+  let same = 0;
+  let other = 0;
+  neighbors.forEach(nid => {
+    if (assignments.get(nid) === rep) same += 1;
+    else other += 1;
+  });
+
+  const continuityPenalty = account.currentRep === rep ? 0 : continuityWeight * 0.35;
+  return dist * 1.35 - same * 0.45 + other * 0.12 + continuityPenalty;
+}
+
+function localDominancePenalty(account, rep, assignments, adjacency) {
+  const neighbors = adjacency.get(account._id) || [];
+  if (!neighbors.length) return 0;
+
+  let same = 0;
+  let other = 0;
+  const repCounts = new Map();
+
+  neighbors.forEach(nid => {
+    const nrep = assignments.get(nid);
+    repCounts.set(nrep, (repCounts.get(nrep) || 0) + 1);
+    if (nrep === rep) same += 1;
+    else other += 1;
+  });
+
+  const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+  const dominantRep = sorted[0]?.[0];
+  const dominantCount = sorted[0]?.[1] || 0;
+
+  let penalty = 0;
+  if (dominantRep && dominantRep !== rep) penalty += dominantCount * 0.48;
+  if (same === 0) penalty += 2.4;
+  if (same <= 1 && neighbors.length >= 4) penalty += 1.25;
+  if (other > same) penalty += (other - same) * 0.28;
+  return penalty;
+}
+
+function dominantNeighborRep(account, assignments, neighborMap) {
+  const neighbors = neighborMap.get(account._id) || [];
+  if (!neighbors.length) return null;
+
+  const counts = new Map();
+  neighbors.forEach(id => {
+    const rep = assignments.get(id);
+    counts.set(rep, (counts.get(rep) || 0) + 1);
+  });
+
+  const sorted = [...counts.entries()].sort((a,b) => b[1] - a[1]);
+  if (!sorted.length) return null;
+
+  return {
+    rep: sorted[0][0],
+    borderStrength: sorted[0][1] / neighbors.length
+  };
+}
+
+function enforceMinimumStops(assignments, targetRepNames, minStops, maxStops) {
+  let pass = 0;
+  const maxPasses = 1000;
 
   while (pass < maxPasses) {
     pass += 1;
-
     const counts = countAssignments(assignments, targetRepNames);
     const underfilled = targetRepNames
-      .filter(rep => counts.get(rep) < minStops)
-      .sort((a, b) => counts.get(a) - counts.get(b));
+      .filter(rep => (counts.get(rep) || 0) < minStops)
+      .sort((a,b) => (counts.get(a) || 0) - (counts.get(b) || 0));
 
     if (!underfilled.length) break;
 
@@ -791,24 +1207,80 @@ function enforceMinimumStops(assignments, targetRepNames, minStops) {
       const needyCentroid = centroidForRepFromAssignments(assignments, needyRep);
 
       const donorCandidates = targetRepNames
-        .filter(rep => rep !== needyRep && counts.get(rep) > minStops)
-        .sort((a, b) => counts.get(b) - counts.get(a));
+        .filter(rep => rep !== needyRep && (counts.get(rep) || 0) > minStops)
+        .sort((a,b) => (counts.get(b) || 0) - (counts.get(a) || 0));
 
       let bestMove = null;
 
       for (const donorRep of donorCandidates) {
         const donorAccounts = state.accounts.filter(a => assignments.get(a._id) === donorRep && !a.protected);
-
         for (const account of donorAccounts) {
-          const distToNeedy = squaredDistance(account.latitude, account.longitude, needyCentroid.lat, needyCentroid.lng);
+          if ((counts.get(needyRep) || 0) >= maxStops) continue;
+          if ((counts.get(donorRep) || 0) <= minStops) continue;
+          const dist = squaredDistance(account.latitude, account.longitude, needyCentroid.lat, needyCentroid.lng);
           const continuityPenalty = account.currentRep === donorRep ? 0.22 : 0;
-          const score = distToNeedy + continuityPenalty;
+          const score = dist + continuityPenalty;
+          if (!bestMove || score < bestMove.score) {
+            bestMove = { accountId: account._id, from: donorRep, to: needyRep, score };
+          }
+        }
+      }
+
+      if (bestMove) {
+        assignments.set(bestMove.accountId, bestMove.to);
+        counts.set(bestMove.from, (counts.get(bestMove.from) || 0) - 1);
+        counts.set(bestMove.to, (counts.get(bestMove.to) || 0) + 1);
+        movedThisPass = true;
+      }
+    }
+
+    if (!movedThisPass) break;
+  }
+}
+
+function enforceMaximumStops(assignments, targetRepNames, minStops, maxStops) {
+  let pass = 0;
+  const maxPasses = 1000;
+
+  while (pass < maxPasses) {
+    pass += 1;
+    const counts = countAssignments(assignments, targetRepNames);
+    const overfilled = targetRepNames
+      .filter(rep => (counts.get(rep) || 0) > maxStops)
+      .sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0));
+
+    if (!overfilled.length) break;
+
+    let movedThisPass = false;
+
+    for (const donorRep of overfilled) {
+      const donorAccounts = state.accounts
+        .filter(a => assignments.get(a._id) === donorRep && !a.protected)
+        .sort((a, b) => {
+          const donorCentroid = centroidForRepFromAssignments(assignments, donorRep);
+          const ad = squaredDistance(a.latitude, a.longitude, donorCentroid.lat, donorCentroid.lng);
+          const bd = squaredDistance(b.latitude, b.longitude, donorCentroid.lat, donorCentroid.lng);
+          return bd - ad;
+        });
+
+      let bestMove = null;
+
+      for (const account of donorAccounts) {
+        for (const targetRep of targetRepNames) {
+          if (targetRep === donorRep) continue;
+          if ((counts.get(targetRep) || 0) >= maxStops) continue;
+
+          const targetCentroid = centroidForRepFromAssignments(assignments, targetRep);
+          const score =
+            squaredDistance(account.latitude, account.longitude, targetCentroid.lat, targetCentroid.lng) +
+            (account.currentRep === targetRep ? 0 : 0.25) +
+            ((counts.get(targetRep) || 0) < minStops ? -1.5 : 0);
 
           if (!bestMove || score < bestMove.score) {
             bestMove = {
               accountId: account._id,
               from: donorRep,
-              to: needyRep,
+              to: targetRep,
               score
             };
           }
@@ -817,8 +1289,8 @@ function enforceMinimumStops(assignments, targetRepNames, minStops) {
 
       if (bestMove) {
         assignments.set(bestMove.accountId, bestMove.to);
-        counts.set(bestMove.from, counts.get(bestMove.from) - 1);
-        counts.set(bestMove.to, counts.get(bestMove.to) + 1);
+        counts.set(bestMove.from, (counts.get(bestMove.from) || 0) - 1);
+        counts.set(bestMove.to, (counts.get(bestMove.to) || 0) + 1);
         movedThisPass = true;
       }
     }
@@ -842,11 +1314,8 @@ function initializeCentroids(targetRepNames) {
       return;
     }
 
-    const fallbackSource = state.accounts[Math.floor(idx * state.accounts.length / Math.max(1, targetRepNames.length))] || state.accounts[0];
-    centroids.set(rep, {
-      lat: fallbackSource.latitude,
-      lng: fallbackSource.longitude
-    });
+    const fallback = state.accounts[Math.floor(idx * state.accounts.length / Math.max(1, targetRepNames.length))] || state.accounts[0];
+    centroids.set(rep, { lat: fallback.latitude, lng: fallback.longitude });
   });
 
   return centroids;
@@ -856,10 +1325,9 @@ function recomputeCentroidsFromAssignments(centroids, assignments, targetRepName
   for (const rep of targetRepNames) {
     const members = state.accounts.filter(a => assignments.get(a._id) === rep);
     if (!members.length) continue;
-
     centroids.set(rep, {
-      lat: members.reduce((s, a) => s + a.latitude, 0) / members.length,
-      lng: members.reduce((s, a) => s + a.longitude, 0) / members.length
+      lat: members.reduce((s,a) => s + a.latitude, 0) / members.length,
+      lng: members.reduce((s,a) => s + a.longitude, 0) / members.length
     });
   }
 }
@@ -868,13 +1336,34 @@ function centroidForRepFromAssignments(assignments, rep) {
   const members = state.accounts.filter(a => assignments.get(a._id) === rep);
   if (!members.length) {
     const fallback = state.accounts[0];
-    return { lat: fallback.latitude, lng: fallback.longitude };
+    return { lat: fallback?.latitude || 0, lng: fallback?.longitude || 0 };
   }
 
   return {
-    lat: members.reduce((s, a) => s + a.latitude, 0) / members.length,
-    lng: members.reduce((s, a) => s + a.longitude, 0) / members.length
+    lat: members.reduce((s,a) => s + a.latitude, 0) / members.length,
+    lng: members.reduce((s,a) => s + a.longitude, 0) / members.length
   };
+}
+
+function buildNeighborMap() {
+  const sorted = [...state.accounts];
+  const map = new Map();
+
+  for (const account of sorted) {
+    const nearest = sorted
+      .filter(a => a._id !== account._id)
+      .map(a => ({
+        id: a._id,
+        d: squaredDistance(account.latitude, account.longitude, a.latitude, a.longitude)
+      }))
+      .sort((a,b) => a.d - b.d)
+      .slice(0, 8)
+      .map(x => x.id);
+
+    map.set(account._id, nearest);
+  }
+
+  return map;
 }
 
 function countAssignments(assignments, reps) {
@@ -883,8 +1372,7 @@ function countAssignments(assignments, reps) {
 
   for (const account of state.accounts) {
     const rep = assignments.get(account._id);
-    if (!counts.has(rep)) counts.set(rep, 0);
-    counts.set(rep, counts.get(rep) + 1);
+    counts.set(rep, (counts.get(rep) || 0) + 1);
   }
 
   return counts;
@@ -892,18 +1380,14 @@ function countAssignments(assignments, reps) {
 
 function buildTargetRepNames(targetCount, currentReps) {
   const reps = [...currentReps];
-  while (reps.length < targetCount) {
-    reps.push(`Rep ${reps.length + 1}`);
-  }
+  while (reps.length < targetCount) reps.push(`Rep ${reps.length + 1}`);
   if (reps.length > targetCount) return reps.slice(0, targetCount);
   return reps.length ? reps : ['Rep 1'];
 }
 
 function buildFullRepStats(reps) {
   const map = new Map();
-  reps.forEach(rep => {
-    map.set(rep, { rep, stops: 0, revenue: 0 });
-  });
+  reps.forEach(rep => map.set(rep, { rep, stops: 0, revenue: 0 }));
   return map;
 }
 
@@ -916,36 +1400,25 @@ function refreshTerritories() {
   state.territoryLayer.clearLayers();
   if (!els.showTerritoryCheckbox.checked || !state.accounts.length) return;
 
-  const repFilter = els.repFilter.value || 'ALL';
-  const rankFilter = els.rankFilter.value || 'ALL';
-  const reps = getAllReps().filter(rep => repFilter === 'ALL' || rep === repFilter);
+  const reps = getAllAssignedReps().filter(rep => state.filters.rep.has(rep));
 
   reps.forEach(rep => {
-    const members = state.accounts.filter(a =>
-      a.assignedRep === rep &&
-      (rankFilter === 'ALL' || a.rank === rankFilter)
-    );
-
+    const members = state.accounts.filter(a => a.assignedRep === rep);
     if (members.length < 3) return;
 
     const points = members.map(a => [a.longitude, a.latitude]);
     const featureCollection = turf.featureCollection(points.map(p => turf.point(p)));
 
     let hull = null;
-    try {
-      hull = turf.convex(featureCollection);
-    } catch (e) {
-      hull = null;
-    }
-
+    try { hull = turf.convex(featureCollection); } catch(e) { hull = null; }
     if (!hull) return;
 
-    const coords = hull.geometry.coordinates[0].map(([lng, lat]) => [lat, lng]);
+    const coords = hull.geometry.coordinates[0].map(([lng,lat]) => [lat,lng]);
     const poly = L.polygon(coords, {
       color: state.repColors.get(rep) || '#666',
       weight: 2,
-      fillOpacity: 0.06,
-      opacity: 0.7,
+      fillOpacity: 0.05,
+      opacity: 0.75,
       interactive: false
     });
 
@@ -954,69 +1427,69 @@ function refreshTerritories() {
 }
 
 function summarizeByRep() {
-  const map = new Map();
+  const currentMap = new Map();
+  const baselineMap = new Map();
+  const reps = getAllKnownReps();
 
-  getAllReps().forEach(rep => {
-    map.set(rep, {
-      rep,
-      color: state.repColors.get(rep) || '#4a5568',
-      stops: 0,
-      revenue: 0,
-      wine: 0,
-      spirits: 0,
-      thc: 0,
-      A: 0,
-      B: 0,
-      C: 0,
-      D: 0,
-      protected: 0,
-      movedIn: 0,
-      movedOut: 0,
-      workload: 0
-    });
+  reps.forEach(rep => {
+    currentMap.set(rep, makeEmptyRepSummary(rep));
+    baselineMap.set(rep, makeEmptyRepSummary(rep));
   });
 
   for (const account of state.accounts) {
-    if (!map.has(account.assignedRep)) {
-      map.set(account.assignedRep, {
-        rep: account.assignedRep,
-        color: state.repColors.get(account.assignedRep) || '#4a5568',
-        stops: 0,
-        revenue: 0,
-        wine: 0,
-        spirits: 0,
-        thc: 0,
-        A: 0,
-        B: 0,
-        C: 0,
-        D: 0,
-        protected: 0,
-        movedIn: 0,
-        movedOut: 0,
-        workload: 0
-      });
-    }
+    if (!currentMap.has(account.assignedRep)) currentMap.set(account.assignedRep, makeEmptyRepSummary(account.assignedRep));
+    if (!baselineMap.has(account.originalAssignedRep)) baselineMap.set(account.originalAssignedRep, makeEmptyRepSummary(account.originalAssignedRep));
 
-    const row = map.get(account.assignedRep);
-    row.stops += 1;
-    row.revenue += account.overallSales;
-    row.wine += account.wineSales;
-    row.spirits += account.spiritsSales;
-    row.thc += account.thcSales;
-    row[account.rank] = (row[account.rank] || 0) + 1;
-    row.workload += RANK_WEIGHTS[account.rank] || 1;
+    const cur = currentMap.get(account.assignedRep);
+    cur.stops += 1;
+    cur.revenue += account.overallSales;
+    cur[account.rank] += 1;
+    cur.planned4W += Number(account.cadence4w || 0);
+    cur.avgWeekly = cur.planned4W / 4;
+    if (account.protected) cur.protected += 1;
+    if (account.assignedRep !== account.originalAssignedRep) cur.movedIn += 1;
 
-    if (account.protected) row.protected += 1;
-    if (account.assignedRep !== account.currentRep) row.movedIn += 1;
+    const base = baselineMap.get(account.originalAssignedRep);
+    base.stops += 1;
+    base.revenue += account.overallSales;
   }
 
   for (const account of state.accounts) {
-    if (map.has(account.currentRep) && account.currentRep !== account.assignedRep) {
-      map.get(account.currentRep).movedOut += 1;
+    if (account.assignedRep !== account.originalAssignedRep) {
+      if (!currentMap.has(account.originalAssignedRep)) currentMap.set(account.originalAssignedRep, makeEmptyRepSummary(account.originalAssignedRep));
+      currentMap.get(account.originalAssignedRep).movedOut += 1;
     }
   }
 
-  return [...map.values()].sort((a, b) => a.rep.localeCompare(b.rep, undefined, { numeric: true }));
+  const rows = [...currentMap.values()].map(row => {
+    const base = baselineMap.get(row.rep) || makeEmptyRepSummary(row.rep);
+    row.avgWeekly = row.planned4W / 4;
+    return {
+      ...row,
+      deltaStops: row.stops - base.stops,
+      deltaRevenue: row.revenue - base.revenue
+    };
+  });
+
+  return rows.sort((a,b) => a.rep.localeCompare(b.rep, undefined, { numeric:true }));
+}
+
+function makeEmptyRepSummary(rep) {
+  return {
+    rep,
+    color: state.repColors.get(rep) || '#64748b',
+    stops: 0,
+    revenue: 0,
+    A: 0,
+    B: 0,
+    C: 0,
+    D: 0,
+    planned4W: 0,
+    avgWeekly: 0,
+    protected: 0,
+    movedIn: 0,
+    movedOut: 0
+  };
 }
 
 function exportWorkbook() {
@@ -1028,6 +1501,11 @@ function exportWorkbook() {
     ...a.raw,
     Customer_ID: a.customerId,
     Customer_Name: a.customerName,
+    Address: a.address,
+    ZIP: a.zip,
+    Chain: a.chain,
+    Segment: a.segment,
+    Premise: a.premise,
     Current_Rep: a.currentRep,
     Assigned_Rep: a.assignedRep,
     Original_Assigned_Rep: a.originalAssignedRep,
@@ -1036,28 +1514,39 @@ function exportWorkbook() {
     Latitude: a.latitude,
     Longitude: a.longitude,
     Overall_Sales: a.overallSales,
-    Wine_Sales: a.wineSales,
-    Spirits_Sales: a.spiritsSales,
-    THC_Sales: a.thcSales,
+    Cadence_4W: round2(a.cadence4w),
     Moved: a.assignedRep !== a.originalAssignedRep ? 'Yes' : 'No'
   }));
 
-  const summary = summarizeByRep().map(r => ({
+  const repSummary = summarizeByRep().map(r => ({
     Rep: r.rep,
     Stops: r.stops,
+    Delta_Stops: r.deltaStops,
     Revenue: round2(r.revenue),
-    Wine: round2(r.wine),
-    Spirits: round2(r.spirits),
-    THC: round2(r.thc),
+    Delta_Revenue: round2(r.deltaRevenue),
     A: r.A,
     B: r.B,
     C: r.C,
     D: r.D,
+    Planned_4W: round2(r.planned4W),
+    Avg_Weekly: round2(r.avgWeekly),
     Protected: r.protected,
     Moved_In: r.movedIn,
-    Moved_Out: r.movedOut,
-    Four_Week_Load: round2(r.workload)
+    Moved_Out: r.movedOut
   }));
+
+  const movedAccounts = state.accounts
+    .filter(a => a.assignedRep !== a.originalAssignedRep)
+    .map(a => ({
+      Customer_ID: a.customerId,
+      Customer_Name: a.customerName,
+      Original_Assigned_Rep: a.originalAssignedRep,
+      Assigned_Rep: a.assignedRep,
+      Current_Rep: a.currentRep,
+      Revenue: round2(a.overallSales),
+      Rank: a.rank,
+      Protected: a.protected ? 'Yes' : 'No'
+    }));
 
   const changeLog = state.changeLog.length ? state.changeLog : [{
     timestamp: '',
@@ -1069,10 +1558,11 @@ function exportWorkbook() {
   }];
 
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assignments), 'Assignments');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Rep Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(repSummary), 'Rep Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movedAccounts.length ? movedAccounts : [{}]), 'Moved Accounts');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(changeLog), 'Change Log');
 
-  XLSX.writeFile(wb, state.loadedFileName || 'territory_export.xlsx');
+  XLSX.writeFile(wb, state.loadedFileName || 'territory_export_updated.xlsx');
   showToast('Excel export created.');
   updateLastAction('Exported workbook');
 }
@@ -1089,39 +1579,45 @@ function zoomToRep(rep) {
 }
 
 function toggleTheme() {
-  if (state.theme === 'light') {
+  if (els.themeToggleCheck.checked && state.theme === 'light') {
     state.map.removeLayer(state.lightLayer);
     state.darkLayer.addTo(state.map);
     state.theme = 'dark';
-    els.themeToggle.textContent = 'Light Map';
-  } else {
+  } else if (!els.themeToggleCheck.checked && state.theme === 'dark') {
     state.map.removeLayer(state.darkLayer);
     state.lightLayer.addTo(state.map);
     state.theme = 'light';
-    els.themeToggle.textContent = 'Dark Map';
   }
 }
 
-function enableTopControls() {
-  [els.sheetSelect, els.loadSheetBtn].forEach(el => {
-    el.disabled = false;
+function buildRepColors() {
+  state.repColors.clear();
+  getAllKnownReps().forEach((rep, idx) => {
+    state.repColors.set(rep, COLOR_PALETTE[idx % COLOR_PALETTE.length]);
   });
 }
 
-function getAllReps() {
+function getAllAssignedReps() {
+  const set = new Set();
+  state.accounts.forEach(a => {
+    if (a.assignedRep) set.add(a.assignedRep);
+  });
+  return [...set].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
+}
+
+function getAllKnownReps() {
   const set = new Set();
   state.accounts.forEach(a => {
     if (a.assignedRep) set.add(a.assignedRep);
     if (a.currentRep) set.add(a.currentRep);
+    if (a.originalAssignedRep) set.add(a.originalAssignedRep);
   });
-  return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return [...set].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
 }
 
-function fillSelect(selectEl, values, selectedValue, labelFn = v => v) {
+function fillSimpleSelect(selectEl, values, selectedValue, labelFn = v => v) {
   selectEl.innerHTML = values.map(v => `<option value="${escapeHtmlAttr(v)}">${escapeHtml(labelFn(v))}</option>`).join('');
-  if (selectedValue && values.includes(selectedValue)) {
-    selectEl.value = selectedValue;
-  }
+  if (selectedValue != null && values.includes(selectedValue)) selectEl.value = selectedValue;
 }
 
 function updateLastAction(text) {
@@ -1137,6 +1633,60 @@ function showToast(message) {
   toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2200);
 }
 
+function getDistinctValues(arr, fn) {
+  const set = new Set();
+  arr.forEach(item => {
+    const v = fn(item);
+    if (safeString(v)) set.add(v);
+  });
+  return [...set].sort((a,b) => String(a).localeCompare(String(b), undefined, { numeric:true }));
+}
+
+function renderDeltaCount(value) {
+  if (value > 0) return `<span class="num-pos">+${value}</span>`;
+  if (value < 0) return `<span class="num-neg">${value}</span>`;
+  return `<span class="num-zero">0</span>`;
+}
+
+function renderDeltaMoney(value) {
+  if (value > 0) return `<span class="num-pos">+${formatCurrency(value)}</span>`;
+  if (value < 0) return `<span class="num-neg">-${formatCurrency(Math.abs(value))}</span>`;
+  return `<span class="num-zero">$0</span>`;
+}
+
+function normalizeCadence4W(value, rank) {
+  const raw = safeString(value);
+  if (!raw) {
+    if (rank === 'A') return 4;
+    if (rank === 'B') return 2;
+    if (rank === 'C') return 1;
+    return 0.33;
+  }
+
+  const normalized = raw.toLowerCase();
+  const n = toNumber(raw);
+  if (Number.isFinite(n) && n >= 0) return n;
+
+  if (normalized === 'weekly' || normalized === 'wkly' || normalized === 'week') return 4;
+  if (normalized === 'biweekly' || normalized === 'every other week' || normalized === 'eow' || normalized === 'bi-weekly') return 2;
+  if (normalized === 'monthly' || normalized === 'month') return 1;
+  if (normalized === 'quarterly' || normalized === 'qtr' || normalized === 'quarter') return 0.33;
+
+  if (normalized.includes('weekly')) return 4;
+  if (normalized.includes('biweekly') || normalized.includes('every other')) return 2;
+  if (normalized.includes('monthly')) return 1;
+  if (normalized.includes('quarter')) return 0.33;
+
+  if (rank === 'A') return 4;
+  if (rank === 'B') return 2;
+  if (rank === 'C') return 1;
+  return 0.33;
+}
+
+function rankSortValue(rank) {
+  return { A:0, B:1, C:2, D:3 }[rank] ?? 9;
+}
+
 function toCamel(id) {
   return id.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 }
@@ -1150,8 +1700,10 @@ function safeString(value) {
 }
 
 function toNumber(value) {
-  if (typeof value === 'number') return value;
-  const n = Number(String(value ?? '').replace(/[$,%\s,]/g, ''));
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+  const raw = String(value ?? '').replace(/[$,%\s,]/g, '').trim();
+  if (!raw) return NaN;
+  const n = Number(raw);
   return Number.isFinite(n) ? n : NaN;
 }
 
@@ -1160,22 +1712,28 @@ function toBoolean(value) {
   return ['true','yes','y','1','protected','locked'].includes(v);
 }
 
-function normalizeRank(rankValue) {
-  const raw = safeString(rankValue).toUpperCase();
-  if (['A','B','C','D'].includes(raw)) return raw;
-  return 'C';
+function normalizeRank(value) {
+  const raw = safeString(value).toUpperCase();
+  return ['A','B','C','D'].includes(raw) ? raw : 'C';
 }
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0
+    style:'currency',
+    currency:'USD',
+    maximumFractionDigits:0
   }).format(value || 0);
 }
 
+function formatNumber(value, digits = 0) {
+  return Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  });
+}
+
 function avg(values) {
-  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  return values.length ? values.reduce((a,b) => a + b, 0) / values.length : 0;
 }
 
 function squaredDistance(lat1, lng1, lat2, lng2) {
