@@ -1724,13 +1724,88 @@ function makeEmptyRepSummary(rep) {
   };
 }
 
-function exportWorkbook() {
+async function exportWorkbook() {
   if (!state.accounts.length) return;
 
-  const wb = XLSX.utils.book_new();
+  if (typeof ExcelJS === 'undefined') {
+    showToast('Export styling library is not available. Refresh and try again.');
+    return;
+  }
 
-  const assignments = state.accounts.map(a => ({
-    ...a.raw,
+  try {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'ChatGPT';
+    workbook.created = new Date();
+    workbook.modified = new Date();
+
+    const timestamp = buildTimestampForFileName();
+    const outputName = (state.loadedFileName || 'territory_export_updated.xlsx').replace(/\.xlsx$/i, `_${timestamp}.xlsx`);
+
+    const assignments = buildAssignmentsExportRows();
+    const repSummary = buildRepSummaryExportRows();
+    const movedAccounts = buildMovedAccountsExportRows();
+    const changeLog = buildChangeLogExportRows();
+
+    addStyledWorksheet(workbook, {
+      name: 'Assignments',
+      rows: assignments,
+      keyOrder: [
+        'Customer_ID','Customer_Name','Address','ZIP','Chain','Segment','Premise',
+        'Current_Rep','Assigned_Rep','Original_Assigned_Rep','Protected','Moved',
+        'Rank','Latitude','Longitude','Overall_Sales','Cadence_4W'
+      ],
+      currencyColumns: ['Overall_Sales'],
+      decimalColumns: ['Latitude','Longitude','Cadence_4W'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    addStyledWorksheet(workbook, {
+      name: 'Rep Summary',
+      rows: repSummary,
+      keyOrder: [
+        'Rep','Stops','Delta_Stops','Revenue','Delta_Revenue','A','B','C','D',
+        'Planned_4W','Avg_Weekly','Protected','Moved_In','Moved_Out'
+      ],
+      currencyColumns: ['Revenue','Delta_Revenue'],
+      integerColumns: ['Stops','Delta_Stops','A','B','C','D','Protected','Moved_In','Moved_Out'],
+      decimalColumns: ['Planned_4W','Avg_Weekly'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    addStyledWorksheet(workbook, {
+      name: 'Moved Accounts',
+      rows: movedAccounts.length ? movedAccounts : [{}],
+      keyOrder: [
+        'Customer_ID','Customer_Name','Original_Assigned_Rep','Assigned_Rep','Current_Rep','Revenue','Rank','Protected'
+      ],
+      currencyColumns: ['Revenue'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    addStyledWorksheet(workbook, {
+      name: 'Change Log',
+      rows: changeLog.length ? changeLog : [{}],
+      keyOrder: ['timestamp','customerId','customerName','fromRep','toRep','protected'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    downloadArrayBufferAsFile(buffer, outputName);
+
+    showToast('Styled Excel export created.');
+    updateLastAction('Exported styled workbook');
+  } catch (err) {
+    console.error('Styled export failed:', err);
+    showToast('Export hit an error. Open the browser console and send the first red line.');
+  }
+}
+
+function buildAssignmentsExportRows() {
+  return state.accounts.map(a => ({
     Customer_ID: a.customerId,
     Customer_Name: a.customerName,
     Address: a.address,
@@ -1742,15 +1817,17 @@ function exportWorkbook() {
     Assigned_Rep: a.assignedRep,
     Original_Assigned_Rep: a.originalAssignedRep,
     Protected: a.protected ? 'Yes' : 'No',
+    Moved: a.assignedRep !== a.originalAssignedRep ? 'Yes' : 'No',
     Rank: a.rank,
-    Latitude: a.latitude,
-    Longitude: a.longitude,
-    Overall_Sales: a.overallSales,
-    Cadence_4W: round2(a.cadence4w),
-    Moved: a.assignedRep !== a.originalAssignedRep ? 'Yes' : 'No'
+    Latitude: round6(a.latitude),
+    Longitude: round6(a.longitude),
+    Overall_Sales: round2(a.overallSales),
+    Cadence_4W: round2(a.cadence4w)
   }));
+}
 
-  const repSummary = summarizeByRep().map(r => ({
+function buildRepSummaryExportRows() {
+  return summarizeByRep().map(r => ({
     Rep: r.rep,
     Stops: r.stops,
     Delta_Stops: r.deltaStops,
@@ -1766,8 +1843,10 @@ function exportWorkbook() {
     Moved_In: r.movedIn,
     Moved_Out: r.movedOut
   }));
+}
 
-  const movedAccounts = state.accounts
+function buildMovedAccountsExportRows() {
+  return state.accounts
     .filter(a => a.assignedRep !== a.originalAssignedRep)
     .map(a => ({
       Customer_ID: a.customerId,
@@ -1779,24 +1858,210 @@ function exportWorkbook() {
       Rank: a.rank,
       Protected: a.protected ? 'Yes' : 'No'
     }));
+}
 
-  const changeLog = state.changeLog.length ? state.changeLog : [{
-    timestamp: '',
-    customerId: '',
-    customerName: '',
-    fromRep: '',
-    toRep: '',
-    protected: ''
-  }];
+function buildChangeLogExportRows() {
+  return state.changeLog.length
+    ? state.changeLog.map(x => ({ ...x }))
+    : [{
+        timestamp: '',
+        customerId: '',
+        customerName: '',
+        fromRep: '',
+        toRep: '',
+        protected: ''
+      }];
+}
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assignments), 'Assignments');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(repSummary), 'Rep Summary');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movedAccounts.length ? movedAccounts : [{}]), 'Moved Accounts');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(changeLog), 'Change Log');
+function addStyledWorksheet(workbook, options) {
+  const {
+    name,
+    rows,
+    keyOrder = [],
+    currencyColumns = [],
+    decimalColumns = [],
+    integerColumns = [],
+    freezeTopRow = true,
+    autofilter = true
+  } = options;
 
-  XLSX.writeFile(wb, state.loadedFileName || 'territory_export_updated.xlsx');
-  showToast('Excel export created.');
-  updateLastAction('Exported workbook');
+  const worksheet = workbook.addWorksheet(name, {
+    views: freezeTopRow ? [{ state: 'frozen', ySplit: 1 }] : []
+  });
+
+  const normalizedRows = Array.isArray(rows) && rows.length ? rows : [{}];
+  const keys = keyOrder.length ? keyOrder : Object.keys(normalizedRows[0] || {});
+
+  worksheet.columns = keys.map(key => ({
+    header: prettifyHeader(key),
+    key,
+    width: guessColumnWidth(key, normalizedRows)
+  }));
+
+  normalizedRows.forEach(row => {
+    const cleanRow = {};
+    keys.forEach(key => {
+      cleanRow[key] = row[key] ?? '';
+    });
+    worksheet.addRow(cleanRow);
+  });
+
+  styleWorksheetBase(worksheet);
+  styleHeaderRow(worksheet.getRow(1));
+  applyColumnFormats(worksheet, { currencyColumns, decimalColumns, integerColumns });
+
+  if (autofilter && worksheet.rowCount >= 1 && worksheet.columnCount >= 1) {
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: worksheet.columnCount }
+    };
+  }
+
+  worksheet.eachRow((row, rowNumber) => {
+    row.height = rowNumber === 1 ? 18 : 15;
+  });
+}
+
+function styleWorksheetBase(worksheet) {
+  worksheet.eachRow({ includeEmpty: true }, row => {
+    row.eachCell({ includeEmpty: true }, cell => {
+      cell.font = {
+        name: 'Tw Cen MT',
+        size: 9,
+        bold: false,
+        color: { argb: 'FF000000' }
+      };
+
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: 'left'
+      };
+
+      cell.border = {
+        bottom: { style: 'thin', color: { argb: 'FFE6EDF5' } }
+      };
+    });
+  });
+}
+
+function styleHeaderRow(row) {
+  row.eachCell(cell => {
+    cell.font = {
+      name: 'Tw Cen MT',
+      size: 9,
+      bold: true,
+      color: { argb: 'FF20364F' }
+    };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFEAF2FB' }
+    };
+    cell.alignment = {
+      vertical: 'middle',
+      horizontal: 'left'
+    };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FFD3DFEB' } },
+      bottom: { style: 'thin', color: { argb: 'FFC3D3E2' } }
+    };
+  });
+}
+
+function applyColumnFormats(worksheet, formatConfig) {
+  const {
+    currencyColumns = [],
+    decimalColumns = [],
+    integerColumns = []
+  } = formatConfig;
+
+  worksheet.columns.forEach(column => {
+    if (!column || !column.key) return;
+
+    if (currencyColumns.includes(column.key)) {
+      column.numFmt = '$#,##0;[Red]($#,##0)';
+    } else if (decimalColumns.includes(column.key)) {
+      column.numFmt = '0.00';
+    } else if (integerColumns.includes(column.key)) {
+      column.numFmt = '0';
+    }
+  });
+}
+
+function guessColumnWidth(key, rows) {
+  const pretty = prettifyHeader(key);
+  let maxLen = pretty.length;
+
+  rows.slice(0, 250).forEach(row => {
+    const value = row[key];
+    const len = String(value == null ? '' : value).length;
+    if (len > maxLen) maxLen = len;
+  });
+
+  const widthOverrides = {
+    Customer_ID: 16,
+    Customer_Name: 28,
+    Address: 30,
+    ZIP: 12,
+    Chain: 18,
+    Segment: 16,
+    Premise: 14,
+    Current_Rep: 16,
+    Assigned_Rep: 16,
+    Original_Assigned_Rep: 20,
+    Protected: 11,
+    Moved: 10,
+    Rank: 8,
+    Latitude: 12,
+    Longitude: 12,
+    Overall_Sales: 14,
+    Cadence_4W: 12,
+    Revenue: 14,
+    Delta_Revenue: 14,
+    Planned_4W: 12,
+    Avg_Weekly: 12,
+    timestamp: 24,
+    customerId: 16,
+    customerName: 28,
+    fromRep: 16,
+    toRep: 16,
+    protected: 11
+  };
+
+  if (widthOverrides[key]) return widthOverrides[key];
+  return Math.max(10, Math.min(maxLen + 2, 32));
+}
+
+function prettifyHeader(key) {
+  return String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, m => m.toUpperCase());
+}
+
+function downloadArrayBufferAsFile(buffer, filename) {
+  const blob = new Blob(
+    [buffer],
+    { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+  );
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function buildTimestampForFileName() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}_${hh}${mi}`;
 }
 
 function fitMapToAccounts() {
@@ -2018,6 +2283,10 @@ function formatNumber(value, digits = 0) {
 
 function round2(v) {
   return Math.round((v || 0) * 100) / 100;
+}
+
+function round6(v) {
+  return Math.round((v || 0) * 1000000) / 1000000;
 }
 
 function squaredDistance(lat1, lng1, lat2, lng2) {
