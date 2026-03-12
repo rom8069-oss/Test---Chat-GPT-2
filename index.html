@@ -1,262 +1,2310 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Territory Planning &amp; Optimization Tool</title>
+const COLOR_PALETTE = [
+  '#1f77b4','#d62728','#2ca02c','#9467bd','#ff7f0e','#17becf','#8c564b','#e377c2','#7f7f7f','#bcbd22',
+  '#0b7285','#c92a2a','#2b8a3e','#5f3dc4','#e67700','#087f5b','#364fc7','#a61e4d','#495057','#2f9e44',
+  '#f03e3e','#3b5bdb','#e8590c','#1098ad','#9c36b5','#5c940d','#d9480f','#1864ab','#c2255c','#12b886'
+];
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div class="app">
-    <div class="topbar">
-      <div class="brand-wrap">
-        <img
-          class="brand-logo"
-          alt="Romano Beverage"
-          src="romano-beverage-logo.png"
-          onerror="this.style.display='none';"
-        />
-        <div class="title">Territory Planning &amp; Optimization Tool</div>
-      </div>
+const COLUMN_ALIASES = {
+  latitude: ['latitude','lat','y','geo_lat','customer_latitude'],
+  longitude: ['longitude','lng','lon','x','geo_longitude','customer_longitude'],
+  customerId: ['cust id','customer id','customerid','id','account id','acct id'],
+  customerName: ['company','customer name','name','account name','cust name'],
+  address: ['address','street address','addr','full address'],
+  zip: ['zip','zip code','zipcode','postal code'],
+  chain: ['chain','chain name'],
+  segment: ['segment','customer segment'],
+  premise: ['premise','premise type','on/off premise','premise class'],
+  currentRep: ['current rep','rep','sales rep','territory rep','owner rep'],
+  assignedRep: ['assigned rep','new rep','territory','route','assigned territory'],
+  overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue'],
+  rank: ['rank','class','priority rank'],
+  cadence4w: [
+    'cadence 4w','cadence_4w','cadence4w','4w','planned 4w','planned_4w','planned4w',
+    'calls 4w','call cadence 4w','visit cadence 4w','planned calls 4w','frequency','cadence'
+  ],
+  protected: ['protected','protected account','locked','do not move','never move']
+};
 
-      <div class="topbar-actions">
-        <label class="file-label" for="file-input">Upload Excel / CSV</label>
-        <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
-        <select id="sheet-select" class="input" disabled></select>
-        <button id="load-sheet-btn" class="btn btn-subtle" disabled>Load Sheet</button>
-        <button id="undo-btn" class="btn btn-subtle" disabled>Undo</button>
-        <button id="reset-btn" class="btn btn-subtle" disabled>Reset All</button>
-        <button id="export-btn" class="btn btn-subtle" disabled>Export Excel</button>
+const state = {
+  map: null,
+  lightLayer: null,
+  darkLayer: null,
+  markerLayer: null,
+  territoryLayer: null,
+  drawLayer: null,
+  drawControl: null,
+  workbook: null,
+  workbookSheets: {},
+  accounts: [],
+  accountById: new Map(),
+  neighborMap: new Map(),
+  markerById: new Map(),
+  selection: new Set(),
+  undoStack: [],
+  changeLog: [],
+  repColors: new Map(),
+  repFocus: null,
+  theme: 'light',
+  loadedFileName: 'territory_export_updated.xlsx',
+  lastAction: 'No actions yet',
+  filters: {
+    rep: new Set(),
+    rank: new Set(),
+    chain: new Set(),
+    segment: new Set(),
+    premise: 'ALL',
+    protected: 'ALL',
+    moved: 'ALL'
+  },
+  multiSearch: {
+    rep: '',
+    rank: '',
+    chain: '',
+    segment: ''
+  },
+  openMultiKey: null
+};
+
+const els = {};
+let toastTimer = null;
+
+document.addEventListener('DOMContentLoaded', init);
+
+function init() {
+  bindElements();
+  initMap();
+  bindEvents();
+  initMultiFilters();
+  updateLastAction('No actions yet');
+  fillSimpleSelect(els.premiseFilter, ['ALL'], 'ALL', v => 'All premises');
+  renderMultiFilterOptions();
+  syncControlState();
+
+  requestAnimationFrame(() => {
+    if (state.map) state.map.invalidateSize();
+  });
+}
+
+function bindElements() {
+  [
+    'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
+    'assign-rep-select','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode',
+    'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count',
+    'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly',
+    'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
+    'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
+    'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
+    'routes-table-wrap'
+  ].forEach(id => {
+    els[toCamel(id)] = document.getElementById(id);
+  });
+}
+
+function bindEvents() {
+  els.fileInput.addEventListener('change', onFileChosen);
+  els.loadSheetBtn.addEventListener('click', loadSelectedSheet);
+  els.assignBtn.addEventListener('click', assignSelectionToRep);
+  els.undoBtn.addEventListener('click', undoLastAction);
+  els.resetBtn.addEventListener('click', resetAssignments);
+  els.optimizeBtn.addEventListener('click', optimizeRoutes);
+  els.exportBtn.addEventListener('click', exportWorkbook);
+  els.clearSelectionBtn.addEventListener('click', clearSelection);
+
+  els.themeToggleCheck.addEventListener('change', toggleTheme);
+  els.dimOthersCheckbox.addEventListener('change', refreshUI);
+  els.showTerritoryCheckbox.addEventListener('change', refreshTerritories);
+
+  els.premiseFilter.addEventListener('change', () => {
+    state.filters.premise = els.premiseFilter.value;
+    refreshUI();
+  });
+
+  els.protectedFilter.addEventListener('change', () => {
+    state.filters.protected = els.protectedFilter.value;
+    refreshUI();
+  });
+
+  els.movedFilter.addEventListener('change', () => {
+    state.filters.moved = els.movedFilter.value;
+    refreshUI();
+  });
+
+  els.disruptionSlider.addEventListener('input', () => {
+    els.disruptionValue.textContent = els.disruptionSlider.value;
+  });
+
+  document.addEventListener('click', handleDocumentClickForPanels);
+
+  window.addEventListener('resize', () => {
+    if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+    if (state.map) state.map.invalidateSize();
+  });
+
+  window.addEventListener('scroll', () => {
+    if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+  }, true);
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeAllMultiPanels();
+  });
+}
+
+function initMap() {
+  state.map = L.map('map', { preferCanvas: true }).setView([40.1, -89.2], 7);
+
+  state.lightLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  });
+
+  state.darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap &copy; CARTO'
+  });
+
+  state.lightLayer.addTo(state.map);
+
+  state.markerLayer = L.layerGroup().addTo(state.map);
+  state.territoryLayer = L.layerGroup().addTo(state.map);
+  state.drawLayer = new L.FeatureGroup().addTo(state.map);
+
+  state.drawControl = new L.Control.Draw({
+    draw: {
+      polyline: false,
+      circle: false,
+      circlemarker: false,
+      marker: false,
+      polygon: {
+        allowIntersection: false,
+        showArea: true,
+        shapeOptions: { color: '#245fb7', weight: 2 }
+      },
+      rectangle: {
+        shapeOptions: { color: '#0e9372', weight: 2 }
+      }
+    },
+    edit: {
+      featureGroup: state.drawLayer,
+      edit: false,
+      remove: true
+    }
+  });
+
+  state.map.addControl(state.drawControl);
+
+  state.map.on(L.Draw.Event.CREATED, handleDrawCreated);
+  state.map.on(L.Draw.Event.DELETED, () => {
+    clearSelection();
+    showToast('Selection cleared.');
+  });
+}
+
+function initMultiFilters() {
+  ['rep','rank','chain','segment'].forEach(key => {
+    const trigger = document.querySelector(`[data-multi-trigger="${key}"]`);
+    const selectAllBtn = document.querySelector(`[data-select-all="${key}"]`);
+    const searchInput = document.querySelector(`[data-search="${key}"]`);
+
+    if (trigger) {
+      trigger.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleMultiPanel(key);
+      });
+    }
+
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleSelectAllMulti(key);
+        positionMultiPanel(key);
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', e => {
+        state.multiSearch[key] = e.target.value || '';
+        renderMultiFilterOptions();
+        positionMultiPanel(key);
+      });
+    }
+  });
+}
+
+function handleDocumentClickForPanels(event) {
+  const openMulti = document.querySelector('.multi.open');
+  if (!openMulti) return;
+  if (!openMulti.contains(event.target)) closeAllMultiPanels();
+}
+
+function toggleMultiPanel(key) {
+  const wrap = document.getElementById(`${key}-filter-wrap`);
+  if (!wrap) return;
+
+  const alreadyOpen = wrap.classList.contains('open');
+  closeAllMultiPanels();
+
+  if (!alreadyOpen) {
+    wrap.classList.add('open');
+    state.openMultiKey = key;
+    positionMultiPanel(key);
+  }
+}
+
+function closeAllMultiPanels() {
+  document.querySelectorAll('.multi.open').forEach(el => el.classList.remove('open'));
+  state.openMultiKey = null;
+}
+
+function positionMultiPanel(key) {
+  const wrap = document.getElementById(`${key}-filter-wrap`);
+  const trigger = wrap?.querySelector('.multi-trigger');
+  const panel = wrap?.querySelector('.multi-panel');
+  if (!wrap || !trigger || !panel || !wrap.classList.contains('open')) return;
+
+  const rect = trigger.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  const width = 220;
+  let left = rect.left;
+  if (left + width > viewportWidth - 12) left = viewportWidth - width - 12;
+  if (left < 10) left = 10;
+
+  let top = rect.bottom + 6;
+  const availableBelow = viewportHeight - top - 12;
+  let maxHeight = Math.min(360, Math.max(220, availableBelow));
+
+  if (availableBelow < 220) {
+    const desiredAbove = Math.min(360, Math.max(220, rect.top - 16));
+    top = Math.max(10, rect.top - desiredAbove - 6);
+    maxHeight = desiredAbove;
+  }
+
+  panel.style.width = `${width}px`;
+  panel.style.maxHeight = `${maxHeight}px`;
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+
+  const list = panel.querySelector('.multi-list');
+  if (list) {
+    const searchRow = panel.querySelector('.multi-actions');
+    const searchHeight = searchRow ? searchRow.offsetHeight : 46;
+    list.style.maxHeight = `${Math.max(140, maxHeight - searchHeight - 8)}px`;
+  }
+}
+
+function onFileChosen(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  state.loadedFileName = file.name.replace(/\.[^.]+$/, '') + '_updated.xlsx';
+  const reader = new FileReader();
+
+  reader.onload = e => {
+    const data = e.target.result;
+
+    try {
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const workbook = XLSX.read(data, { type: 'binary' });
+        loadWorkbook(workbook);
+      } else {
+        const arr = new Uint8Array(data);
+        const workbook = XLSX.read(arr, { type: 'array' });
+        loadWorkbook(workbook);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('File could not be read. Check the format and try again.');
+    }
+  };
+
+  if (file.name.toLowerCase().endsWith('.csv')) {
+    reader.readAsBinaryString(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function loadWorkbook(workbook) {
+  state.workbook = workbook;
+  state.workbookSheets = {};
+  els.sheetSelect.innerHTML = '';
+
+  workbook.SheetNames.forEach((sheetName, idx) => {
+    state.workbookSheets[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+
+    const option = document.createElement('option');
+    option.value = sheetName;
+    option.textContent = sheetName;
+    if (idx === 0) option.selected = true;
+    els.sheetSelect.appendChild(option);
+  });
+
+  els.sheetSelect.disabled = false;
+  els.loadSheetBtn.disabled = false;
+  loadSelectedSheet();
+}
+
+function loadSelectedSheet() {
+  const sheetName = els.sheetSelect.value;
+
+  if (!sheetName || !state.workbookSheets[sheetName]) {
+    showToast('No sheet selected.');
+    return;
+  }
+
+  const rows = state.workbookSheets[sheetName];
+  const normalized = normalizeRows(rows);
+
+  if (!normalized.length) {
+    state.accounts = [];
+    state.accountById = new Map();
+    state.neighborMap = new Map();
+    state.selection.clear();
+    state.undoStack = [];
+    state.changeLog = [];
+    state.repFocus = null;
+    refreshUI(true);
+    showToast('No valid rows found in that sheet.');
+    return;
+  }
+
+  state.accounts = normalized;
+  state.accountById = new Map(state.accounts.map(a => [a._id, a]));
+  state.neighborMap = buildNeighborMap(state.accounts);
+  state.selection.clear();
+  state.undoStack = [];
+  state.changeLog = [];
+  state.repFocus = null;
+
+  buildRepColors();
+  seedFiltersFromData();
+  refreshUI(true);
+  fitMapToAccounts();
+
+  if (!els.repCountInput.dataset.userTouched) {
+    els.repCountInput.value = getAllAssignedReps().length || 1;
+  }
+
+  requestAnimationFrame(() => {
+    if (state.map) state.map.invalidateSize();
+  });
+
+  showToast(`Loaded ${state.accounts.length} accounts from ${sheetName}.`);
+  updateLastAction(`Loaded ${state.accounts.length} accounts from ${sheetName}`);
+}
+
+function normalizeRows(rows) {
+  if (!rows?.length) return [];
+
+  const mapped = [];
+  const headers = Object.keys(rows[0] || {});
+  const headerMap = {};
+  const cleanedHeaderLookup = new Map(headers.map(h => [cleanHeader(h), h]));
+
+  Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
+    let match = null;
+
+    for (const alias of aliases) {
+      const cleaned = cleanHeader(alias);
+
+      if (cleanedHeaderLookup.has(cleaned)) {
+        match = cleanedHeaderLookup.get(cleaned);
+        break;
+      }
+
+      for (const original of headers) {
+        const c = cleanHeader(original);
+        if (c === cleaned || c.includes(cleaned) || cleaned.includes(c)) {
+          match = original;
+          break;
+        }
+      }
+
+      if (match) break;
+    }
+
+    headerMap[key] = match;
+  });
+
+  let generatedId = 1;
+
+  for (const row of rows) {
+    const lat = toNumber(row[headerMap.latitude]);
+    const lng = toNumber(row[headerMap.longitude]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+    const customerId = safeString(row[headerMap.customerId]) || `AUTO_${generatedId++}`;
+    const customerName = safeString(row[headerMap.customerName]) || customerId;
+    const currentRep = safeString(row[headerMap.currentRep]) || 'Unassigned';
+    const assignedRep = safeString(row[headerMap.assignedRep]) || currentRep || 'Unassigned';
+    const rank = normalizeRank(row[headerMap.rank]);
+    const premise = safeString(row[headerMap.premise]) || 'Unknown';
+    const cadence4w = normalizeCadence4W(row[headerMap.cadence4w], rank);
+    const overallSales = toNumber(row[headerMap.overallSales]);
+
+    mapped.push({
+      _id: customerId,
+      latitude: lat,
+      longitude: lng,
+      customerId,
+      customerName,
+      address: safeString(row[headerMap.address]),
+      zip: safeString(row[headerMap.zip]),
+      chain: safeString(row[headerMap.chain]) || 'Independent',
+      segment: safeString(row[headerMap.segment]) || 'Unknown',
+      premise,
+      currentRep,
+      assignedRep,
+      originalAssignedRep: assignedRep,
+      overallSales: Number.isFinite(overallSales) ? overallSales : 0,
+      rank,
+      cadence4w,
+      protected: toBoolean(row[headerMap.protected]),
+      raw: row
+    });
+  }
+
+  return mapped;
+}
+
+function seedFiltersFromData() {
+  state.filters.rep = new Set(getAllAssignedReps());
+  state.filters.rank = new Set(getDistinctValues(state.accounts, a => a.rank));
+  state.filters.chain = new Set(getDistinctValues(state.accounts, a => a.chain));
+  state.filters.segment = new Set(getDistinctValues(state.accounts, a => a.segment));
+  state.filters.premise = 'ALL';
+  state.filters.protected = 'ALL';
+  state.filters.moved = 'ALL';
+
+  fillSimpleSelect(
+    els.premiseFilter,
+    ['ALL', ...getDistinctValues(state.accounts, a => a.premise)],
+    'ALL',
+    v => v === 'ALL' ? 'All premises' : v
+  );
+
+  renderMultiFilterOptions();
+}
+
+function renderMultiFilterOptions() {
+  renderSingleMultiFilter('rep', getAllAssignedReps(), els.repFilterOptions, els.repFilterSummary, 'All reps');
+  renderSingleMultiFilter('rank', getDistinctValues(state.accounts, a => a.rank), els.rankFilterOptions, els.rankFilterSummary, 'All ranks');
+  renderSingleMultiFilter('chain', getDistinctValues(state.accounts, a => a.chain), els.chainFilterOptions, els.chainFilterSummary, 'All chains');
+  renderSingleMultiFilter('segment', getDistinctValues(state.accounts, a => a.segment), els.segmentFilterOptions, els.segmentFilterSummary, 'All segments');
+
+  if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+}
+
+function renderSingleMultiFilter(key, values, container, summaryEl, allLabel) {
+  const selected = state.filters[key];
+  const search = (state.multiSearch[key] || '').toLowerCase().trim();
+  const visibleValues = values.filter(v => String(v).toLowerCase().includes(search));
+
+  container.innerHTML = visibleValues.length
+    ? visibleValues.map(value => {
+        const checked = selected.has(value) ? 'checked' : '';
+        return `
+          <label class="multi-item">
+            <input type="checkbox" data-multi-key="${key}" value="${escapeHtmlAttr(value)}" ${checked}/>
+            <span title="${escapeHtmlAttr(value)}">${escapeHtml(value)}</span>
+          </label>
+        `;
+      }).join('')
+    : `<div class="empty">No matches.</div>`;
+
+  container.querySelectorAll(`input[data-multi-key="${key}"]`).forEach(input => {
+    input.addEventListener('change', e => {
+      const val = e.target.value;
+
+      if (e.target.checked) selected.add(val);
+      else selected.delete(val);
+
+      if (selected.size === 0) {
+        values.forEach(v => selected.add(v));
+      }
+
+      updateMultiFilterSummary(key, values, summaryEl, allLabel);
+      refreshUI();
+      renderSingleMultiFilter(key, values, container, summaryEl, allLabel);
+      positionMultiPanel(key);
+    });
+  });
+
+  updateMultiFilterSummary(key, values, summaryEl, allLabel);
+}
+
+function updateMultiFilterSummary(key, values, summaryEl, allLabel) {
+  const selected = state.filters[key];
+  const total = values.length;
+  const count = selected.size;
+
+  if (!total || count === total) {
+    summaryEl.textContent = allLabel;
+    return;
+  }
+
+  if (count === 1) {
+    summaryEl.textContent = [...selected][0];
+    return;
+  }
+
+  summaryEl.textContent = `${count} selected`;
+}
+
+function toggleSelectAllMulti(key) {
+  const values = getMultiValuesForKey(key);
+  const selected = state.filters[key];
+  const isAllSelected = selected.size === values.length && values.every(v => selected.has(v));
+
+  selected.clear();
+  if (!isAllSelected) values.forEach(v => selected.add(v));
+
+  renderMultiFilterOptions();
+  refreshUI();
+}
+
+function getMultiValuesForKey(key) {
+  if (key === 'rep') return getAllAssignedReps();
+  if (key === 'rank') return getDistinctValues(state.accounts, a => a.rank);
+  if (key === 'chain') return getDistinctValues(state.accounts, a => a.chain);
+  if (key === 'segment') return getDistinctValues(state.accounts, a => a.segment);
+  return [];
+}
+
+function refreshUI(rebuildMap = false) {
+  syncControlState();
+  renderRepControls();
+  if (rebuildMap) rebuildMarkers();
+  refreshMarkerStyles();
+  renderRepTable();
+  renderSelectionPreview();
+  renderSummary();
+  renderMovedReview();
+  refreshTerritories();
+  if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+}
+
+function syncControlState() {
+  const hasData = state.accounts.length > 0;
+  els.assignBtn.disabled = !hasData || state.selection.size === 0;
+  els.undoBtn.disabled = !hasData || state.undoStack.length === 0;
+  els.resetBtn.disabled = !hasData;
+  els.optimizeBtn.disabled = !hasData;
+  els.exportBtn.disabled = !hasData;
+  els.clearSelectionBtn.disabled = !hasData || state.selection.size === 0;
+  els.assignRepSelect.disabled = !hasData;
+  els.repCountInput.disabled = !hasData;
+  els.minStopsInput.disabled = !hasData;
+  els.maxStopsInput.disabled = !hasData;
+  els.balanceMode.disabled = !hasData;
+  els.disruptionSlider.disabled = !hasData;
+  els.premiseFilter.disabled = !hasData;
+  els.protectedFilter.disabled = !hasData;
+  els.movedFilter.disabled = !hasData;
+  els.dimOthersCheckbox.disabled = !hasData;
+  els.showTerritoryCheckbox.disabled = !hasData;
+}
+
+function renderRepControls() {
+  const reps = getAllAssignedReps();
+  fillSimpleSelect(els.assignRepSelect, reps, reps[0] || '');
+
+  if (!els.repCountInput.dataset.userTouched) {
+    els.repCountInput.value = Math.max(1, reps.length || 1);
+  }
+
+  els.repCountInput.oninput = () => {
+    els.repCountInput.dataset.userTouched = '1';
+  };
+}
+
+function rebuildMarkers() {
+  state.markerLayer.clearLayers();
+  state.markerById.clear();
+
+  for (const account of state.accounts) {
+    const marker = L.circleMarker([account.latitude, account.longitude], markerStyleForAccount(account))
+      .bindPopup(buildPopupHtml(account));
+
+    marker.on('click', () => toggleSelection(account._id, true));
+
+    state.markerLayer.addLayer(marker);
+    state.markerById.set(account._id, marker);
+  }
+}
+
+function refreshMarkerStyles() {
+  for (const account of state.accounts) {
+    const marker = state.markerById.get(account._id);
+    if (!marker) continue;
+
+    marker.setStyle(markerStyleForAccount(account));
+    marker.setRadius(state.selection.has(account._id) ? 8 : (state.repFocus && account.assignedRep === state.repFocus ? 7 : 6));
+
+    const popup = marker.getPopup();
+    if (popup) popup.setContent(buildPopupHtml(account));
+  }
+}
+
+function markerStyleForAccount(account) {
+  const matches = passesFilters(account);
+  const dimOthers = els.dimOthersCheckbox.checked;
+  const isSelected = state.selection.has(account._id);
+  const isRepFocused = !!state.repFocus;
+  const isFocusedRep = isRepFocused && account.assignedRep === state.repFocus;
+  const color = getRepColor(account.assignedRep);
+
+  let opacity = matches ? 0.96 : (dimOthers ? 0.05 : 0.16);
+  let fillOpacity = dimOthers && !matches ? 0.03 : (account.protected ? 0.88 : 0.74);
+
+  if (isRepFocused) {
+    if (isFocusedRep) {
+      opacity = matches ? 1 : 0.4;
+      fillOpacity = account.protected ? 0.95 : 0.88;
+    } else {
+      opacity = 0.1;
+      fillOpacity = 0.05;
+    }
+  }
+
+  return {
+    radius: isSelected ? 8 : (isFocusedRep ? 7 : 6),
+    color: isSelected ? '#1e293b' : color,
+    weight: isSelected ? 2.5 : (isFocusedRep ? 2.2 : 1.2),
+    opacity,
+    fillColor: color,
+    fillOpacity
+  };
+}
+
+function passesFilters(account) {
+  const repPass = state.filters.rep.size === 0 || state.filters.rep.has(account.assignedRep);
+  const rankPass = state.filters.rank.size === 0 || state.filters.rank.has(account.rank);
+  const chainPass = state.filters.chain.size === 0 || state.filters.chain.has(account.chain);
+  const segmentPass = state.filters.segment.size === 0 || state.filters.segment.has(account.segment);
+  const premisePass = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
+
+  const protectedPass =
+    state.filters.protected === 'ALL' ||
+    (state.filters.protected === 'YES' && account.protected) ||
+    (state.filters.protected === 'NO' && !account.protected);
+
+  const movedPass =
+    state.filters.moved === 'ALL' ||
+    (state.filters.moved === 'MOVED' && account.assignedRep !== account.originalAssignedRep) ||
+    (state.filters.moved === 'UNCHANGED' && account.assignedRep === account.originalAssignedRep);
+
+  return repPass && rankPass && chainPass && segmentPass && premisePass && protectedPass && movedPass;
+}
+
+function buildPopupHtml(account) {
+  const addressLine = [account.address, account.zip].filter(Boolean).join(' ');
+
+  return `
+    <div style="min-width:250px;">
+      <div style="font-size:15px;font-weight:800;">${escapeHtml(account.customerName || account.customerId)}</div>
+      <div style="margin-top:5px;color:#5d7286;font-size:12px;">${escapeHtml(addressLine)}</div>
+      <div style="margin-top:8px;"><strong>Premise:</strong> ${escapeHtml(account.premise)}</div>
+      <div><strong>Segment:</strong> ${escapeHtml(account.segment)}</div>
+      <div><strong>Chain:</strong> ${escapeHtml(account.chain)}</div>
+      <div><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
+      <div><strong>Current Rep:</strong> ${escapeHtml(account.currentRep)}</div>
+      <div><strong>Revenue:</strong> ${formatCurrency(account.overallSales)}</div>
+      <div><strong>Rank:</strong> ${escapeHtml(account.rank)}</div>
+      <div><strong>Cadence 4W:</strong> ${formatNumber(account.cadence4w, 2)}</div>
+      <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
+    </div>
+  `;
+}
+
+function renderRepTable() {
+  const rows = summarizeByRep();
+
+  if (!rows.length) {
+    els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty">Upload a file to begin.</td></tr>';
+    return;
+  }
+
+  els.repTableBody.innerHTML = rows.map(row => `
+    <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''}">
+      <td>
+        <div class="rep-cell">
+          <span class="color-dot" style="background:${escapeHtmlAttr(row.color)}"></span>
+          <span>${escapeHtml(row.rep)}</span>
+        </div>
+      </td>
+      <td>${row.stops}</td>
+      <td>${renderDeltaCount(row.deltaStops)}</td>
+      <td>${formatCurrency(row.revenue)}</td>
+      <td>${renderDeltaMoney(row.deltaRevenue)}</td>
+      <td>${row.A}</td>
+      <td>${row.B}</td>
+      <td>${row.C}</td>
+      <td>${row.D}</td>
+      <td>${formatNumber(row.planned4W, 2)}</td>
+      <td>${formatNumber(row.avgWeekly, 2)}</td>
+      <td>${row.protected}</td>
+      <td>${row.movedIn}</td>
+      <td>${row.movedOut}</td>
+    </tr>
+  `).join('');
+
+  [...els.repTableBody.querySelectorAll('tr[data-rep-row]')].forEach(tr => {
+    tr.addEventListener('click', () => {
+      const rep = decodeURIComponent(tr.getAttribute('data-rep-row') || '');
+
+      if (!rep) return;
+
+      if (state.repFocus === rep) {
+        state.repFocus = null;
+        refreshUI(false);
+        if (state.accounts.length) fitMapToAccounts();
+      } else {
+        state.repFocus = rep;
+        refreshUI(false);
+        zoomToRep(rep);
+      }
+    });
+  });
+}
+
+function renderSelectionPreview() {
+  const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 250);
+  els.selectionCount.textContent = String(state.selection.size);
+
+  if (!selected.length) {
+    els.selectionPreview.innerHTML = '<div class="empty">No accounts selected.</div>';
+    return;
+  }
+
+  els.selectionPreview.innerHTML = selected.map(a => `
+    <div class="selected-item">
+      <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
+      <div class="transfer-line">
+        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
+        <span class="metric-chip">${escapeHtml(a.premise)}</span>
+        <span class="metric-chip">${escapeHtml(a.segment)}</span>
+        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
+        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
+        <span class="metric-chip">4W ${formatNumber(a.cadence4w, 2)}</span>
+        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
       </div>
     </div>
+  `).join('');
+}
 
-    <div class="controls-card">
-      <div class="controls-grid">
-        <div class="field">
-          <label>Assign selected to</label>
-          <select id="assign-rep-select"></select>
-        </div>
+function renderMovedReview() {
+  const moved = state.accounts
+    .filter(a => a.assignedRep !== a.originalAssignedRep)
+    .slice(0, 250);
 
-        <div class="field multi" id="rep-filter-wrap">
-          <label>Rep filter</label>
-          <div class="multi-trigger" data-multi-trigger="rep">
-            <span class="multi-trigger-text" id="rep-filter-summary">All reps</span>
-            <span>▾</span>
-          </div>
-          <div class="multi-panel" data-multi-panel="rep">
-            <div class="multi-actions">
-              <button class="mini-btn" type="button" data-select-all="rep">Select all</button>
-              <input class="multi-search" type="text" placeholder="Search..." data-search="rep" />
-            </div>
-            <div class="multi-list" id="rep-filter-options"></div>
-          </div>
-        </div>
+  els.movedReviewCount.textContent = String(moved.length);
 
-        <div class="field multi" id="rank-filter-wrap">
-          <label>Rank filter</label>
-          <div class="multi-trigger" data-multi-trigger="rank">
-            <span class="multi-trigger-text" id="rank-filter-summary">All ranks</span>
-            <span>▾</span>
-          </div>
-          <div class="multi-panel" data-multi-panel="rank">
-            <div class="multi-actions">
-              <button class="mini-btn" type="button" data-select-all="rank">Select all</button>
-              <input class="multi-search" type="text" placeholder="Search..." data-search="rank" />
-            </div>
-            <div class="multi-list" id="rank-filter-options"></div>
-          </div>
-        </div>
+  if (!moved.length) {
+    els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
+    return;
+  }
 
-        <div class="field multi" id="chain-filter-wrap">
-          <label>Chain filter</label>
-          <div class="multi-trigger" data-multi-trigger="chain">
-            <span class="multi-trigger-text" id="chain-filter-summary">All chains</span>
-            <span>▾</span>
-          </div>
-          <div class="multi-panel" data-multi-panel="chain">
-            <div class="multi-actions">
-              <button class="mini-btn" type="button" data-select-all="chain">Select all</button>
-              <input class="multi-search" type="text" placeholder="Search..." data-search="chain" />
-            </div>
-            <div class="multi-list" id="chain-filter-options"></div>
-          </div>
-        </div>
-
-        <div class="field multi" id="segment-filter-wrap">
-          <label>Segment filter</label>
-          <div class="multi-trigger" data-multi-trigger="segment">
-            <span class="multi-trigger-text" id="segment-filter-summary">All segments</span>
-            <span>▾</span>
-          </div>
-          <div class="multi-panel" data-multi-panel="segment">
-            <div class="multi-actions">
-              <button class="mini-btn" type="button" data-select-all="segment">Select all</button>
-              <input class="multi-search" type="text" placeholder="Search..." data-search="segment" />
-            </div>
-            <div class="multi-list" id="segment-filter-options"></div>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Premise filter</label>
-          <select id="premise-filter"></select>
-        </div>
-
-        <div class="field">
-          <label>Protected filter</label>
-          <select id="protected-filter">
-            <option value="ALL">All</option>
-            <option value="YES">Protected only</option>
-            <option value="NO">Unprotected only</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Moved filter</label>
-          <select id="moved-filter">
-            <option value="ALL">All</option>
-            <option value="MOVED">Moved only</option>
-            <option value="UNCHANGED">Unchanged only</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Target rep count</label>
-          <input id="rep-count-input" type="number" min="1" step="1" value="1" />
-        </div>
-
-        <div class="field">
-          <label>Minimum stops / rep</label>
-          <input id="min-stops-input" type="number" min="1" step="1" value="100" />
-        </div>
-
-        <div class="field">
-          <label>Maximum stops / rep</label>
-          <input id="max-stops-input" type="number" min="1" step="1" value="200" />
-        </div>
-
-        <div class="field">
-          <label>Optimize by</label>
-          <select id="balance-mode">
-            <option value="hybrid">Hybrid</option>
-            <option value="stops">Stops</option>
-            <option value="revenue">Revenue</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Customer disruption <span id="disruption-value">100</span></label>
-          <div class="range-wrap">
-            <input id="disruption-slider" type="range" min="0" max="100" step="1" value="100" />
-          </div>
-        </div>
+  els.movedReviewList.innerHTML = moved.map(a => `
+    <div class="moved-item">
+      <div class="moved-item-title">${escapeHtml(a.customerName)}</div>
+      <div class="transfer-line">
+        <span class="rep-chip">${escapeHtml(a.originalAssignedRep)}</span>
+        <span class="rep-arrow">→</span>
+        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
+        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
+        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
+        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
       </div>
     </div>
+  `).join('');
+}
 
-    <div class="stats">
-      <div class="stat"><div class="k">Accounts</div><div class="v" id="global-accounts">0</div></div>
-      <div class="stat"><div class="k">Revenue</div><div class="v" id="global-revenue">$0</div></div>
-      <div class="stat"><div class="k">Protected</div><div class="v" id="global-protected">0</div></div>
-      <div class="stat"><div class="k">Moved</div><div class="v" id="global-moved">0</div></div>
-      <div class="stat"><div class="k">Unchanged</div><div class="v" id="global-unchanged">0%</div></div>
-      <div class="stat"><div class="k">Avg Weekly Stops</div><div class="v" id="global-avg-weekly">0</div></div>
-      <div class="stat"><div class="k">Selection</div><div class="v" id="selection-count">0</div></div>
-    </div>
+function renderSummary() {
+  const totalAccounts = state.accounts.length;
+  const totalRevenue = state.accounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
+  const protectedCount = state.accounts.filter(a => a.protected).length;
+  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
+  const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts) * 100 : 0;
+  const totalPlanned4W = state.accounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
+  const avgWeekly = totalPlanned4W / 4;
 
-    <div class="main">
-      <div class="card map-card">
-        <div class="card-head">
-          <div>
-            <div class="card-title">Map</div>
-            <div class="card-sub">Use rectangle or polygon draw to lasso accounts</div>
-          </div>
-          <div class="map-actions">
-            <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
-            <button id="optimize-btn" class="btn btn-green" disabled>Optimize Routes</button>
-            <label class="inline-check"><input id="theme-toggle-check" type="checkbox" /> Dark Map</label>
-            <label class="inline-check"><input id="dim-others-checkbox" type="checkbox" checked /> Dim others</label>
-            <label class="inline-check"><input id="show-territory-checkbox" type="checkbox" /> Show territories</label>
-          </div>
-        </div>
-        <div id="map"></div>
-      </div>
+  els.globalAccounts.textContent = totalAccounts.toLocaleString();
+  els.globalRevenue.textContent = formatCurrency(totalRevenue);
+  els.globalProtected.textContent = protectedCount.toLocaleString();
+  els.globalMoved.textContent = movedCount.toLocaleString();
+  els.globalUnchanged.textContent = `${unchangedPct.toFixed(1)}%`;
+  els.globalAvgWeekly.textContent = formatNumber(avgWeekly, 1);
+}
 
-      <div class="side">
-        <div class="card routes-card">
-          <div class="card-head">
-            <div>
-              <div class="card-title">Routes</div>
-              <div class="card-sub">Rep metrics update as assignments change</div>
-            </div>
-            <div class="small muted" id="last-action">No actions yet</div>
-          </div>
-          <div class="table-wrap" id="routes-table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Rep</th>
-                  <th>Stops</th>
-                  <th>+/- Stops</th>
-                  <th>Revenue</th>
-                  <th>+/- Revenue</th>
-                  <th>A</th>
-                  <th>B</th>
-                  <th>C</th>
-                  <th>D</th>
-                  <th>Planned 4W</th>
-                  <th>Avg Weekly</th>
-                  <th>Protected</th>
-                  <th>Moved In</th>
-                  <th>Moved Out</th>
-                </tr>
-              </thead>
-              <tbody id="rep-table-body">
-                <tr><td colspan="14" class="empty">Upload a file to begin.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+function handleDrawCreated(event) {
+  state.drawLayer.clearLayers();
+  const layer = event.layer;
+  state.drawLayer.addLayer(layer);
 
-        <div class="card selected-card">
-          <div class="selected-head">
-            <div>
-              <div class="card-title">Selected accounts</div>
-              <div class="card-sub">Current lasso / clicked selection</div>
-            </div>
-            <button id="clear-selection-btn" class="btn btn-subtle" disabled>Clear Selection</button>
-          </div>
+  let polygon = null;
+  if (layer instanceof L.Rectangle || layer instanceof L.Polygon) {
+    polygon = layer.toGeoJSON();
+  }
+  if (!polygon) return;
 
-          <div class="selected-list" id="selection-preview">
-            <div class="empty">No accounts selected.</div>
-          </div>
+  state.selection.clear();
 
-          <div class="moved-review">
-            <div class="moved-review-head">
-              <div>
-                <div class="moved-review-title">Moved accounts review</div>
-                <div class="moved-review-sub">Shows accounts whose assigned rep differs from imported rep</div>
-              </div>
-              <div class="small muted"><span id="moved-review-count">0</span> moved</div>
-            </div>
-            <div class="moved-review-list" id="moved-review-list">
-              <div class="empty">No moved accounts yet.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+  for (const account of state.accounts) {
+    const point = turf.point([account.longitude, account.latitude]);
+    if (turf.booleanPointInPolygon(point, polygon)) state.selection.add(account._id);
+  }
 
-    <div id="toast" class="toast"></div>
-  </div>
+  refreshUI();
+  showToast(`${state.selection.size} account${state.selection.size === 1 ? '' : 's'} selected.`);
+}
 
-  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://unpkg.com/exceljs/dist/exceljs.min.js"></script>
-  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  <script src="app.js"></script>
-</body>
-</html>
+function toggleSelection(id, additive = false) {
+  if (!additive) state.selection.clear();
+  if (state.selection.has(id)) state.selection.delete(id);
+  else state.selection.add(id);
+  refreshUI();
+}
+
+function clearSelection() {
+  state.selection.clear();
+  state.drawLayer.clearLayers();
+  refreshUI();
+}
+
+function assignSelectionToRep() {
+  const targetRep = els.assignRepSelect.value;
+  const selectedIds = [...state.selection];
+  if (!selectedIds.length || !targetRep) return;
+
+  const changes = [];
+  let skippedProtected = 0;
+
+  ensureRepColor(targetRep);
+
+  for (const id of selectedIds) {
+    const account = state.accountById.get(id);
+    if (!account) continue;
+
+    if (account.protected && account.assignedRep !== targetRep) {
+      skippedProtected += 1;
+      continue;
+    }
+
+    if (account.assignedRep === targetRep) continue;
+
+    changes.push({
+      id,
+      from: account.assignedRep,
+      to: targetRep
+    });
+  }
+
+  if (!changes.length) {
+    showToast(skippedProtected ? `${skippedProtected} protected account(s) were skipped.` : 'No assignment changes to make.');
+    return;
+  }
+
+  applyChanges(changes, `Assigned ${changes.length} account${changes.length === 1 ? '' : 's'} to ${targetRep}`);
+  clearSelection();
+
+  if (skippedProtected) {
+    showToast(`${changes.length} changed. ${skippedProtected} protected account(s) skipped.`);
+  }
+}
+
+function applyChanges(changes, label) {
+  changes.forEach(change => {
+    const account = state.accountById.get(change.id);
+    if (!account) return;
+
+    ensureRepColor(change.to);
+    account.assignedRep = change.to;
+
+    state.changeLog.push({
+      timestamp: new Date().toISOString(),
+      customerId: account.customerId,
+      customerName: account.customerName,
+      fromRep: change.from,
+      toRep: change.to,
+      protected: account.protected ? 'Yes' : 'No'
+    });
+  });
+
+  state.undoStack.push({
+    changes: changes.map(c => ({ ...c })),
+    label
+  });
+
+  buildRepColors();
+
+  if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
+    state.repFocus = null;
+  }
+
+  refreshUI();
+  updateLastAction(label);
+  showToast(label);
+}
+
+function undoLastAction() {
+  const action = state.undoStack.pop();
+  if (!action) return;
+
+  for (const change of action.changes) {
+    const account = state.accountById.get(change.id);
+    if (account) account.assignedRep = change.from;
+  }
+
+  buildRepColors();
+
+  if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
+    state.repFocus = null;
+  }
+
+  refreshUI();
+  updateLastAction(`Undid: ${action.label}`);
+  showToast(`Undid: ${action.label}`);
+}
+
+function resetAssignments() {
+  const changes = [];
+
+  for (const account of state.accounts) {
+    if (account.assignedRep !== account.originalAssignedRep) {
+      changes.push({
+        id: account._id,
+        from: account.assignedRep,
+        to: account.originalAssignedRep
+      });
+    }
+  }
+
+  if (!changes.length) {
+    showToast('Nothing to reset.');
+    return;
+  }
+
+  applyChanges(changes, 'Reset assignments to imported values');
+  state.undoStack = [];
+  state.repFocus = null;
+  updateLastAction('Reset assignments to imported values');
+  refreshUI();
+  fitMapToAccounts();
+}
+
+function optimizeRoutes() {
+  if (!state.accounts.length) return;
+
+  try {
+    const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
+    const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
+    const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
+
+    const targetCount = Math.max(1, Math.min(100, targetCountRaw || 1));
+    const minStops = Math.max(1, minStopsRaw || 1);
+    const maxStops = Math.max(minStops, maxStopsRaw || minStops);
+    const totalAccounts = state.accounts.length;
+    const protectedCount = state.accounts.filter(a => a.protected).length;
+    const movableCount = totalAccounts - protectedCount;
+
+    if (!Number.isFinite(targetCount) || !Number.isFinite(minStops) || !Number.isFinite(maxStops)) {
+      showToast('Optimizer inputs are invalid. Check rep count and stop limits.');
+      return;
+    }
+
+    if (targetCount > totalAccounts) {
+      showToast(`Target rep count of ${targetCount} exceeds ${totalAccounts} total accounts.`);
+      return;
+    }
+
+    if (targetCount * minStops > totalAccounts) {
+      showToast(`Minimum stops too high. ${targetCount} reps × ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
+      return;
+    }
+
+    if (movableCount === 0) {
+      showToast('All accounts are protected. Nothing can be optimized.');
+      return;
+    }
+
+    const continuityWeight = Number(els.disruptionSlider.value) / 100;
+    const geographyWeight = 1 - continuityWeight;
+    const balanceMode = els.balanceMode.value;
+
+    const protectedAccounts = state.accounts.filter(a => a.protected);
+    const movableAccounts = state.accounts.filter(a => !a.protected);
+    const currentReps = getAllAssignedReps();
+    const targetRepNames = buildTargetRepNames(targetCount, currentReps);
+    const adjacency = state.neighborMap;
+
+    if (maxStops < Math.ceil(totalAccounts / targetRepNames.length) * 0.35) {
+      showToast('Maximum stops looks very low for the selected rep count. Increase it and try again.');
+      return;
+    }
+
+    targetRepNames.forEach(rep => ensureRepColor(rep));
+
+    const assignments = new Map();
+    protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
+
+    const assignmentCtx = createAssignmentContext(targetRepNames, assignments);
+    const centroids = initializeCentroidsFast(targetRepNames, assignmentCtx);
+
+    const orderedMovable = [...movableAccounts].sort((a, b) => {
+      if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
+      if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
+      return a.customerName.localeCompare(b.customerName);
+    });
+
+    for (let iter = 0; iter < 6; iter += 1) {
+      assignmentCtx.clearMovableAssignments(orderedMovable, assignments);
+      resetCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
+
+      const repStats = buildFullRepStats(targetRepNames);
+      for (const rep of targetRepNames) {
+        const repCtx = assignmentCtx.reps.get(rep);
+        repStats.set(rep, { rep, stops: repCtx.count, revenue: repCtx.revenue });
+      }
+
+      for (const account of orderedMovable) {
+        let bestRep = null;
+        let bestScore = Infinity;
+
+        for (const rep of targetRepNames) {
+          const centroid = centroids.get(rep);
+          const repStat = repStats.get(rep);
+          const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+
+          const compactnessScore = dist * (1.08 + geographyWeight * 1.15);
+          const continuityPenalty = account.currentRep === rep ? 0 : (continuityWeight * 0.95);
+          const existingPenalty = account.assignedRep === rep ? 0 : (continuityWeight * 0.28);
+
+          let balancePenalty = 0;
+          if (balanceMode === 'stops') {
+            balancePenalty = Math.max(0, repStat.stops - maxStops) * 0.7 + repStat.stops * 0.007;
+          } else if (balanceMode === 'revenue') {
+            balancePenalty = repStat.revenue * 0.0000013;
+          } else {
+            balancePenalty = repStat.stops * 0.0055 + repStat.revenue * 0.00000065;
+          }
+
+          const localPenalty = localDominancePenalty(account, rep, assignments, adjacency);
+          const maxStopsPenalty = repStat.stops >= maxStops ? 8 : 0;
+          const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + maxStopsPenalty;
+
+          if (score < bestScore) {
+            bestScore = score;
+            bestRep = rep;
+          }
+        }
+
+        assignments.set(account._id, bestRep);
+        assignmentCtx.addToRep(bestRep, account);
+        const stat = repStats.get(bestRep);
+        stat.stops += 1;
+        stat.revenue += account.overallSales || 0;
+      }
+
+      refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
+    }
+
+    enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx);
+    runEnclaveCleanupFast(assignments, targetRepNames, minStops, adjacency, assignmentCtx);
+    runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacency, assignmentCtx);
+    enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+
+    const changes = [];
+    for (const account of state.accounts) {
+      const nextRep = assignments.get(account._id) || account.assignedRep;
+      if (nextRep !== account.assignedRep) {
+        changes.push({
+          id: account._id,
+          from: account.assignedRep,
+          to: nextRep
+        });
+      }
+    }
+
+    if (!changes.length) {
+      showToast('Optimizer did not find a better assignment under the current rules.');
+      return;
+    }
+
+    applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
+  } catch (err) {
+    console.error('Optimize Routes failed:', err);
+    showToast('Optimize Routes hit an error. Send me the first red error line from the browser console.');
+  }
+}
+
+function createAssignmentContext(targetRepNames, assignments) {
+  const ctx = {
+    reps: new Map()
+  };
+
+  targetRepNames.forEach(rep => {
+    ctx.reps.set(rep, {
+      count: 0,
+      revenue: 0,
+      latSum: 0,
+      lngSum: 0,
+      members: new Set()
+    });
+  });
+
+  for (const account of state.accounts) {
+    const rep = assignments.get(account._id);
+    if (!rep) continue;
+    if (!ctx.reps.has(rep)) {
+      ctx.reps.set(rep, {
+        count: 0,
+        revenue: 0,
+        latSum: 0,
+        lngSum: 0,
+        members: new Set()
+      });
+    }
+    addAccountToContext(ctx, rep, account);
+  }
+
+  ctx.addToRep = (rep, account) => addAccountToContext(ctx, rep, account);
+  ctx.removeFromRep = (rep, account) => removeAccountFromContext(ctx, rep, account);
+  ctx.moveAccount = (account, fromRep, toRep) => moveAccountInContext(ctx, account, fromRep, toRep);
+  ctx.count = rep => ctx.reps.get(rep)?.count || 0;
+  ctx.revenue = rep => ctx.reps.get(rep)?.revenue || 0;
+  ctx.membersArray = rep => Array.from(ctx.reps.get(rep)?.members || []);
+  ctx.centroid = rep => centroidFromContext(ctx, rep);
+
+  ctx.clearMovableAssignments = (movableAccounts, assignmentMap) => {
+    for (const account of movableAccounts) {
+      const rep = assignmentMap.get(account._id);
+      if (!rep) continue;
+      removeAccountFromContext(ctx, rep, account);
+      assignmentMap.delete(account._id);
+    }
+  };
+
+  return ctx;
+}
+
+function addAccountToContext(ctx, rep, account) {
+  if (!ctx.reps.has(rep)) {
+    ctx.reps.set(rep, {
+      count: 0,
+      revenue: 0,
+      latSum: 0,
+      lngSum: 0,
+      members: new Set()
+    });
+  }
+
+  const repCtx = ctx.reps.get(rep);
+  if (repCtx.members.has(account._id)) return;
+
+  repCtx.members.add(account._id);
+  repCtx.count += 1;
+  repCtx.revenue += account.overallSales || 0;
+  repCtx.latSum += account.latitude;
+  repCtx.lngSum += account.longitude;
+}
+
+function removeAccountFromContext(ctx, rep, account) {
+  const repCtx = ctx.reps.get(rep);
+  if (!repCtx || !repCtx.members.has(account._id)) return;
+
+  repCtx.members.delete(account._id);
+  repCtx.count -= 1;
+  repCtx.revenue -= account.overallSales || 0;
+  repCtx.latSum -= account.latitude;
+  repCtx.lngSum -= account.longitude;
+}
+
+function moveAccountInContext(ctx, account, fromRep, toRep) {
+  if (fromRep === toRep) return;
+  removeAccountFromContext(ctx, fromRep, account);
+  addAccountToContext(ctx, toRep, account);
+}
+
+function centroidFromContext(ctx, rep) {
+  const repCtx = ctx.reps.get(rep);
+  if (repCtx && repCtx.count > 0) {
+    return {
+      lat: repCtx.latSum / repCtx.count,
+      lng: repCtx.lngSum / repCtx.count
+    };
+  }
+
+  const fallback = state.accounts[0];
+  return { lat: fallback?.latitude || 0, lng: fallback?.longitude || 0 };
+}
+
+function initializeCentroidsFast(targetRepNames, assignmentCtx) {
+  const centroids = new Map();
+
+  targetRepNames.forEach((rep, idx) => {
+    const repCtx = assignmentCtx.reps.get(rep);
+    if (repCtx && repCtx.count > 0) {
+      centroids.set(rep, centroidFromContext(assignmentCtx, rep));
+      return;
+    }
+
+    const fallback = state.accounts[Math.floor(idx * state.accounts.length / Math.max(1, targetRepNames.length))] || state.accounts[0];
+    centroids.set(rep, { lat: fallback.latitude, lng: fallback.longitude });
+  });
+
+  return centroids;
+}
+
+function resetCentroidsFromContext(centroids, targetRepNames, assignmentCtx) {
+  for (const rep of targetRepNames) {
+    const repCtx = assignmentCtx.reps.get(rep);
+    if (repCtx && repCtx.count > 0) {
+      centroids.set(rep, centroidFromContext(assignmentCtx, rep));
+    }
+  }
+}
+
+function refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx) {
+  for (const rep of targetRepNames) {
+    const repCtx = assignmentCtx.reps.get(rep);
+    if (!repCtx || !repCtx.count) continue;
+    centroids.set(rep, {
+      lat: repCtx.latSum / repCtx.count,
+      lng: repCtx.lngSum / repCtx.count
+    });
+  }
+}
+
+function moveAssignmentFast(assignments, assignmentCtx, account, toRep) {
+  const fromRep = assignments.get(account._id);
+  if (fromRep === toRep) return false;
+  assignments.set(account._id, toRep);
+  assignmentCtx.moveAccount(account, fromRep, toRep);
+  return true;
+}
+
+function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, neighborMap, assignmentCtx) {
+  let moved = true;
+  let pass = 0;
+
+  while (moved && pass < 3) {
+    pass += 1;
+    moved = false;
+
+    const borderAccounts = getBorderAccounts(assignments, neighborMap)
+      .filter(a => !a.protected)
+      .map(a => ({ account: a, detail: dominantNeighborRep(a, assignments, neighborMap) }))
+      .filter(x => x.detail && x.detail.borderStrength >= 0.6 && x.detail.rep !== assignments.get(x.account._id))
+      .sort((a, b) => b.detail.borderStrength - a.detail.borderStrength);
+
+    for (const { account, detail } of borderAccounts) {
+      const from = assignments.get(account._id);
+      const to = detail.rep;
+      if (!to || from === to) continue;
+      if (assignmentCtx.count(from) <= Math.max(1, minStops)) continue;
+
+      const currentScore = borderCleanupScoreFast(account, from, assignments, neighborMap, continuityWeight, assignmentCtx);
+      const nextScore = borderCleanupScoreFast(account, to, assignments, neighborMap, continuityWeight, assignmentCtx);
+
+      if (nextScore + 0.18 < currentScore) {
+        if (moveAssignmentFast(assignments, assignmentCtx, account, to)) moved = true;
+      }
+    }
+  }
+}
+
+function runEnclaveCleanupFast(assignments, targetRepNames, minStops, neighborMap, assignmentCtx) {
+  for (const account of getBorderAccounts(assignments, neighborMap).filter(a => !a.protected)) {
+    const own = assignments.get(account._id);
+    const neighbors = neighborMap.get(account._id) || [];
+    if (!neighbors.length) continue;
+
+    const repCounts = new Map();
+    neighbors.forEach(nid => {
+      const rep = assignments.get(nid);
+      if (!rep) return;
+      repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+    });
+
+    const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+    const topRep = sorted[0]?.[0];
+    const topCount = sorted[0]?.[1] || 0;
+    const ownCount = repCounts.get(own) || 0;
+
+    if (!topRep || topRep === own) continue;
+    if (topCount < 4 || ownCount > 1) continue;
+    if (assignmentCtx.count(own) <= Math.max(1, minStops)) continue;
+
+    moveAssignmentFast(assignments, assignmentCtx, account, topRep);
+  }
+}
+
+function runMajoritySmoothingFast(assignments, targetRepNames, minStops, neighborMap, assignmentCtx) {
+  const moves = [];
+
+  for (const account of getBorderAccounts(assignments, neighborMap).filter(a => !a.protected)) {
+    const own = assignments.get(account._id);
+    const neighbors = neighborMap.get(account._id) || [];
+    if (neighbors.length < 3) continue;
+    if (assignmentCtx.count(own) <= Math.max(1, minStops)) continue;
+
+    const repCounts = new Map();
+    neighbors.forEach(nid => {
+      const rep = assignments.get(nid);
+      if (!rep) return;
+      repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+    });
+
+    const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+    const topRep = sorted[0]?.[0];
+    const topCount = sorted[0]?.[1] || 0;
+    const ownCount = repCounts.get(own) || 0;
+
+    if (topRep && topRep !== own && topCount >= 5 && ownCount <= 1) {
+      moves.push({ account, from: own, to: topRep });
+    }
+  }
+
+  for (const move of moves) {
+    if (assignmentCtx.count(move.from) <= Math.max(1, minStops)) continue;
+    moveAssignmentFast(assignments, assignmentCtx, move.account, move.to);
+  }
+}
+
+function borderCleanupScoreFast(account, rep, assignments, neighborMap, continuityWeight, assignmentCtx) {
+  const neighbors = neighborMap.get(account._id) || [];
+  const centroid = assignmentCtx.centroid(rep);
+  const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+
+  let same = 0;
+  let other = 0;
+  neighbors.forEach(nid => {
+    if (assignments.get(nid) === rep) same += 1;
+    else other += 1;
+  });
+
+  const continuityPenalty = account.currentRep === rep ? 0 : continuityWeight * 0.35;
+  return dist * 1.35 - same * 0.45 + other * 0.12 + continuityPenalty;
+}
+
+function localDominancePenalty(account, rep, assignments, neighborMap) {
+  const neighbors = neighborMap.get(account._id) || [];
+  if (!neighbors.length) return 0;
+
+  let same = 0;
+  let other = 0;
+  const repCounts = new Map();
+
+  neighbors.forEach(nid => {
+    const nrep = assignments.get(nid);
+    if (!nrep) return;
+    repCounts.set(nrep, (repCounts.get(nrep) || 0) + 1);
+    if (nrep === rep) same += 1;
+    else other += 1;
+  });
+
+  const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+  const dominantRep = sorted[0]?.[0];
+  const dominantCount = sorted[0]?.[1] || 0;
+
+  let penalty = 0;
+  if (dominantRep && dominantRep !== rep) penalty += dominantCount * 0.48;
+  if (same === 0) penalty += 2.4;
+  if (same <= 1 && neighbors.length >= 4) penalty += 1.25;
+  if (other > same) penalty += (other - same) * 0.28;
+  return penalty;
+}
+
+function dominantNeighborRep(account, assignments, neighborMap) {
+  const neighbors = neighborMap.get(account._id) || [];
+  if (!neighbors.length) return null;
+
+  const counts = new Map();
+  neighbors.forEach(id => {
+    const rep = assignments.get(id);
+    if (!rep) return;
+    counts.set(rep, (counts.get(rep) || 0) + 1);
+  });
+
+  const sorted = [...counts.entries()].sort((a,b) => b[1] - a[1]);
+  if (!sorted.length) return null;
+
+  return {
+    rep: sorted[0][0],
+    borderStrength: sorted[0][1] / neighbors.length
+  };
+}
+
+function getBorderAccounts(assignments, neighborMap) {
+  const out = [];
+
+  for (const account of state.accounts) {
+    const neighbors = neighborMap.get(account._id) || [];
+    if (!neighbors.length) continue;
+
+    const own = assignments.get(account._id);
+    let mixed = false;
+
+    for (const nid of neighbors) {
+      const rep = assignments.get(nid);
+      if (rep && rep !== own) {
+        mixed = true;
+        break;
+      }
+    }
+
+    if (mixed) out.push(account);
+  }
+
+  return out;
+}
+
+function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx) {
+  let pass = 0;
+  const maxPasses = 1000;
+
+  while (pass < maxPasses) {
+    pass += 1;
+
+    const underfilled = targetRepNames
+      .filter(rep => assignmentCtx.count(rep) < minStops)
+      .sort((a,b) => assignmentCtx.count(a) - assignmentCtx.count(b));
+
+    if (!underfilled.length) break;
+
+    let movedThisPass = false;
+
+    for (const needyRep of underfilled) {
+      const needyCentroid = assignmentCtx.centroid(needyRep);
+
+      const donorCandidates = targetRepNames
+        .filter(rep => rep !== needyRep && assignmentCtx.count(rep) > minStops)
+        .sort((a,b) => assignmentCtx.count(b) - assignmentCtx.count(a));
+
+      let bestMove = null;
+
+      for (const donorRep of donorCandidates) {
+        const donorMemberIds = assignmentCtx.membersArray(donorRep);
+
+        for (const accountId of donorMemberIds) {
+          const account = state.accountById.get(accountId);
+          if (!account || account.protected) continue;
+          if (assignmentCtx.count(needyRep) >= maxStops) continue;
+          if (assignmentCtx.count(donorRep) <= minStops) continue;
+
+          const dist = squaredDistance(account.latitude, account.longitude, needyCentroid.lat, needyCentroid.lng);
+          const continuityPenalty = account.currentRep === donorRep ? 0.22 : 0;
+          const score = dist + continuityPenalty;
+
+          if (!bestMove || score < bestMove.score) {
+            bestMove = { account, from: donorRep, to: needyRep, score };
+          }
+        }
+      }
+
+      if (bestMove) {
+        if (moveAssignmentFast(assignments, assignmentCtx, bestMove.account, bestMove.to)) {
+          movedThisPass = true;
+        }
+      }
+    }
+
+    if (!movedThisPass) break;
+  }
+}
+
+function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx) {
+  let pass = 0;
+  const maxPasses = 1000;
+
+  while (pass < maxPasses) {
+    pass += 1;
+
+    const overfilled = targetRepNames
+      .filter(rep => assignmentCtx.count(rep) > maxStops)
+      .sort((a, b) => assignmentCtx.count(b) - assignmentCtx.count(a));
+
+    if (!overfilled.length) break;
+
+    let movedThisPass = false;
+
+    for (const donorRep of overfilled) {
+      const donorCentroid = assignmentCtx.centroid(donorRep);
+      const donorAccounts = assignmentCtx.membersArray(donorRep)
+        .map(id => state.accountById.get(id))
+        .filter(a => a && !a.protected)
+        .sort((a, b) => {
+          const ad = squaredDistance(a.latitude, a.longitude, donorCentroid.lat, donorCentroid.lng);
+          const bd = squaredDistance(b.latitude, b.longitude, donorCentroid.lat, donorCentroid.lng);
+          return bd - ad;
+        });
+
+      let bestMove = null;
+
+      for (const account of donorAccounts) {
+        for (const targetRep of targetRepNames) {
+          if (targetRep === donorRep) continue;
+          if (assignmentCtx.count(targetRep) >= maxStops) continue;
+
+          const targetCentroid = assignmentCtx.centroid(targetRep);
+          const score =
+            squaredDistance(account.latitude, account.longitude, targetCentroid.lat, targetCentroid.lng) +
+            (account.currentRep === targetRep ? 0 : 0.25) +
+            (assignmentCtx.count(targetRep) < minStops ? -1.5 : 0);
+
+          if (!bestMove || score < bestMove.score) {
+            bestMove = {
+              account,
+              from: donorRep,
+              to: targetRep,
+              score
+            };
+          }
+        }
+      }
+
+      if (bestMove) {
+        if (moveAssignmentFast(assignments, assignmentCtx, bestMove.account, bestMove.to)) {
+          movedThisPass = true;
+        }
+      }
+    }
+
+    if (!movedThisPass) break;
+  }
+}
+
+function buildNeighborMap(accounts) {
+  const map = new Map();
+
+  for (let i = 0; i < accounts.length; i += 1) {
+    const account = accounts[i];
+    const nearest = [];
+
+    for (let j = 0; j < accounts.length; j += 1) {
+      if (i === j) continue;
+      const other = accounts[j];
+      const d = squaredDistance(account.latitude, account.longitude, other.latitude, other.longitude);
+
+      if (nearest.length < 8) {
+        nearest.push({ id: other._id, d });
+        nearest.sort((a, b) => a.d - b.d);
+      } else if (d < nearest[nearest.length - 1].d) {
+        nearest[nearest.length - 1] = { id: other._id, d };
+        nearest.sort((a, b) => a.d - b.d);
+      }
+    }
+
+    map.set(account._id, nearest.map(x => x.id));
+  }
+
+  return map;
+}
+
+function buildTargetRepNames(targetCount, currentReps) {
+  const reps = [...currentReps];
+  while (reps.length < targetCount) reps.push(`Rep ${reps.length + 1}`);
+  if (reps.length > targetCount) return reps.slice(0, targetCount);
+  return reps.length ? reps : ['Rep 1'];
+}
+
+function buildFullRepStats(reps) {
+  const map = new Map();
+  reps.forEach(rep => map.set(rep, { rep, stops: 0, revenue: 0 }));
+  return map;
+}
+
+function refreshTerritories() {
+  state.territoryLayer.clearLayers();
+  if (!els.showTerritoryCheckbox.checked || !state.accounts.length) return;
+
+  const reps = getAllAssignedReps().filter(rep => state.filters.rep.has(rep));
+
+  reps.forEach(rep => {
+    const members = state.accounts.filter(a => a.assignedRep === rep);
+    if (members.length < 3) return;
+
+    const points = members.map(a => [a.longitude, a.latitude]);
+    const featureCollection = turf.featureCollection(points.map(p => turf.point(p)));
+
+    let hull = null;
+    try {
+      hull = turf.convex(featureCollection);
+    } catch (e) {
+      hull = null;
+    }
+
+    if (!hull) return;
+
+    const coords = hull.geometry.coordinates[0].map(([lng, lat]) => [lat, lng]);
+    const isFocusedRep = state.repFocus && rep === state.repFocus;
+
+    const poly = L.polygon(coords, {
+      color: getRepColor(rep),
+      weight: isFocusedRep ? 3 : 2,
+      fillOpacity: isFocusedRep ? 0.1 : 0.05,
+      opacity: state.repFocus ? (isFocusedRep ? 0.95 : 0.18) : 0.75,
+      interactive: false
+    });
+
+    poly.addTo(state.territoryLayer);
+  });
+}
+
+function summarizeByRep() {
+  const currentMap = new Map();
+  const baselineMap = new Map();
+  const reps = getAllKnownReps();
+
+  reps.forEach(rep => {
+    currentMap.set(rep, makeEmptyRepSummary(rep));
+    baselineMap.set(rep, makeEmptyRepSummary(rep));
+  });
+
+  for (const account of state.accounts) {
+    if (!currentMap.has(account.assignedRep)) currentMap.set(account.assignedRep, makeEmptyRepSummary(account.assignedRep));
+    if (!baselineMap.has(account.originalAssignedRep)) baselineMap.set(account.originalAssignedRep, makeEmptyRepSummary(account.originalAssignedRep));
+
+    const cur = currentMap.get(account.assignedRep);
+    cur.stops += 1;
+    cur.revenue += account.overallSales;
+    cur[account.rank] += 1;
+    cur.planned4W += Number(account.cadence4w || 0);
+    cur.avgWeekly = cur.planned4W / 4;
+    if (account.protected) cur.protected += 1;
+    if (account.assignedRep !== account.originalAssignedRep) cur.movedIn += 1;
+
+    const base = baselineMap.get(account.originalAssignedRep);
+    base.stops += 1;
+    base.revenue += account.overallSales;
+  }
+
+  for (const account of state.accounts) {
+    if (account.assignedRep !== account.originalAssignedRep) {
+      if (!currentMap.has(account.originalAssignedRep)) currentMap.set(account.originalAssignedRep, makeEmptyRepSummary(account.originalAssignedRep));
+      currentMap.get(account.originalAssignedRep).movedOut += 1;
+    }
+  }
+
+  const rows = [...currentMap.values()].map(row => {
+    const base = baselineMap.get(row.rep) || makeEmptyRepSummary(row.rep);
+    row.avgWeekly = row.planned4W / 4;
+
+    return {
+      ...row,
+      color: getRepColor(row.rep),
+      deltaStops: row.stops - base.stops,
+      deltaRevenue: row.revenue - base.revenue
+    };
+  });
+
+  return rows.sort((a,b) => a.rep.localeCompare(b.rep, undefined, { numeric:true }));
+}
+
+function makeEmptyRepSummary(rep) {
+  return {
+    rep,
+    color: getRepColor(rep),
+    stops: 0,
+    revenue: 0,
+    A: 0,
+    B: 0,
+    C: 0,
+    D: 0,
+    planned4W: 0,
+    avgWeekly: 0,
+    protected: 0,
+    movedIn: 0,
+    movedOut: 0
+  };
+}
+
+async function exportWorkbook() {
+  if (!state.accounts.length) return;
+
+  if (typeof ExcelJS === 'undefined') {
+    showToast('Export styling library is not available. Refresh and try again.');
+    return;
+  }
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'ChatGPT';
+    workbook.created = new Date();
+    workbook.modified = new Date();
+
+    const timestamp = buildTimestampForFileName();
+    const outputName = (state.loadedFileName || 'territory_export_updated.xlsx').replace(/\.xlsx$/i, `_${timestamp}.xlsx`);
+
+    const assignments = buildAssignmentsExportRows();
+    const repSummary = buildRepSummaryExportRows();
+    const movedAccounts = buildMovedAccountsExportRows();
+    const changeLog = buildChangeLogExportRows();
+
+    addStyledWorksheet(workbook, {
+      name: 'Assignments',
+      rows: assignments,
+      keyOrder: [
+        'Customer_ID','Customer_Name','Address','ZIP','Chain','Segment','Premise',
+        'Current_Rep','Assigned_Rep','Original_Assigned_Rep','Protected','Moved',
+        'Rank','Latitude','Longitude','Overall_Sales','Cadence_4W'
+      ],
+      currencyColumns: ['Overall_Sales'],
+      decimalColumns: ['Latitude','Longitude','Cadence_4W'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    addStyledWorksheet(workbook, {
+      name: 'Rep Summary',
+      rows: repSummary,
+      keyOrder: [
+        'Rep','Stops','Delta_Stops','Revenue','Delta_Revenue','A','B','C','D',
+        'Planned_4W','Avg_Weekly','Protected','Moved_In','Moved_Out'
+      ],
+      currencyColumns: ['Revenue','Delta_Revenue'],
+      integerColumns: ['Stops','Delta_Stops','A','B','C','D','Protected','Moved_In','Moved_Out'],
+      decimalColumns: ['Planned_4W','Avg_Weekly'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    addStyledWorksheet(workbook, {
+      name: 'Moved Accounts',
+      rows: movedAccounts.length ? movedAccounts : [{}],
+      keyOrder: [
+        'Customer_ID','Customer_Name','Original_Assigned_Rep','Assigned_Rep','Current_Rep','Revenue','Rank','Protected'
+      ],
+      currencyColumns: ['Revenue'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    addStyledWorksheet(workbook, {
+      name: 'Change Log',
+      rows: changeLog.length ? changeLog : [{}],
+      keyOrder: ['timestamp','customerId','customerName','fromRep','toRep','protected'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    downloadArrayBufferAsFile(buffer, outputName);
+
+    showToast('Styled Excel export created.');
+    updateLastAction('Exported styled workbook');
+  } catch (err) {
+    console.error('Styled export failed:', err);
+    showToast('Export hit an error. Open the browser console and send the first red line.');
+  }
+}
+
+function buildAssignmentsExportRows() {
+  return state.accounts.map(a => ({
+    Customer_ID: a.customerId,
+    Customer_Name: a.customerName,
+    Address: a.address,
+    ZIP: a.zip,
+    Chain: a.chain,
+    Segment: a.segment,
+    Premise: a.premise,
+    Current_Rep: a.currentRep,
+    Assigned_Rep: a.assignedRep,
+    Original_Assigned_Rep: a.originalAssignedRep,
+    Protected: a.protected ? 'Yes' : 'No',
+    Moved: a.assignedRep !== a.originalAssignedRep ? 'Yes' : 'No',
+    Rank: a.rank,
+    Latitude: round6(a.latitude),
+    Longitude: round6(a.longitude),
+    Overall_Sales: round2(a.overallSales),
+    Cadence_4W: round2(a.cadence4w)
+  }));
+}
+
+function buildRepSummaryExportRows() {
+  return summarizeByRep().map(r => ({
+    Rep: r.rep,
+    Stops: r.stops,
+    Delta_Stops: r.deltaStops,
+    Revenue: round2(r.revenue),
+    Delta_Revenue: round2(r.deltaRevenue),
+    A: r.A,
+    B: r.B,
+    C: r.C,
+    D: r.D,
+    Planned_4W: round2(r.planned4W),
+    Avg_Weekly: round2(r.avgWeekly),
+    Protected: r.protected,
+    Moved_In: r.movedIn,
+    Moved_Out: r.movedOut
+  }));
+}
+
+function buildMovedAccountsExportRows() {
+  return state.accounts
+    .filter(a => a.assignedRep !== a.originalAssignedRep)
+    .map(a => ({
+      Customer_ID: a.customerId,
+      Customer_Name: a.customerName,
+      Original_Assigned_Rep: a.originalAssignedRep,
+      Assigned_Rep: a.assignedRep,
+      Current_Rep: a.currentRep,
+      Revenue: round2(a.overallSales),
+      Rank: a.rank,
+      Protected: a.protected ? 'Yes' : 'No'
+    }));
+}
+
+function buildChangeLogExportRows() {
+  return state.changeLog.length
+    ? state.changeLog.map(x => ({ ...x }))
+    : [{
+        timestamp: '',
+        customerId: '',
+        customerName: '',
+        fromRep: '',
+        toRep: '',
+        protected: ''
+      }];
+}
+
+function addStyledWorksheet(workbook, options) {
+  const {
+    name,
+    rows,
+    keyOrder = [],
+    currencyColumns = [],
+    decimalColumns = [],
+    integerColumns = [],
+    freezeTopRow = true,
+    autofilter = true
+  } = options;
+
+  const worksheet = workbook.addWorksheet(name, {
+    views: freezeTopRow ? [{ state: 'frozen', ySplit: 1 }] : []
+  });
+
+  const normalizedRows = Array.isArray(rows) && rows.length ? rows : [{}];
+  const keys = keyOrder.length ? keyOrder : Object.keys(normalizedRows[0] || {});
+
+  worksheet.columns = keys.map(key => ({
+    header: prettifyHeader(key),
+    key,
+    width: guessColumnWidth(key, normalizedRows)
+  }));
+
+  normalizedRows.forEach(row => {
+    const cleanRow = {};
+    keys.forEach(key => {
+      cleanRow[key] = row[key] ?? '';
+    });
+    worksheet.addRow(cleanRow);
+  });
+
+  styleWorksheetBase(worksheet);
+  styleHeaderRow(worksheet.getRow(1));
+  applyColumnFormats(worksheet, { currencyColumns, decimalColumns, integerColumns });
+
+  if (autofilter && worksheet.rowCount >= 1 && worksheet.columnCount >= 1) {
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: worksheet.columnCount }
+    };
+  }
+
+  worksheet.eachRow((row, rowNumber) => {
+    row.height = rowNumber === 1 ? 18 : 15;
+  });
+}
+
+function styleWorksheetBase(worksheet) {
+  worksheet.eachRow({ includeEmpty: true }, row => {
+    row.eachCell({ includeEmpty: true }, cell => {
+      cell.font = {
+        name: 'Tw Cen MT',
+        size: 9,
+        bold: false,
+        color: { argb: 'FF000000' }
+      };
+
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: 'left'
+      };
+
+      cell.border = {
+        bottom: { style: 'thin', color: { argb: 'FFE6EDF5' } }
+      };
+    });
+  });
+}
+
+function styleHeaderRow(row) {
+  row.eachCell(cell => {
+    cell.font = {
+      name: 'Tw Cen MT',
+      size: 9,
+      bold: true,
+      color: { argb: 'FF20364F' }
+    };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFEAF2FB' }
+    };
+    cell.alignment = {
+      vertical: 'middle',
+      horizontal: 'left'
+    };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FFD3DFEB' } },
+      bottom: { style: 'thin', color: { argb: 'FFC3D3E2' } }
+    };
+  });
+}
+
+function applyColumnFormats(worksheet, formatConfig) {
+  const {
+    currencyColumns = [],
+    decimalColumns = [],
+    integerColumns = []
+  } = formatConfig;
+
+  worksheet.columns.forEach(column => {
+    if (!column || !column.key) return;
+
+    if (currencyColumns.includes(column.key)) {
+      column.numFmt = '$#,##0;[Red]($#,##0)';
+    } else if (decimalColumns.includes(column.key)) {
+      column.numFmt = '0.00';
+    } else if (integerColumns.includes(column.key)) {
+      column.numFmt = '0';
+    }
+  });
+}
+
+function guessColumnWidth(key, rows) {
+  const pretty = prettifyHeader(key);
+  let maxLen = pretty.length;
+
+  rows.slice(0, 250).forEach(row => {
+    const value = row[key];
+    const len = String(value == null ? '' : value).length;
+    if (len > maxLen) maxLen = len;
+  });
+
+  const widthOverrides = {
+    Customer_ID: 16,
+    Customer_Name: 28,
+    Address: 30,
+    ZIP: 12,
+    Chain: 18,
+    Segment: 16,
+    Premise: 14,
+    Current_Rep: 16,
+    Assigned_Rep: 16,
+    Original_Assigned_Rep: 20,
+    Protected: 11,
+    Moved: 10,
+    Rank: 8,
+    Latitude: 12,
+    Longitude: 12,
+    Overall_Sales: 14,
+    Cadence_4W: 12,
+    Revenue: 14,
+    Delta_Revenue: 14,
+    Planned_4W: 12,
+    Avg_Weekly: 12,
+    timestamp: 24,
+    customerId: 16,
+    customerName: 28,
+    fromRep: 16,
+    toRep: 16,
+    protected: 11
+  };
+
+  if (widthOverrides[key]) return widthOverrides[key];
+  return Math.max(10, Math.min(maxLen + 2, 32));
+}
+
+function prettifyHeader(key) {
+  return String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, m => m.toUpperCase());
+}
+
+function downloadArrayBufferAsFile(buffer, filename) {
+  const blob = new Blob(
+    [buffer],
+    { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+  );
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function buildTimestampForFileName() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}_${hh}${mi}`;
+}
+
+function fitMapToAccounts() {
+  if (!state.accounts.length) return;
+  const latlngs = state.accounts.map(a => [a.latitude, a.longitude]);
+  state.map.fitBounds(latlngs, { padding: [25, 25] });
+}
+
+function zoomToRep(rep) {
+  const members = state.accounts.filter(a => a.assignedRep === rep);
+  const points = members.map(a => [a.latitude, a.longitude]);
+
+  if (!points.length) return;
+
+  if (points.length === 1) {
+    state.map.setView(points[0], 12);
+    return;
+  }
+
+  const bounds = L.latLngBounds(points);
+  const spanLat = Math.abs(bounds.getNorth() - bounds.getSouth());
+  const spanLng = Math.abs(bounds.getEast() - bounds.getWest());
+
+  if (spanLat < 0.03 && spanLng < 0.03) {
+    state.map.setView(bounds.getCenter(), 11);
+    return;
+  }
+
+  state.map.fitBounds(bounds, {
+    padding: [35, 35],
+    maxZoom: 11
+  });
+}
+
+function toggleTheme() {
+  if (els.themeToggleCheck.checked && state.theme === 'light') {
+    state.map.removeLayer(state.lightLayer);
+    state.darkLayer.addTo(state.map);
+    state.theme = 'dark';
+  } else if (!els.themeToggleCheck.checked && state.theme === 'dark') {
+    state.map.removeLayer(state.darkLayer);
+    state.lightLayer.addTo(state.map);
+    state.theme = 'light';
+  }
+}
+
+function buildRepColors() {
+  const previous = new Map(state.repColors);
+  const reps = getAllKnownReps();
+  const usedColors = new Set();
+
+  state.repColors = new Map();
+
+  reps.forEach(rep => {
+    const existing = previous.get(rep);
+    if (existing) {
+      state.repColors.set(rep, existing);
+      usedColors.add(existing);
+    }
+  });
+
+  reps.forEach(rep => {
+    if (state.repColors.has(rep)) return;
+
+    const nextColor = COLOR_PALETTE.find(c => !usedColors.has(c)) || COLOR_PALETTE[state.repColors.size % COLOR_PALETTE.length];
+    state.repColors.set(rep, nextColor);
+    usedColors.add(nextColor);
+  });
+}
+
+function ensureRepColor(rep) {
+  if (!rep) return;
+  if (state.repColors.has(rep)) return;
+
+  const usedColors = new Set(state.repColors.values());
+  const nextColor = COLOR_PALETTE.find(c => !usedColors.has(c)) || COLOR_PALETTE[state.repColors.size % COLOR_PALETTE.length];
+  state.repColors.set(rep, nextColor);
+}
+
+function getRepColor(rep) {
+  ensureRepColor(rep);
+  return state.repColors.get(rep) || '#64748b';
+}
+
+function getAllAssignedReps() {
+  const set = new Set();
+  state.accounts.forEach(a => {
+    if (a.assignedRep) set.add(a.assignedRep);
+  });
+  return [...set].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
+}
+
+function getAllKnownReps() {
+  const set = new Set();
+  state.accounts.forEach(a => {
+    if (a.assignedRep) set.add(a.assignedRep);
+    if (a.currentRep) set.add(a.currentRep);
+    if (a.originalAssignedRep) set.add(a.originalAssignedRep);
+  });
+  return [...set].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
+}
+
+function fillSimpleSelect(selectEl, values, selectedValue, labelFn = v => v) {
+  selectEl.innerHTML = values.map(v => `<option value="${escapeHtmlAttr(v)}">${escapeHtml(labelFn(v))}</option>`).join('');
+  if (selectedValue != null && values.includes(selectedValue)) selectEl.value = selectedValue;
+}
+
+function updateLastAction(text) {
+  state.lastAction = text;
+  els.lastAction.textContent = text;
+}
+
+function showToast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2200);
+}
+
+function getDistinctValues(arr, fn) {
+  const set = new Set();
+  arr.forEach(item => {
+    const v = fn(item);
+    if (safeString(v)) set.add(v);
+  });
+  return [...set].sort((a,b) => String(a).localeCompare(String(b), undefined, { numeric:true }));
+}
+
+function renderDeltaCount(value) {
+  if (value > 0) return `<span class="num-pos">+${value}</span>`;
+  if (value < 0) return `<span class="num-neg">${value}</span>`;
+  return `<span class="num-zero">0</span>`;
+}
+
+function renderDeltaMoney(value) {
+  if (value > 0) return `<span class="num-pos">+${formatCurrency(value)}</span>`;
+  if (value < 0) return `<span class="num-neg">-${formatCurrency(Math.abs(value))}</span>`;
+  return `<span class="num-zero">$0</span>`;
+}
+
+function normalizeCadence4W(value, rank) {
+  const raw = safeString(value);
+
+  if (!raw) {
+    if (rank === 'A') return 4;
+    if (rank === 'B') return 2;
+    if (rank === 'C') return 1;
+    return 0.33;
+  }
+
+  const normalized = raw.toLowerCase();
+  const n = toNumber(raw);
+  if (Number.isFinite(n) && n >= 0) return n;
+
+  if (normalized === 'weekly' || normalized === 'wkly' || normalized === 'week') return 4;
+  if (normalized === 'biweekly' || normalized === 'every other week' || normalized === 'eow' || normalized === 'bi-weekly') return 2;
+  if (normalized === 'monthly' || normalized === 'month') return 1;
+  if (normalized === 'quarterly' || normalized === 'qtr' || normalized === 'quarter') return 0.33;
+
+  if (normalized.includes('weekly')) return 4;
+  if (normalized.includes('biweekly') || normalized.includes('every other')) return 2;
+  if (normalized.includes('monthly')) return 1;
+  if (normalized.includes('quarter')) return 0.33;
+
+  if (rank === 'A') return 4;
+  if (rank === 'B') return 2;
+  if (rank === 'C') return 1;
+  return 0.33;
+}
+
+function rankSortValue(rank) {
+  return { A:0, B:1, C:2, D:3 }[rank] ?? 9;
+}
+
+function toCamel(id) {
+  return id.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function cleanHeader(value) {
+  return safeString(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function safeString(value) {
+  return value == null ? '' : String(value).trim();
+}
+
+function toNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+  const raw = String(value ?? '').replace(/[$,%\s,]/g, '').trim();
+  if (!raw) return NaN;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function toBoolean(value) {
+  const v = safeString(value).toLowerCase();
+  return ['true','yes','y','1','protected','locked'].includes(v);
+}
+
+function normalizeRank(value) {
+  const raw = safeString(value).toUpperCase();
+  return ['A','B','C','D'].includes(raw) ? raw : 'C';
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-US', {
+    style:'currency',
+    currency:'USD',
+    maximumFractionDigits:0
+  }).format(value || 0);
+}
+
+function formatNumber(value, digits = 0) {
+  return Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  });
+}
+
+function round2(v) {
+  return Math.round((v || 0) * 100) / 100;
+}
+
+function round6(v) {
+  return Math.round((v || 0) * 1000000) / 1000000;
+}
+
+function squaredDistance(lat1, lng1, lat2, lng2) {
+  const dx = lng1 - lng2;
+  const dy = lat1 - lat2;
+  return dx * dx + dy * dy;
+}
+
+function escapeHtml(text) {
+  return String(text ?? '').replace(/[&<>"']/g, m => ({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[m]));
+}
+
+function escapeHtmlAttr(text) {
+  return escapeHtml(text).replace(/"/g, '&quot;');
+}
