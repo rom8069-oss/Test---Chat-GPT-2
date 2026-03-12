@@ -66,6 +66,7 @@ const state = {
 };
 
 const els = {};
+let toastTimer = null;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -78,6 +79,10 @@ function init() {
   fillSimpleSelect(els.premiseFilter, ['ALL'], 'ALL', v => 'All premises');
   renderMultiFilterOptions();
   syncControlState();
+
+  requestAnimationFrame(() => {
+    if (state.map) state.map.invalidateSize();
+  });
 }
 
 function bindElements() {
@@ -129,12 +134,16 @@ function bindEvents() {
   });
 
   document.addEventListener('click', handleDocumentClickForPanels);
+
   window.addEventListener('resize', () => {
     if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+    if (state.map) state.map.invalidateSize();
   });
+
   window.addEventListener('scroll', () => {
     if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
   }, true);
+
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeAllMultiPanels();
   });
@@ -192,22 +201,32 @@ function initMap() {
 
 function initMultiFilters() {
   ['rep','rank','chain','segment'].forEach(key => {
-    document.querySelector(`[data-multi-trigger="${key}"]`).addEventListener('click', e => {
-      e.stopPropagation();
-      toggleMultiPanel(key);
-    });
+    const trigger = document.querySelector(`[data-multi-trigger="${key}"]`);
+    const selectAllBtn = document.querySelector(`[data-select-all="${key}"]`);
+    const searchInput = document.querySelector(`[data-search="${key}"]`);
 
-    document.querySelector(`[data-select-all="${key}"]`).addEventListener('click', e => {
-      e.stopPropagation();
-      toggleSelectAllMulti(key);
-      positionMultiPanel(key);
-    });
+    if (trigger) {
+      trigger.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleMultiPanel(key);
+      });
+    }
 
-    document.querySelector(`[data-search="${key}"]`).addEventListener('input', e => {
-      state.multiSearch[key] = e.target.value || '';
-      renderMultiFilterOptions();
-      positionMultiPanel(key);
-    });
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleSelectAllMulti(key);
+        positionMultiPanel(key);
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', e => {
+        state.multiSearch[key] = e.target.value || '';
+        renderMultiFilterOptions();
+        positionMultiPanel(key);
+      });
+    }
   });
 }
 
@@ -219,6 +238,8 @@ function handleDocumentClickForPanels(event) {
 
 function toggleMultiPanel(key) {
   const wrap = document.getElementById(`${key}-filter-wrap`);
+  if (!wrap) return;
+
   const alreadyOpen = wrap.classList.contains('open');
   closeAllMultiPanels();
 
@@ -250,7 +271,7 @@ function positionMultiPanel(key) {
   if (left < 10) left = 10;
 
   let top = rect.bottom + 6;
-  let availableBelow = viewportHeight - top - 12;
+  const availableBelow = viewportHeight - top - 12;
   let maxHeight = Math.min(360, Math.max(220, availableBelow));
 
   if (availableBelow < 220) {
@@ -281,6 +302,7 @@ function onFileChosen(event) {
 
   reader.onload = e => {
     const data = e.target.result;
+
     try {
       if (file.name.toLowerCase().endsWith('.csv')) {
         const workbook = XLSX.read(data, { type: 'binary' });
@@ -296,8 +318,11 @@ function onFileChosen(event) {
     }
   };
 
-  if (file.name.toLowerCase().endsWith('.csv')) reader.readAsBinaryString(file);
-  else reader.readAsArrayBuffer(file);
+  if (file.name.toLowerCase().endsWith('.csv')) {
+    reader.readAsBinaryString(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
 }
 
 function loadWorkbook(workbook) {
@@ -307,6 +332,7 @@ function loadWorkbook(workbook) {
 
   workbook.SheetNames.forEach((sheetName, idx) => {
     state.workbookSheets[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+
     const option = document.createElement('option');
     option.value = sheetName;
     option.textContent = sheetName;
@@ -321,6 +347,7 @@ function loadWorkbook(workbook) {
 
 function loadSelectedSheet() {
   const sheetName = els.sheetSelect.value;
+
   if (!sheetName || !state.workbookSheets[sheetName]) {
     showToast('No sheet selected.');
     return;
@@ -358,6 +385,10 @@ function loadSelectedSheet() {
     els.repCountInput.value = getAllAssignedReps().length || 1;
   }
 
+  requestAnimationFrame(() => {
+    if (state.map) state.map.invalidateSize();
+  });
+
   showToast(`Loaded ${state.accounts.length} accounts from ${sheetName}.`);
   updateLastAction(`Loaded ${state.accounts.length} accounts from ${sheetName}`);
 }
@@ -372,6 +403,7 @@ function normalizeRows(rows) {
 
   Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
     let match = null;
+
     for (const alias of aliases) {
       const cleaned = cleanHeader(alias);
 
@@ -387,8 +419,10 @@ function normalizeRows(rows) {
           break;
         }
       }
+
       if (match) break;
     }
+
     headerMap[key] = match;
   });
 
@@ -481,11 +515,12 @@ function renderSingleMultiFilter(key, values, container, summaryEl, allLabel) {
   container.querySelectorAll(`input[data-multi-key="${key}"]`).forEach(input => {
     input.addEventListener('change', e => {
       const val = e.target.value;
-      if (e.target.checked) state.filters[key].add(val);
-      else state.filters[key].delete(val);
 
-      if (state.filters[key].size === 0) {
-        values.forEach(v => state.filters[key].add(v));
+      if (e.target.checked) selected.add(val);
+      else selected.delete(val);
+
+      if (selected.size === 0) {
+        values.forEach(v => selected.add(v));
       }
 
       updateMultiFilterSummary(key, values, summaryEl, allLabel);
@@ -602,9 +637,12 @@ function refreshMarkerStyles() {
   for (const account of state.accounts) {
     const marker = state.markerById.get(account._id);
     if (!marker) continue;
+
     marker.setStyle(markerStyleForAccount(account));
     marker.setRadius(state.selection.has(account._id) ? 8 : 6);
-    marker.getPopup()?.setContent(buildPopupHtml(account));
+
+    const popup = marker.getPopup();
+    if (popup) popup.setContent(buildPopupHtml(account));
   }
 }
 
@@ -612,7 +650,7 @@ function markerStyleForAccount(account) {
   const matches = passesFilters(account);
   const dimOthers = els.dimOthersCheckbox.checked;
   const isSelected = state.selection.has(account._id);
-  const color = state.repColors.get(account.assignedRep) || '#64748b';
+  const color = getRepColor(account.assignedRep);
   const dimmed = dimOthers && !matches;
 
   return {
@@ -631,10 +669,12 @@ function passesFilters(account) {
   const chainPass = state.filters.chain.size === 0 || state.filters.chain.has(account.chain);
   const segmentPass = state.filters.segment.size === 0 || state.filters.segment.has(account.segment);
   const premisePass = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
+
   const protectedPass =
     state.filters.protected === 'ALL' ||
     (state.filters.protected === 'YES' && account.protected) ||
     (state.filters.protected === 'NO' && !account.protected);
+
   const movedPass =
     state.filters.moved === 'ALL' ||
     (state.filters.moved === 'MOVED' && account.assignedRep !== account.originalAssignedRep) ||
@@ -645,6 +685,7 @@ function passesFilters(account) {
 
 function buildPopupHtml(account) {
   const addressLine = [account.address, account.zip].filter(Boolean).join(' ');
+
   return `
     <div style="min-width:250px;">
       <div style="font-size:15px;font-weight:800;">${escapeHtml(account.customerName || account.customerId)}</div>
@@ -698,7 +739,7 @@ function renderRepTable() {
     tr.addEventListener('click', () => {
       const rep = tr.getAttribute('data-rep-row');
       state.repFocus = state.repFocus === rep ? null : rep;
-      zoomToRep(rep);
+      if (state.repFocus) zoomToRep(rep);
     });
   });
 }
@@ -777,9 +818,11 @@ function handleDrawCreated(event) {
   const layer = event.layer;
   state.drawLayer.addLayer(layer);
 
-  let polygon;
-  if (layer instanceof L.Rectangle || layer instanceof L.Polygon) polygon = layer.toGeoJSON();
-  else return;
+  let polygon = null;
+  if (layer instanceof L.Rectangle || layer instanceof L.Polygon) {
+    polygon = layer.toGeoJSON();
+  }
+  if (!polygon) return;
 
   state.selection.clear();
 
@@ -813,6 +856,8 @@ function assignSelectionToRep() {
   const changes = [];
   let skippedProtected = 0;
 
+  ensureRepColor(targetRep);
+
   for (const id of selectedIds) {
     const account = state.accountById.get(id);
     if (!account) continue;
@@ -823,7 +868,12 @@ function assignSelectionToRep() {
     }
 
     if (account.assignedRep === targetRep) continue;
-    changes.push({ id, from: account.assignedRep, to: targetRep });
+
+    changes.push({
+      id,
+      from: account.assignedRep,
+      to: targetRep
+    });
   }
 
   if (!changes.length) {
@@ -844,6 +894,7 @@ function applyChanges(changes, label) {
     const account = state.accountById.get(change.id);
     if (!account) return;
 
+    ensureRepColor(change.to);
     account.assignedRep = change.to;
 
     state.changeLog.push({
@@ -934,14 +985,10 @@ function optimizeRoutes() {
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
     const adjacency = state.neighborMap;
 
+    targetRepNames.forEach(rep => ensureRepColor(rep));
+
     const assignments = new Map();
     const centroids = initializeCentroids(targetRepNames);
-
-    targetRepNames.forEach(rep => {
-      if (!state.repColors.has(rep)) {
-        state.repColors.set(rep, COLOR_PALETTE[state.repColors.size % COLOR_PALETTE.length]);
-      }
-    });
 
     protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
 
@@ -1195,11 +1242,14 @@ function dominantNeighborRep(account, assignments, neighborMap) {
 
 function getBorderAccounts(assignments, neighborMap) {
   const out = [];
+
   for (const account of state.accounts) {
     const neighbors = neighborMap.get(account._id) || [];
     if (!neighbors.length) continue;
+
     const own = assignments.get(account._id);
     let mixed = false;
+
     for (const nid of neighbors) {
       const rep = assignments.get(nid);
       if (rep && rep !== own) {
@@ -1207,8 +1257,10 @@ function getBorderAccounts(assignments, neighborMap) {
         break;
       }
     }
+
     if (mixed) out.push(account);
   }
+
   return out;
 }
 
@@ -1238,6 +1290,7 @@ function enforceMinimumStops(assignments, targetRepNames, minStops, maxStops) {
 
       for (const donorRep of donorCandidates) {
         const donorAccounts = state.accounts.filter(a => assignments.get(a._id) === donorRep && !a.protected);
+
         for (const account of donorAccounts) {
           if ((counts.get(needyRep) || 0) >= maxStops) continue;
           if ((counts.get(donorRep) || 0) <= minStops) continue;
@@ -1347,6 +1400,7 @@ function recomputeCentroidsFromAssignments(centroids, assignments, targetRepName
   for (const rep of targetRepNames) {
     const members = state.accounts.filter(a => assignments.get(a._id) === rep);
     if (!members.length) continue;
+
     centroids.set(rep, {
       lat: members.reduce((s,a) => s + a.latitude, 0) / members.length,
       lng: members.reduce((s,a) => s + a.longitude, 0) / members.length
@@ -1438,12 +1492,17 @@ function refreshTerritories() {
     const featureCollection = turf.featureCollection(points.map(p => turf.point(p)));
 
     let hull = null;
-    try { hull = turf.convex(featureCollection); } catch(e) { hull = null; }
+    try {
+      hull = turf.convex(featureCollection);
+    } catch (e) {
+      hull = null;
+    }
+
     if (!hull) return;
 
-    const coords = hull.geometry.coordinates[0].map(([lng,lat]) => [lat,lng]);
+    const coords = hull.geometry.coordinates[0].map(([lng, lat]) => [lat, lng]);
     const poly = L.polygon(coords, {
-      color: state.repColors.get(rep) || '#666',
+      color: getRepColor(rep),
       weight: 2,
       fillOpacity: 0.05,
       opacity: 0.75,
@@ -1492,8 +1551,10 @@ function summarizeByRep() {
   const rows = [...currentMap.values()].map(row => {
     const base = baselineMap.get(row.rep) || makeEmptyRepSummary(row.rep);
     row.avgWeekly = row.planned4W / 4;
+
     return {
       ...row,
+      color: getRepColor(row.rep),
       deltaStops: row.stops - base.stops,
       deltaRevenue: row.revenue - base.revenue
     };
@@ -1505,7 +1566,7 @@ function summarizeByRep() {
 function makeEmptyRepSummary(rep) {
   return {
     rep,
-    color: state.repColors.get(rep) || '#64748b',
+    color: getRepColor(rep),
     stops: 0,
     revenue: 0,
     A: 0,
@@ -1602,7 +1663,10 @@ function fitMapToAccounts() {
 }
 
 function zoomToRep(rep) {
-  const points = state.accounts.filter(a => a.assignedRep === rep).map(a => [a.latitude, a.longitude]);
+  const points = state.accounts
+    .filter(a => a.assignedRep === rep)
+    .map(a => [a.latitude, a.longitude]);
+
   if (points.length) state.map.fitBounds(points, { padding: [30, 30] });
 }
 
@@ -1619,10 +1683,41 @@ function toggleTheme() {
 }
 
 function buildRepColors() {
-  state.repColors.clear();
-  getAllKnownReps().forEach((rep, idx) => {
-    state.repColors.set(rep, COLOR_PALETTE[idx % COLOR_PALETTE.length]);
+  const previous = new Map(state.repColors);
+  const reps = getAllKnownReps();
+  const usedColors = new Set();
+
+  state.repColors = new Map();
+
+  reps.forEach(rep => {
+    const existing = previous.get(rep);
+    if (existing) {
+      state.repColors.set(rep, existing);
+      usedColors.add(existing);
+    }
   });
+
+  reps.forEach(rep => {
+    if (state.repColors.has(rep)) return;
+
+    const nextColor = COLOR_PALETTE.find(c => !usedColors.has(c)) || COLOR_PALETTE[state.repColors.size % COLOR_PALETTE.length];
+    state.repColors.set(rep, nextColor);
+    usedColors.add(nextColor);
+  });
+}
+
+function ensureRepColor(rep) {
+  if (!rep) return;
+  if (state.repColors.has(rep)) return;
+
+  const usedColors = new Set(state.repColors.values());
+  const nextColor = COLOR_PALETTE.find(c => !usedColors.has(c)) || COLOR_PALETTE[state.repColors.size % COLOR_PALETTE.length];
+  state.repColors.set(rep, nextColor);
+}
+
+function getRepColor(rep) {
+  ensureRepColor(rep);
+  return state.repColors.get(rep) || '#64748b';
 }
 
 function getAllAssignedReps() {
@@ -1653,7 +1748,6 @@ function updateLastAction(text) {
   els.lastAction.textContent = text;
 }
 
-let toastTimer = null;
 function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add('show');
@@ -1684,6 +1778,7 @@ function renderDeltaMoney(value) {
 
 function normalizeCadence4W(value, rank) {
   const raw = safeString(value);
+
   if (!raw) {
     if (rank === 'A') return 4;
     if (rank === 'B') return 2;
