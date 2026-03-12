@@ -363,6 +363,7 @@ function loadSelectedSheet() {
     state.selection.clear();
     state.undoStack = [];
     state.changeLog = [];
+    state.repFocus = null;
     refreshUI(true);
     showToast('No valid rows found in that sheet.');
     return;
@@ -639,7 +640,7 @@ function refreshMarkerStyles() {
     if (!marker) continue;
 
     marker.setStyle(markerStyleForAccount(account));
-    marker.setRadius(state.selection.has(account._id) ? 8 : 6);
+    marker.setRadius(state.selection.has(account._id) ? 8 : (state.repFocus && account.assignedRep === state.repFocus ? 7 : 6));
 
     const popup = marker.getPopup();
     if (popup) popup.setContent(buildPopupHtml(account));
@@ -650,16 +651,30 @@ function markerStyleForAccount(account) {
   const matches = passesFilters(account);
   const dimOthers = els.dimOthersCheckbox.checked;
   const isSelected = state.selection.has(account._id);
+  const isRepFocused = !!state.repFocus;
+  const isFocusedRep = isRepFocused && account.assignedRep === state.repFocus;
   const color = getRepColor(account.assignedRep);
-  const dimmed = dimOthers && !matches;
+
+  let opacity = matches ? 0.96 : (dimOthers ? 0.05 : 0.16);
+  let fillOpacity = dimOthers && !matches ? 0.03 : (account.protected ? 0.88 : 0.74);
+
+  if (isRepFocused) {
+    if (isFocusedRep) {
+      opacity = matches ? 1 : 0.35;
+      fillOpacity = account.protected ? 0.95 : 0.88;
+    } else {
+      opacity = 0.12;
+      fillOpacity = 0.06;
+    }
+  }
 
   return {
-    radius: isSelected ? 8 : 6,
+    radius: isSelected ? 8 : (isFocusedRep ? 7 : 6),
     color: isSelected ? '#1e293b' : color,
-    weight: isSelected ? 2.5 : 1.2,
-    opacity: matches ? 0.96 : (dimmed ? 0.05 : 0.16),
+    weight: isSelected ? 2.5 : (isFocusedRep ? 2 : 1.2),
+    opacity,
     fillColor: color,
-    fillOpacity: dimmed ? 0.03 : (account.protected ? 0.88 : 0.74)
+    fillOpacity
   };
 }
 
@@ -712,7 +727,7 @@ function renderRepTable() {
   }
 
   els.repTableBody.innerHTML = rows.map(row => `
-    <tr data-rep-row="${escapeHtmlAttr(row.rep)}">
+    <tr data-rep-row="${escapeHtmlAttr(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''}">
       <td>
         <div class="rep-cell">
           <span class="color-dot" style="background:${escapeHtmlAttr(row.color)}"></span>
@@ -738,8 +753,15 @@ function renderRepTable() {
   [...els.repTableBody.querySelectorAll('tr[data-rep-row]')].forEach(tr => {
     tr.addEventListener('click', () => {
       const rep = tr.getAttribute('data-rep-row');
-      state.repFocus = state.repFocus === rep ? null : rep;
-      if (state.repFocus) zoomToRep(rep);
+      if (state.repFocus === rep) {
+        state.repFocus = null;
+        refreshUI(false);
+        if (state.accounts.length) fitMapToAccounts();
+      } else {
+        state.repFocus = rep;
+        refreshUI(false);
+        zoomToRep(rep);
+      }
     });
   });
 }
@@ -913,6 +935,11 @@ function applyChanges(changes, label) {
   });
 
   buildRepColors();
+
+  if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
+    state.repFocus = null;
+  }
+
   refreshUI();
   updateLastAction(label);
   showToast(label);
@@ -928,6 +955,11 @@ function undoLastAction() {
   }
 
   buildRepColors();
+
+  if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
+    state.repFocus = null;
+  }
+
   refreshUI();
   updateLastAction(`Undid: ${action.label}`);
   showToast(`Undid: ${action.label}`);
@@ -953,8 +985,10 @@ function resetAssignments() {
 
   applyChanges(changes, 'Reset assignments to imported values');
   state.undoStack = [];
+  state.repFocus = null;
   updateLastAction('Reset assignments to imported values');
   refreshUI();
+  fitMapToAccounts();
 }
 
 function optimizeRoutes() {
@@ -969,9 +1003,26 @@ function optimizeRoutes() {
     const minStops = Math.max(1, minStopsRaw || 1);
     const maxStops = Math.max(minStops, maxStopsRaw || minStops);
     const totalAccounts = state.accounts.length;
+    const protectedCount = state.accounts.filter(a => a.protected).length;
+    const movableCount = totalAccounts - protectedCount;
+
+    if (!Number.isFinite(targetCount) || !Number.isFinite(minStops) || !Number.isFinite(maxStops)) {
+      showToast('Optimizer inputs are invalid. Check rep count and stop limits.');
+      return;
+    }
+
+    if (targetCount > totalAccounts) {
+      showToast(`Target rep count of ${targetCount} exceeds ${totalAccounts} total accounts.`);
+      return;
+    }
 
     if (targetCount * minStops > totalAccounts) {
       showToast(`Minimum stops too high. ${targetCount} reps × ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
+      return;
+    }
+
+    if (movableCount === 0) {
+      showToast('All accounts are protected. Nothing can be optimized.');
       return;
     }
 
@@ -984,6 +1035,11 @@ function optimizeRoutes() {
     const currentReps = getAllAssignedReps();
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
     const adjacency = state.neighborMap;
+
+    if (maxStops < Math.ceil(totalAccounts / targetRepNames.length) * 0.35) {
+      showToast('Maximum stops looks very low for the selected rep count. Increase it and try again.');
+      return;
+    }
 
     targetRepNames.forEach(rep => ensureRepColor(rep));
 
@@ -1583,11 +1639,13 @@ function refreshTerritories() {
     if (!hull) return;
 
     const coords = hull.geometry.coordinates[0].map(([lng, lat]) => [lat, lng]);
+    const isFocusedRep = state.repFocus && rep === state.repFocus;
+
     const poly = L.polygon(coords, {
       color: getRepColor(rep),
-      weight: 2,
-      fillOpacity: 0.05,
-      opacity: 0.75,
+      weight: isFocusedRep ? 3 : 2,
+      fillOpacity: isFocusedRep ? 0.1 : 0.05,
+      opacity: state.repFocus ? (isFocusedRep ? 0.95 : 0.18) : 0.75,
       interactive: false
     });
 
@@ -1937,18 +1995,14 @@ function formatNumber(value, digits = 0) {
   });
 }
 
-function avg(values) {
-  return values.length ? values.reduce((a,b) => a + b, 0) / values.length : 0;
+function round2(v) {
+  return Math.round((v || 0) * 100) / 100;
 }
 
 function squaredDistance(lat1, lng1, lat2, lng2) {
   const dx = lng1 - lng2;
   const dy = lat1 - lat2;
   return dx * dx + dy * dy;
-}
-
-function round2(v) {
-  return Math.round((v || 0) * 100) / 100;
 }
 
 function escapeHtml(text) {
