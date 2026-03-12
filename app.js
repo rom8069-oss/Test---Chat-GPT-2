@@ -909,125 +909,134 @@ function resetAssignments() {
 function optimizeRoutes() {
   if (!state.accounts.length) return;
 
-  const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
-  const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
-  const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
+  try {
+    const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
+    const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
+    const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
 
-  const targetCount = Math.max(1, Math.min(100, targetCountRaw || 1));
-  const minStops = Math.max(1, minStopsRaw || 1);
-  const maxStops = Math.max(minStops, maxStopsRaw || minStops);
-  const totalAccounts = state.accounts.length;
+    const targetCount = Math.max(1, Math.min(100, targetCountRaw || 1));
+    const minStops = Math.max(1, minStopsRaw || 1);
+    const maxStops = Math.max(minStops, maxStopsRaw || minStops);
+    const totalAccounts = state.accounts.length;
 
-  if (targetCount * minStops > totalAccounts) {
-    showToast(`Minimum stops too high. ${targetCount} reps × ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
-    return;
-  }
-
-  const continuityWeight = Number(els.disruptionSlider.value) / 100;
-  const geographyWeight = 1 - continuityWeight;
-  const balanceMode = els.balanceMode.value;
-  const neighborMap = state.neighborMap;
-
-  const protectedAccounts = state.accounts.filter(a => a.protected);
-  const movableAccounts = state.accounts.filter(a => !a.protected);
-  const currentReps = getAllAssignedReps();
-  const targetRepNames = buildTargetRepNames(targetCount, currentReps);
-
-  targetRepNames.forEach(rep => {
-    if (!state.repColors.has(rep)) {
-      state.repColors.set(rep, COLOR_PALETTE[state.repColors.size % COLOR_PALETTE.length]);
-    }
-  });
-
-  const assignments = new Map();
-  const initialCentroids = initializeCentroids(targetRepNames);
-
-  protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
-
-  let lastStats = null;
-
-  for (let iter = 0; iter < 5; iter += 1) {
-    const passData = createAssignmentData(targetRepNames, initialCentroids);
-
-    for (const account of protectedAccounts) {
-      assignAccountToRep(account, assignments.get(account._id) || account.assignedRep, assignments, passData);
+    if (targetCount * minStops > totalAccounts) {
+      showToast(`Minimum stops too high. ${targetCount} reps × ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
+      return;
     }
 
-    const orderedMovable = [...movableAccounts].sort((a, b) => {
-      if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
-      if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
-      return a.customerName.localeCompare(b.customerName);
+    if (!state.neighborMap || state.neighborMap.size === 0) {
+      state.neighborMap = buildNeighborMap(state.accounts);
+    }
+
+    const continuityWeight = Number(els.disruptionSlider.value) / 100;
+    const geographyWeight = 1 - continuityWeight;
+    const balanceMode = els.balanceMode.value;
+    const neighborMap = state.neighborMap;
+
+    const protectedAccounts = state.accounts.filter(a => a.protected);
+    const movableAccounts = state.accounts.filter(a => !a.protected);
+    const currentReps = getAllAssignedReps();
+    const targetRepNames = buildTargetRepNames(targetCount, currentReps);
+
+    targetRepNames.forEach(rep => {
+      if (!state.repColors.has(rep)) {
+        state.repColors.set(rep, COLOR_PALETTE[state.repColors.size % COLOR_PALETTE.length]);
+      }
     });
 
-    for (const account of orderedMovable) {
-      let bestRep = null;
-      let bestScore = Infinity;
+    const assignments = new Map();
+    const initialCentroids = initializeCentroids(targetRepNames);
 
-      for (const rep of targetRepNames) {
-        const stat = passData.repStats.get(rep);
-        const centroid = getRepCentroid(stat, initialCentroids.get(rep));
-        const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+    protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
 
-        const compactnessScore = dist * (1.08 + geographyWeight * 1.15);
-        const continuityPenalty = account.currentRep === rep ? 0 : (continuityWeight * 0.95);
-        const existingPenalty = account.assignedRep === rep ? 0 : (continuityWeight * 0.28);
+    let lastStats = null;
 
-        let balancePenalty = 0;
-        if (balanceMode === 'stops') {
-          balancePenalty = Math.max(0, stat.stops - maxStops) * 0.7 + stat.stops * 0.007;
-        } else if (balanceMode === 'revenue') {
-          balancePenalty = stat.revenue * 0.0000013;
-        } else {
-          balancePenalty = stat.stops * 0.0055 + stat.revenue * 0.00000065;
-        }
+    for (let iter = 0; iter < 5; iter += 1) {
+      const passData = createAssignmentData(targetRepNames, initialCentroids);
 
-        const localPenalty = localDominancePenalty(account, rep, assignments, neighborMap);
-        const maxStopsPenalty = stat.stops >= maxStops ? 8 : 0;
-        const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + maxStopsPenalty;
-
-        if (score < bestScore) {
-          bestScore = score;
-          bestRep = rep;
-        }
+      for (const account of protectedAccounts) {
+        assignAccountToRep(account, assignments.get(account._id) || account.assignedRep, assignments, passData);
       }
 
-      assignAccountToRep(account, bestRep, assignments, passData);
-    }
-
-    lastStats = passData;
-  }
-
-  if (!lastStats) {
-    showToast('Optimizer could not initialize.');
-    return;
-  }
-
-  enforceMinimumStops(assignments, targetRepNames, minStops, maxStops, lastStats);
-  enforceMaximumStops(assignments, targetRepNames, minStops, maxStops, lastStats);
-  runBorderCleanup(assignments, targetRepNames, continuityWeight, minStops, lastStats, neighborMap);
-  runEnclaveCleanup(assignments, targetRepNames, minStops, lastStats, neighborMap);
-  runMajoritySmoothing(assignments, targetRepNames, minStops, lastStats, neighborMap);
-  enforceMinimumStops(assignments, targetRepNames, minStops, maxStops, lastStats);
-  enforceMaximumStops(assignments, targetRepNames, minStops, maxStops, lastStats);
-
-  const changes = [];
-  for (const account of state.accounts) {
-    const nextRep = assignments.get(account._id) || account.assignedRep;
-    if (nextRep !== account.assignedRep) {
-      changes.push({
-        id: account._id,
-        from: account.assignedRep,
-        to: nextRep
+      const orderedMovable = [...movableAccounts].sort((a, b) => {
+        if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
+        if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
+        return a.customerName.localeCompare(b.customerName);
       });
+
+      for (const account of orderedMovable) {
+        let bestRep = null;
+        let bestScore = Infinity;
+
+        for (const rep of targetRepNames) {
+          const stat = passData.repStats.get(rep);
+          const centroid = getRepCentroid(stat, initialCentroids.get(rep));
+          const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+
+          const compactnessScore = dist * (1.08 + geographyWeight * 1.15);
+          const continuityPenalty = account.currentRep === rep ? 0 : (continuityWeight * 0.95);
+          const existingPenalty = account.assignedRep === rep ? 0 : (continuityWeight * 0.28);
+
+          let balancePenalty = 0;
+          if (balanceMode === 'stops') {
+            balancePenalty = Math.max(0, stat.stops - maxStops) * 0.7 + stat.stops * 0.007;
+          } else if (balanceMode === 'revenue') {
+            balancePenalty = stat.revenue * 0.0000013;
+          } else {
+            balancePenalty = stat.stops * 0.0055 + stat.revenue * 0.00000065;
+          }
+
+          const localPenalty = localDominancePenalty(account, rep, assignments, neighborMap);
+          const maxStopsPenalty = stat.stops >= maxStops ? 8 : 0;
+          const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + maxStopsPenalty;
+
+          if (score < bestScore) {
+            bestScore = score;
+            bestRep = rep;
+          }
+        }
+
+        assignAccountToRep(account, bestRep, assignments, passData);
+      }
+
+      lastStats = passData;
     }
-  }
 
-  if (!changes.length) {
-    showToast('Optimizer did not find a better assignment under the current rules.');
-    return;
-  }
+    if (!lastStats) {
+      showToast('Optimizer could not initialize.');
+      return;
+    }
 
-  applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
+    enforceMinimumStops(assignments, targetRepNames, minStops, maxStops, lastStats);
+    enforceMaximumStops(assignments, targetRepNames, minStops, maxStops, lastStats);
+    runBorderCleanup(assignments, continuityWeight, minStops, lastStats, neighborMap);
+    runEnclaveCleanup(assignments, minStops, lastStats, neighborMap);
+    runMajoritySmoothing(assignments, minStops, lastStats, neighborMap);
+    enforceMinimumStops(assignments, targetRepNames, minStops, maxStops, lastStats);
+    enforceMaximumStops(assignments, targetRepNames, minStops, maxStops, lastStats);
+
+    const changes = [];
+    for (const account of state.accounts) {
+      const nextRep = assignments.get(account._id) || account.assignedRep;
+      if (nextRep !== account.assignedRep) {
+        changes.push({
+          id: account._id,
+          from: account.assignedRep,
+          to: nextRep
+        });
+      }
+    }
+
+    if (!changes.length) {
+      showToast('Optimizer did not find a better assignment under the current rules.');
+      return;
+    }
+
+    applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
+  } catch (err) {
+    console.error('Optimize Routes failed:', err);
+    showToast('Optimize Routes hit an error. Open the browser console and send me the error text.');
+  }
 }
 
 function createAssignmentData(reps, fallbackCentroids) {
@@ -1047,13 +1056,13 @@ function createAssignmentData(reps, fallbackCentroids) {
 }
 
 function getRepCentroid(stat, fallback) {
-  if (stat.stops > 0) {
+  if (stat && stat.stops > 0) {
     return {
       lat: stat.latSum / stat.stops,
       lng: stat.lngSum / stat.stops
     };
   }
-  return fallback || stat.fallback || { lat: 0, lng: 0 };
+  return fallback || stat?.fallback || { lat: 0, lng: 0 };
 }
 
 function assignAccountToRep(account, rep, assignments, data) {
@@ -1119,7 +1128,7 @@ function localDominancePenalty(account, rep, assignments, neighborMap) {
   return penalty;
 }
 
-function runBorderCleanup(assignments, targetRepNames, continuityWeight, minStops, data, neighborMap) {
+function runBorderCleanup(assignments, continuityWeight, minStops, data, neighborMap) {
   let moved = true;
   let pass = 0;
 
@@ -1152,7 +1161,7 @@ function runBorderCleanup(assignments, targetRepNames, continuityWeight, minStop
   }
 }
 
-function runEnclaveCleanup(assignments, targetRepNames, minStops, data, neighborMap) {
+function runEnclaveCleanup(assignments, minStops, data, neighborMap) {
   const borderAccounts = getBorderAccounts(assignments, neighborMap).filter(a => !a.protected);
 
   for (const account of borderAccounts) {
@@ -1181,51 +1190,49 @@ function runEnclaveCleanup(assignments, targetRepNames, minStops, data, neighbor
   }
 }
 
-function runMajoritySmoothing(assignments, targetRepNames, minStops, data, neighborMap) {
-  for (let pass = 0; pass < 1; pass += 1) {
-    const borderAccounts = getBorderAccounts(assignments, neighborMap).filter(a => !a.protected);
-    const moves = [];
+function runMajoritySmoothing(assignments, minStops, data, neighborMap) {
+  const borderAccounts = getBorderAccounts(assignments, neighborMap).filter(a => !a.protected);
+  const moves = [];
 
-    for (const account of borderAccounts) {
-      const own = assignments.get(account._id);
-      const neighbors = neighborMap.get(account._id) || [];
-      if (neighbors.length < 3) continue;
+  for (const account of borderAccounts) {
+    const own = assignments.get(account._id);
+    const neighbors = neighborMap.get(account._id) || [];
+    if (neighbors.length < 3) continue;
 
-      const ownStat = data.repStats.get(own);
-      if (!ownStat || ownStat.stops <= Math.max(1, minStops)) continue;
+    const ownStat = data.repStats.get(own);
+    if (!ownStat || ownStat.stops <= Math.max(1, minStops)) continue;
 
-      const repCounts = new Map();
-      neighbors.forEach(nid => {
-        const rep = assignments.get(nid);
-        if (!rep) return;
-        repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
-      });
+    const repCounts = new Map();
+    neighbors.forEach(nid => {
+      const rep = assignments.get(nid);
+      if (!rep) return;
+      repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+    });
 
-      const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
-      const topRep = sorted[0]?.[0];
-      const topCount = sorted[0]?.[1] || 0;
-      const ownCount = repCounts.get(own) || 0;
+    const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
+    const topRep = sorted[0]?.[0];
+    const topCount = sorted[0]?.[1] || 0;
+    const ownCount = repCounts.get(own) || 0;
 
-      if (topRep && topRep !== own && topCount >= 5 && ownCount <= 1) {
-        moves.push({ id: account._id, to: topRep });
-      }
+    if (topRep && topRep !== own && topCount >= 5 && ownCount <= 1) {
+      moves.push({ id: account._id, to: topRep });
     }
+  }
 
-    for (const move of moves) {
-      const account = state.accountById.get(move.id);
-      if (!account) continue;
-      const own = assignments.get(account._id);
-      const ownStat = data.repStats.get(own);
-      if (!ownStat || ownStat.stops <= Math.max(1, minStops)) continue;
-      assignAccountToRep(account, move.to, assignments, data);
-    }
+  for (const move of moves) {
+    const account = state.accountById.get(move.id);
+    if (!account) continue;
+    const own = assignments.get(account._id);
+    const ownStat = data.repStats.get(own);
+    if (!ownStat || ownStat.stops <= Math.max(1, minStops)) continue;
+    assignAccountToRep(account, move.to, assignments, data);
   }
 }
 
 function borderCleanupScore(account, rep, assignments, neighborMap, continuityWeight, data) {
   const neighbors = neighborMap.get(account._id) || [];
   const repStat = data.repStats.get(rep);
-  const centroid = repStat ? getRepCentroid(repStat, repStat.fallback) : { lat: account.latitude, lng: account.longitude };
+  const centroid = getRepCentroid(repStat, repStat?.fallback || { lat: account.latitude, lng: account.longitude });
   const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
 
   let same = 0;
