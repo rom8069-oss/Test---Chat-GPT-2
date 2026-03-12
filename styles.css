@@ -371,6 +371,18 @@ tbody td{
 
 tbody tr:hover{ background:#fafcff; }
 
+tbody tr.rep-row-active{
+  background:#eaf2ff;
+}
+
+tbody tr.rep-row-active:hover{
+  background:#eaf2ff;
+}
+
+tbody tr.rep-row-active td{
+  border-bottom-color:#d5e3ff;
+}
+
 .rep-cell{
   display:flex;
   align-items:center;
