@@ -660,18 +660,18 @@ function markerStyleForAccount(account) {
 
   if (isRepFocused) {
     if (isFocusedRep) {
-      opacity = matches ? 1 : 0.35;
+      opacity = matches ? 1 : 0.4;
       fillOpacity = account.protected ? 0.95 : 0.88;
     } else {
-      opacity = 0.12;
-      fillOpacity = 0.06;
+      opacity = 0.1;
+      fillOpacity = 0.05;
     }
   }
 
   return {
     radius: isSelected ? 8 : (isFocusedRep ? 7 : 6),
     color: isSelected ? '#1e293b' : color,
-    weight: isSelected ? 2.5 : (isFocusedRep ? 2 : 1.2),
+    weight: isSelected ? 2.5 : (isFocusedRep ? 2.2 : 1.2),
     opacity,
     fillColor: color,
     fillOpacity
@@ -727,7 +727,7 @@ function renderRepTable() {
   }
 
   els.repTableBody.innerHTML = rows.map(row => `
-    <tr data-rep-row="${escapeHtmlAttr(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''}">
+    <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''}">
       <td>
         <div class="rep-cell">
           <span class="color-dot" style="background:${escapeHtmlAttr(row.color)}"></span>
@@ -752,7 +752,10 @@ function renderRepTable() {
 
   [...els.repTableBody.querySelectorAll('tr[data-rep-row]')].forEach(tr => {
     tr.addEventListener('click', () => {
-      const rep = tr.getAttribute('data-rep-row');
+      const rep = decodeURIComponent(tr.getAttribute('data-rep-row') || '');
+
+      if (!rep) return;
+
       if (state.repFocus === rep) {
         state.repFocus = null;
         refreshUI(false);
@@ -1803,11 +1806,29 @@ function fitMapToAccounts() {
 }
 
 function zoomToRep(rep) {
-  const points = state.accounts
-    .filter(a => a.assignedRep === rep)
-    .map(a => [a.latitude, a.longitude]);
+  const members = state.accounts.filter(a => a.assignedRep === rep);
+  const points = members.map(a => [a.latitude, a.longitude]);
 
-  if (points.length) state.map.fitBounds(points, { padding: [30, 30] });
+  if (!points.length) return;
+
+  if (points.length === 1) {
+    state.map.setView(points[0], 12);
+    return;
+  }
+
+  const bounds = L.latLngBounds(points);
+  const spanLat = Math.abs(bounds.getNorth() - bounds.getSouth());
+  const spanLng = Math.abs(bounds.getEast() - bounds.getWest());
+
+  if (spanLat < 0.03 && spanLng < 0.03) {
+    state.map.setView(bounds.getCenter(), 11);
+    return;
+  }
+
+  state.map.fitBounds(bounds, {
+    padding: [35, 35],
+    maxZoom: 11
+  });
 }
 
 function toggleTheme() {
