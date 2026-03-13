@@ -108,7 +108,7 @@ button,input,select,textarea{
 .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
 
 .btn-primary{
-  background:#3b73d7;
+  background:#7fa4ee;
   color:#fff;
   border-color:transparent;
 }
@@ -208,6 +208,47 @@ input[type="file"]{ display:none; }
 
 .range-wrap input[type="range"]{
   width:100%;
+}
+
+.status-bar{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow:var(--shadow);
+  padding:9px 12px;
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  flex:0 0 auto;
+}
+
+.status-title{
+  min-width:132px;
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.32px;
+  color:var(--muted);
+  padding-top:2px;
+}
+
+.status-text{
+  font-size:13px;
+  line-height:1.35;
+  font-weight:700;
+  color:var(--text);
+}
+
+.import-status{
+  border-left:4px solid #7fa4ee;
+}
+
+.optimize-status{
+  border-left:4px solid #16a272;
+}
+
+.is-hidden{
+  display:none !important;
 }
 
 .stats{
@@ -361,6 +402,27 @@ thead th{
   white-space:nowrap;
 }
 
+thead th.sortable{
+  cursor:pointer;
+  user-select:none;
+}
+
+thead th.sortable:hover{
+  background:#eef5fd;
+  color:#3e5f86;
+}
+
+thead th.sortable.is-active{
+  color:#29415b;
+}
+
+.sort-indicator{
+  display:inline-block;
+  min-width:14px;
+  margin-left:4px;
+  color:#8aa1bc;
+}
+
 tbody td{
   padding:9px 8px;
   border-bottom:1px solid #edf2f7;
@@ -438,6 +500,18 @@ tbody tr.rep-row-active td{
   padding:8px 10px;
   min-height:52px;
   flex:0 0 auto;
+}
+
+.moved-item{
+  cursor:pointer;
+  transition:.14s ease;
+}
+
+.moved-item:hover{
+  background:#f8fbff;
+  border-color:#bfd3ea;
+  box-shadow:0 4px 10px rgba(48,103,214,.08);
+  transform:translateY(-1px);
 }
 
 .selected-item-title,
@@ -724,4 +798,12 @@ tbody tr.rep-row-active td{
   .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
   .main{ grid-template-columns:1fr; }
   .side{ grid-template-rows:minmax(320px,360px) minmax(340px,1fr); }
+  .status-bar{
+    flex-direction:column;
+    gap:6px;
+  }
+  .status-title{
+    min-width:0;
+    padding-top:0;
+  }
 }
