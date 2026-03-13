@@ -25,6 +25,10 @@
       <div class="topbar-actions">
         <label class="file-label" for="file-input">Upload Excel / CSV</label>
         <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
+        <div id="upload-status-pill" class="upload-status-pill upload-status-neutral">
+          <span id="upload-status-icon" class="upload-status-icon">•</span>
+          <span id="upload-status-text" class="upload-status-text">No file loaded</span>
+        </div>
         <select id="sheet-select" class="input" disabled></select>
         <button id="load-sheet-btn" class="btn btn-subtle" disabled>Load Sheet</button>
         <button id="undo-btn" class="btn btn-subtle" disabled>Undo</button>
@@ -156,16 +160,6 @@
       </div>
     </div>
 
-    <div class="status-bar import-status" id="import-summary-bar">
-      <div class="status-title">Load summary</div>
-      <div class="status-text" id="import-summary-text">No file loaded yet.</div>
-    </div>
-
-    <div class="status-bar optimize-status is-hidden" id="optimize-summary-bar">
-      <div class="status-title">Optimization summary</div>
-      <div class="status-text" id="optimize-summary-text">No optimization has run yet.</div>
-    </div>
-
     <div class="stats">
       <div class="stat"><div class="k">Accounts</div><div class="v" id="global-accounts">0</div></div>
       <div class="stat"><div class="k">Revenue</div><div class="v" id="global-revenue">$0</div></div>
@@ -173,7 +167,6 @@
       <div class="stat"><div class="k">Moved</div><div class="v" id="global-moved">0</div></div>
       <div class="stat"><div class="k">Unchanged</div><div class="v" id="global-unchanged">0%</div></div>
       <div class="stat"><div class="k">Avg Weekly Stops</div><div class="v" id="global-avg-weekly">0</div></div>
-      <div class="stat"><div class="k">Selection</div><div class="v" id="selection-count">0</div></div>
     </div>
 
     <div class="main">
@@ -234,7 +227,7 @@
           <div class="selected-head">
             <div>
               <div class="card-title">Selected accounts</div>
-              <div class="card-sub">Current lasso / clicked selection</div>
+              <div class="card-sub"><span id="selection-count">0</span> selected • Current lasso / clicked selection</div>
             </div>
             <button id="clear-selection-btn" class="btn btn-subtle" disabled>Clear Selection</button>
           </div>
