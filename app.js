@@ -47,6 +47,20 @@ const state = {
   theme: 'light',
   loadedFileName: 'territory_export_updated.xlsx',
   lastAction: 'No actions yet',
+  importSummary: {
+    sourceRows: 0,
+    loadedRows: 0,
+    skippedNoCoords: 0,
+    duplicateCustomerIds: 0,
+    missingCurrentRep: 0,
+    missingAssignedRep: 0,
+    unmappedFields: []
+  },
+  optimizationSummary: null,
+  tableSort: {
+    key: 'rep',
+    dir: 'asc'
+  },
   filters: {
     rep: new Set(),
     rank: new Set(),
@@ -79,6 +93,8 @@ function init() {
   updateLastAction('No actions yet');
   fillSimpleSelect(els.premiseFilter, ['ALL'], 'ALL', v => 'All premises');
   renderMultiFilterOptions();
+  renderImportSummary();
+  renderOptimizationSummary();
   syncControlState();
 
   requestAnimationFrame(() => {
@@ -95,7 +111,7 @@ function bindElements() {
     'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
     'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
-    'routes-table-wrap','moved-search-input'
+    'routes-table-wrap','moved-search-input','import-summary-bar','import-summary-text','optimize-summary-bar','optimize-summary-text'
   ].forEach(id => {
     els[toCamel(id)] = document.getElementById(id);
   });
@@ -140,6 +156,12 @@ function bindEvents() {
       renderMovedReview();
     });
   }
+
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      toggleTableSort(th.getAttribute('data-sort'));
+    });
+  });
 
   document.addEventListener('click', handleDocumentClickForPanels);
 
@@ -362,7 +384,11 @@ function loadSelectedSheet() {
   }
 
   const rows = state.workbookSheets[sheetName];
-  const normalized = normalizeRows(rows);
+  const normalizedResult = normalizeRows(rows);
+  const normalized = normalizedResult.mapped;
+
+  state.importSummary = normalizedResult.summary;
+  state.optimizationSummary = null;
 
   if (!normalized.length) {
     state.accounts = [];
@@ -407,12 +433,26 @@ function loadSelectedSheet() {
 }
 
 function normalizeRows(rows) {
-  if (!rows?.length) return [];
+  if (!rows?.length) {
+    return {
+      mapped: [],
+      summary: {
+        sourceRows: 0,
+        loadedRows: 0,
+        skippedNoCoords: 0,
+        duplicateCustomerIds: 0,
+        missingCurrentRep: 0,
+        missingAssignedRep: 0,
+        unmappedFields: []
+      }
+    };
+  }
 
   const mapped = [];
   const headers = Object.keys(rows[0] || {});
   const headerMap = {};
   const cleanedHeaderLookup = new Map(headers.map(h => [cleanHeader(h), h]));
+  const idCounts = new Map();
 
   Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
     let match = null;
@@ -440,26 +480,56 @@ function normalizeRows(rows) {
   });
 
   let generatedId = 1;
+  let skippedNoCoords = 0;
+  let duplicateCustomerIds = 0;
+  let missingCurrentRep = 0;
+  let missingAssignedRep = 0;
+
+  const recommendedFields = [
+    'latitude','longitude','customerId','customerName','currentRep','assignedRep','overallSales','rank','cadence4w','protected'
+  ];
+
+  const unmappedFields = recommendedFields.filter(key => !headerMap[key]);
 
   for (const row of rows) {
     const lat = toNumber(row[headerMap.latitude]);
     const lng = toNumber(row[headerMap.longitude]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      skippedNoCoords += 1;
+      continue;
+    }
 
-    const customerId = safeString(row[headerMap.customerId]) || `AUTO_${generatedId++}`;
-    const customerName = safeString(row[headerMap.customerName]) || customerId;
-    const currentRep = safeString(row[headerMap.currentRep]) || 'Unassigned';
-    const assignedRep = safeString(row[headerMap.assignedRep]) || currentRep || 'Unassigned';
+    const rawCustomerId = safeString(row[headerMap.customerId]) || `AUTO_${generatedId++}`;
+    const seen = idCounts.get(rawCustomerId) || 0;
+    idCounts.set(rawCustomerId, seen + 1);
+
+    let uniqueCustomerId = rawCustomerId;
+    if (seen > 0) {
+      duplicateCustomerIds += 1;
+      uniqueCustomerId = `${rawCustomerId}__${seen + 1}`;
+    }
+
+    const customerName = safeString(row[headerMap.customerName]) || rawCustomerId;
+
+    const rawCurrentRep = safeString(row[headerMap.currentRep]);
+    const rawAssignedRep = safeString(row[headerMap.assignedRep]);
+
+    if (!rawCurrentRep) missingCurrentRep += 1;
+    if (!rawAssignedRep) missingAssignedRep += 1;
+
+    const currentRep = rawCurrentRep || 'Unassigned';
+    const assignedRep = rawAssignedRep || currentRep || 'Unassigned';
+
     const rank = normalizeRank(row[headerMap.rank]);
     const premise = safeString(row[headerMap.premise]) || 'Unknown';
     const cadence4w = normalizeCadence4W(row[headerMap.cadence4w], rank);
     const overallSales = toNumber(row[headerMap.overallSales]);
 
     mapped.push({
-      _id: customerId,
+      _id: uniqueCustomerId,
       latitude: lat,
       longitude: lng,
-      customerId,
+      customerId: rawCustomerId,
       customerName,
       address: safeString(row[headerMap.address]),
       zip: safeString(row[headerMap.zip]),
@@ -477,7 +547,18 @@ function normalizeRows(rows) {
     });
   }
 
-  return mapped;
+  return {
+    mapped,
+    summary: {
+      sourceRows: rows.length,
+      loadedRows: mapped.length,
+      skippedNoCoords,
+      duplicateCustomerIds,
+      missingCurrentRep,
+      missingAssignedRep,
+      unmappedFields
+    }
+  };
 }
 
 function seedFiltersFromData() {
@@ -607,6 +688,8 @@ function getMultiValuesForKey(key) {
 function refreshUI(rebuildMap = false) {
   syncControlState();
   renderRepControls();
+  renderImportSummary();
+  renderOptimizationSummary();
   if (rebuildMap) rebuildMarkers();
   refreshMarkerStyles();
   renderRepTable();
@@ -650,6 +733,44 @@ function renderRepControls() {
   els.repCountInput.oninput = () => {
     els.repCountInput.dataset.userTouched = '1';
   };
+}
+
+function renderImportSummary() {
+  const s = state.importSummary || {};
+  const parts = [
+    `${(s.loadedRows || 0).toLocaleString()} loaded`,
+    `${(s.sourceRows || 0).toLocaleString()} source rows`,
+    `${(s.skippedNoCoords || 0).toLocaleString()} skipped for missing lat/long`,
+    `${(s.duplicateCustomerIds || 0).toLocaleString()} duplicate ID${(s.duplicateCustomerIds || 0) === 1 ? '' : 's'} adjusted`,
+    `${(s.missingCurrentRep || 0).toLocaleString()} blank current rep`,
+    `${(s.missingAssignedRep || 0).toLocaleString()} blank assigned rep`
+  ];
+
+  if (s.unmappedFields?.length) {
+    parts.push(`Unmapped fields: ${s.unmappedFields.join(', ')}`);
+  }
+
+  els.importSummaryText.textContent = parts.join(' • ');
+}
+
+function renderOptimizationSummary() {
+  const s = state.optimizationSummary;
+
+  if (!s) {
+    els.optimizeSummaryBar.classList.add('is-hidden');
+    els.optimizeSummaryText.textContent = 'No optimization has run yet.';
+    return;
+  }
+
+  els.optimizeSummaryBar.classList.remove('is-hidden');
+  els.optimizeSummaryText.textContent = [
+    `${s.repCount} reps`,
+    `${s.movedCount} moved`,
+    `${s.protectedHeld} protected held`,
+    `Stops range ${s.minStops}–${s.maxStops}`,
+    `Revenue range ${formatCurrency(s.minRevenue)}–${formatCurrency(s.maxRevenue)}`,
+    `Avg stops ${formatNumber(s.avgStops, 1)}`
+  ].join(' • ');
 }
 
 function rebuildMarkers() {
@@ -752,12 +873,15 @@ function buildPopupHtml(account) {
 }
 
 function renderRepTable() {
-  const rows = summarizeByRep();
+  let rows = summarizeByRep();
+  rows = sortRepRows(rows);
 
   if (!rows.length) {
     els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty">Upload a file to begin.</td></tr>';
     return;
   }
+
+  syncSortHeaderIndicators();
 
   els.repTableBody.innerHTML = rows.map(row => `
     <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''}">
@@ -799,6 +923,50 @@ function renderRepTable() {
         zoomToRep(rep);
       }
     });
+  });
+}
+
+function toggleTableSort(key) {
+  if (!key) return;
+
+  if (state.tableSort.key === key) {
+    state.tableSort.dir = state.tableSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.tableSort.key = key;
+    state.tableSort.dir = key === 'rep' ? 'asc' : 'desc';
+  }
+
+  renderRepTable();
+}
+
+function sortRepRows(rows) {
+  const key = state.tableSort.key;
+  const dir = state.tableSort.dir === 'asc' ? 1 : -1;
+
+  return [...rows].sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+
+    if (typeof av === 'string' || typeof bv === 'string') {
+      return String(av).localeCompare(String(bv), undefined, { numeric: true }) * dir;
+    }
+
+    return ((av || 0) - (bv || 0)) * dir;
+  });
+}
+
+function syncSortHeaderIndicators() {
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    const key = th.getAttribute('data-sort');
+    const indicator = th.querySelector('.sort-indicator');
+    th.classList.remove('is-active', 'asc', 'desc');
+
+    if (key === state.tableSort.key) {
+      th.classList.add('is-active', state.tableSort.dir);
+      if (indicator) indicator.textContent = state.tableSort.dir === 'asc' ? '▲' : '▼';
+    } else if (indicator) {
+      indicator.textContent = '↕';
+    }
   });
 }
 
@@ -854,7 +1022,7 @@ function renderMovedReview() {
   }
 
   els.movedReviewList.innerHTML = limited.map(a => `
-    <div class="moved-item">
+    <div class="moved-item" data-account-id="${escapeHtmlAttr(a._id)}" title="Zoom to account on map">
       <div class="moved-item-title">${escapeHtml(a.customerName)}</div>
       <div class="transfer-line">
         <span class="metric-chip">${escapeHtml(a.customerId)}</span>
@@ -867,6 +1035,13 @@ function renderMovedReview() {
       </div>
     </div>
   `).join('');
+
+  els.movedReviewList.querySelectorAll('.moved-item[data-account-id]').forEach(item => {
+    item.addEventListener('click', () => {
+      const id = item.getAttribute('data-account-id');
+      if (id) zoomToAccount(id, true);
+    });
+  });
 }
 
 function renderSummary() {
@@ -921,6 +1096,25 @@ function clearSelection() {
   refreshUI();
 }
 
+function zoomToAccount(id, openPopup = true) {
+  const account = state.accountById.get(id);
+  const marker = state.markerById.get(id);
+  if (!account || !marker) return;
+
+  state.repFocus = account.assignedRep;
+  state.selection.clear();
+  state.selection.add(id);
+  refreshUI(false);
+
+  state.map.setView([account.latitude, account.longitude], 12, { animate: true });
+
+  if (openPopup) {
+    setTimeout(() => {
+      marker.openPopup();
+    }, 120);
+  }
+}
+
 function assignSelectionToRep() {
   const targetRep = els.assignRepSelect.value;
   const selectedIds = [...state.selection];
@@ -959,7 +1153,7 @@ function assignSelectionToRep() {
   clearSelection();
 
   if (skippedProtected) {
-    showToast(`${changes.length} changed. ${skippedProtected} protected account(s) skipped.`);
+    showToast(`${changes.length} reassigned to ${targetRep}. ${skippedProtected} protected account(s) stayed put.`);
   }
 }
 
@@ -1018,6 +1212,7 @@ function undoLastAction() {
     state.repFocus = null;
   }
 
+  state.optimizationSummary = null;
   refreshUI();
   updateLastAction(`Undid: ${action.label}`);
   showToast(`Undid: ${action.label}`);
@@ -1042,14 +1237,25 @@ function resetAssignments() {
     return;
   }
 
-  applyChanges(changes, 'Reset assignments to imported values', repsBefore);
+  changes.forEach(change => {
+    const account = state.accountById.get(change.id);
+    if (!account) return;
+    account.assignedRep = change.to;
+  });
+
   state.undoStack = [];
+  state.changeLog = [];
   state.repFocus = null;
+  state.optimizationSummary = null;
   state.multiSearch.moved = '';
   if (els.movedSearchInput) els.movedSearchInput.value = '';
-  updateLastAction('Reset assignments to imported values');
+
+  buildRepColors();
+  syncRepFilterSelection(repsBefore);
   refreshUI();
   fitMapToAccounts();
+  updateLastAction('Reset assignments to imported values');
+  showToast('Assignments reset to imported values.');
 }
 
 function optimizeRoutes() {
@@ -1196,10 +1402,32 @@ function optimizeRoutes() {
     }
 
     applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`, repsBefore);
+    state.optimizationSummary = buildOptimizationSummary();
+    refreshUI(false);
   } catch (err) {
     console.error('Optimize Routes failed:', err);
     showToast('Optimize Routes hit an error. Send me the first red error line from the browser console.');
   }
+}
+
+function buildOptimizationSummary() {
+  const rows = summarizeByRep();
+  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
+  const protectedHeld = state.accounts.filter(a => a.protected && a.assignedRep === a.originalAssignedRep).length;
+
+  const stops = rows.map(r => r.stops);
+  const revenue = rows.map(r => r.revenue);
+
+  return {
+    repCount: rows.length,
+    movedCount,
+    protectedHeld,
+    minStops: Math.min(...stops),
+    maxStops: Math.max(...stops),
+    minRevenue: Math.min(...revenue),
+    maxRevenue: Math.max(...revenue),
+    avgStops: rows.reduce((sum, r) => sum + r.stops, 0) / Math.max(1, rows.length)
+  };
 }
 
 function createAssignmentContext(targetRepNames, assignments) {
@@ -1780,7 +2008,9 @@ function makeEmptyRepSummary(rep) {
     avgWeekly: 0,
     protected: 0,
     movedIn: 0,
-    movedOut: 0
+    movedOut: 0,
+    deltaStops: 0,
+    deltaRevenue: 0
   };
 }
 
@@ -1805,6 +2035,7 @@ async function exportWorkbook() {
     const repSummary = buildRepSummaryExportRows();
     const movedAccounts = buildMovedAccountsExportRows();
     const changeLog = buildChangeLogExportRows();
+    const runSettings = buildRunSettingsExportRows();
 
     addStyledWorksheet(workbook, {
       name: 'Assignments',
@@ -1841,6 +2072,14 @@ async function exportWorkbook() {
         'Customer_ID','Customer_Name','Original_Assigned_Rep','Assigned_Rep','Current_Rep','Revenue','Rank','Protected'
       ],
       currencyColumns: ['Revenue'],
+      freezeTopRow: true,
+      autofilter: true
+    });
+
+    addStyledWorksheet(workbook, {
+      name: 'Run Settings',
+      rows: runSettings,
+      keyOrder: ['Setting','Value'],
       freezeTopRow: true,
       autofilter: true
     });
@@ -1918,6 +2157,28 @@ function buildMovedAccountsExportRows() {
       Rank: a.rank,
       Protected: a.protected ? 'Yes' : 'No'
     }));
+}
+
+function buildRunSettingsExportRows() {
+  const s = state.importSummary || {};
+  const o = state.optimizationSummary || null;
+
+  return [
+    { Setting: 'Export Timestamp', Value: new Date().toLocaleString() },
+    { Setting: 'Loaded File Name', Value: state.loadedFileName || '' },
+    { Setting: 'Target Rep Count', Value: els.repCountInput.value || '' },
+    { Setting: 'Minimum Stops / Rep', Value: els.minStopsInput.value || '' },
+    { Setting: 'Maximum Stops / Rep', Value: els.maxStopsInput.value || '' },
+    { Setting: 'Optimize By', Value: els.balanceMode.value || '' },
+    { Setting: 'Customer Disruption', Value: els.disruptionSlider.value || '' },
+    { Setting: 'Source Rows', Value: s.sourceRows || 0 },
+    { Setting: 'Loaded Rows', Value: s.loadedRows || 0 },
+    { Setting: 'Skipped Missing Lat/Long', Value: s.skippedNoCoords || 0 },
+    { Setting: 'Duplicate IDs Adjusted', Value: s.duplicateCustomerIds || 0 },
+    { Setting: 'Missing Current Rep', Value: s.missingCurrentRep || 0 },
+    { Setting: 'Missing Assigned Rep', Value: s.missingAssignedRep || 0 },
+    { Setting: 'Optimization Summary', Value: o ? `${o.repCount} reps / ${o.movedCount} moved / stops ${o.minStops}-${o.maxStops}` : 'No optimization run' }
+  ];
 }
 
 function buildChangeLogExportRows() {
@@ -2085,11 +2346,13 @@ function guessColumnWidth(key, rows) {
     customerName: 28,
     fromRep: 16,
     toRep: 16,
-    protected: 11
+    protected: 11,
+    Setting: 28,
+    Value: 42
   };
 
   if (widthOverrides[key]) return widthOverrides[key];
-  return Math.max(10, Math.min(maxLen + 2, 32));
+  return Math.max(10, Math.min(maxLen + 2, 42));
 }
 
 function prettifyHeader(key) {
