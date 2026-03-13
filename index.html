@@ -60,7 +60,8 @@ const state = {
     rep: '',
     rank: '',
     chain: '',
-    segment: ''
+    segment: '',
+    moved: ''
   },
   openMultiKey: null
 };
@@ -94,7 +95,7 @@ function bindElements() {
     'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
     'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
-    'routes-table-wrap'
+    'routes-table-wrap','moved-search-input'
   ].forEach(id => {
     els[toCamel(id)] = document.getElementById(id);
   });
@@ -132,6 +133,13 @@ function bindEvents() {
   els.disruptionSlider.addEventListener('input', () => {
     els.disruptionValue.textContent = els.disruptionSlider.value;
   });
+
+  if (els.movedSearchInput) {
+    els.movedSearchInput.addEventListener('input', e => {
+      state.multiSearch.moved = e.target.value || '';
+      renderMovedReview();
+    });
+  }
 
   document.addEventListener('click', handleDocumentClickForPanels);
 
@@ -364,6 +372,8 @@ function loadSelectedSheet() {
     state.undoStack = [];
     state.changeLog = [];
     state.repFocus = null;
+    state.multiSearch.moved = '';
+    if (els.movedSearchInput) els.movedSearchInput.value = '';
     refreshUI(true);
     showToast('No valid rows found in that sheet.');
     return;
@@ -376,6 +386,8 @@ function loadSelectedSheet() {
   state.undoStack = [];
   state.changeLog = [];
   state.repFocus = null;
+  state.multiSearch.moved = '';
+  if (els.movedSearchInput) els.movedSearchInput.value = '';
 
   buildRepColors();
   seedFiltersFromData();
@@ -485,6 +497,26 @@ function seedFiltersFromData() {
   );
 
   renderMultiFilterOptions();
+}
+
+function syncRepFilterSelection(previousAssignedReps = []) {
+  const currentReps = getAllAssignedReps();
+  const selected = state.filters.rep instanceof Set ? state.filters.rep : new Set();
+  const prevSet = new Set(previousAssignedReps);
+
+  for (const rep of [...selected]) {
+    if (!currentReps.includes(rep)) selected.delete(rep);
+  }
+
+  for (const rep of currentReps) {
+    if (!prevSet.has(rep)) selected.add(rep);
+  }
+
+  if (selected.size === 0) {
+    currentReps.forEach(rep => selected.add(rep));
+  }
+
+  state.filters.rep = selected;
 }
 
 function renderMultiFilterOptions() {
@@ -604,6 +636,7 @@ function syncControlState() {
   els.movedFilter.disabled = !hasData;
   els.dimOthersCheckbox.disabled = !hasData;
   els.showTerritoryCheckbox.disabled = !hasData;
+  if (els.movedSearchInput) els.movedSearchInput.disabled = !hasData;
 }
 
 function renderRepControls() {
@@ -795,21 +828,36 @@ function renderSelectionPreview() {
 }
 
 function renderMovedReview() {
-  const moved = state.accounts
-    .filter(a => a.assignedRep !== a.originalAssignedRep)
-    .slice(0, 250);
+  const search = (state.multiSearch.moved || '').toLowerCase().trim();
 
-  els.movedReviewCount.textContent = String(moved.length);
+  let moved = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep);
 
-  if (!moved.length) {
-    els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
+  if (search) {
+    moved = moved.filter(a => {
+      const haystack = [
+        a.customerName,
+        a.customerId,
+        a.originalAssignedRep,
+        a.assignedRep
+      ].map(v => String(v || '').toLowerCase()).join(' | ');
+
+      return haystack.includes(search);
+    });
+  }
+
+  const limited = moved.slice(0, 100);
+  els.movedReviewCount.textContent = String(state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length);
+
+  if (!limited.length) {
+    els.movedReviewList.innerHTML = `<div class="empty">${search ? 'No moved accounts match your search.' : 'No moved accounts yet.'}</div>`;
     return;
   }
 
-  els.movedReviewList.innerHTML = moved.map(a => `
+  els.movedReviewList.innerHTML = limited.map(a => `
     <div class="moved-item">
       <div class="moved-item-title">${escapeHtml(a.customerName)}</div>
       <div class="transfer-line">
+        <span class="metric-chip">${escapeHtml(a.customerId)}</span>
         <span class="rep-chip">${escapeHtml(a.originalAssignedRep)}</span>
         <span class="rep-arrow">→</span>
         <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
@@ -878,6 +926,7 @@ function assignSelectionToRep() {
   const selectedIds = [...state.selection];
   if (!selectedIds.length || !targetRep) return;
 
+  const previousAssignedReps = getAllAssignedReps();
   const changes = [];
   let skippedProtected = 0;
 
@@ -906,7 +955,7 @@ function assignSelectionToRep() {
     return;
   }
 
-  applyChanges(changes, `Assigned ${changes.length} account${changes.length === 1 ? '' : 's'} to ${targetRep}`);
+  applyChanges(changes, `Assigned ${changes.length} account${changes.length === 1 ? '' : 's'} to ${targetRep}`, previousAssignedReps);
   clearSelection();
 
   if (skippedProtected) {
@@ -914,7 +963,9 @@ function assignSelectionToRep() {
   }
 }
 
-function applyChanges(changes, label) {
+function applyChanges(changes, label, previousAssignedReps = null) {
+  const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAllAssignedReps();
+
   changes.forEach(change => {
     const account = state.accountById.get(change.id);
     if (!account) return;
@@ -938,6 +989,7 @@ function applyChanges(changes, label) {
   });
 
   buildRepColors();
+  syncRepFilterSelection(repsBefore);
 
   if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
     state.repFocus = null;
@@ -952,12 +1004,15 @@ function undoLastAction() {
   const action = state.undoStack.pop();
   if (!action) return;
 
+  const repsBefore = getAllAssignedReps();
+
   for (const change of action.changes) {
     const account = state.accountById.get(change.id);
     if (account) account.assignedRep = change.from;
   }
 
   buildRepColors();
+  syncRepFilterSelection(repsBefore);
 
   if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
     state.repFocus = null;
@@ -970,6 +1025,7 @@ function undoLastAction() {
 
 function resetAssignments() {
   const changes = [];
+  const repsBefore = getAllAssignedReps();
 
   for (const account of state.accounts) {
     if (account.assignedRep !== account.originalAssignedRep) {
@@ -986,9 +1042,11 @@ function resetAssignments() {
     return;
   }
 
-  applyChanges(changes, 'Reset assignments to imported values');
+  applyChanges(changes, 'Reset assignments to imported values', repsBefore);
   state.undoStack = [];
   state.repFocus = null;
+  state.multiSearch.moved = '';
+  if (els.movedSearchInput) els.movedSearchInput.value = '';
   updateLastAction('Reset assignments to imported values');
   refreshUI();
   fitMapToAccounts();
@@ -1119,6 +1177,8 @@ function optimizeRoutes() {
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
 
     const changes = [];
+    const repsBefore = getAllAssignedReps();
+
     for (const account of state.accounts) {
       const nextRep = assignments.get(account._id) || account.assignedRep;
       if (nextRep !== account.assignedRep) {
@@ -1135,7 +1195,7 @@ function optimizeRoutes() {
       return;
     }
 
-    applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
+    applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`, repsBefore);
   } catch (err) {
     console.error('Optimize Routes failed:', err);
     showToast('Optimize Routes hit an error. Send me the first red error line from the browser console.');
