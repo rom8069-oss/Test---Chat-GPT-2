@@ -48,6 +48,10 @@ const state = {
   theme: 'light',
   loadedFileName: 'territory_export_updated.xlsx',
   lastAction: 'No actions yet',
+  uploadStatus: {
+    level: 'neutral',
+    text: 'No file loaded'
+  },
   importSummary: {
     sourceRows: 0,
     loadedRows: 0,
@@ -328,6 +332,9 @@ function onFileChosen(event) {
   if (!file) return;
 
   state.loadedFileName = file.name.replace(/\.[^.]+$/, '') + '_updated.xlsx';
+  setUploadStatus('neutral', `Reading ${file.name}...`);
+  renderUploadStatus();
+
   const reader = new FileReader();
 
   reader.onload = e => {
@@ -344,8 +351,16 @@ function onFileChosen(event) {
       }
     } catch (err) {
       console.error(err);
+      setUploadStatus('bad', 'File could not be read');
+      renderUploadStatus();
       showToast('File could not be read. Check the format and try again.');
     }
+  };
+
+  reader.onerror = () => {
+    setUploadStatus('bad', 'File could not be read');
+    renderUploadStatus();
+    showToast('File could not be read. Check the format and try again.');
   };
 
   if (file.name.toLowerCase().endsWith('.csv')) {
@@ -402,6 +417,8 @@ function loadSelectedSheet() {
     state.repFocus = null;
     state.multiSearch.moved = '';
     if (els.movedSearchInput) els.movedSearchInput.value = '';
+
+    setUploadStatus('bad', 'No valid rows found');
     refreshUI(true);
     showToast('No valid rows found in that sheet.');
     return;
@@ -419,6 +436,7 @@ function loadSelectedSheet() {
 
   buildRepColors();
   seedFiltersFromData();
+  updateUploadStatusFromSummary();
   refreshUI(true);
   fitMapToAccounts();
 
@@ -736,9 +754,12 @@ function renderRepControls() {
   };
 }
 
-function renderUploadStatus() {
+function setUploadStatus(level, text) {
+  state.uploadStatus = { level, text };
+}
+
+function updateUploadStatusFromSummary() {
   const s = state.importSummary || {};
-  const hasLoad = !!s.loadedRows;
   const issueCount =
     (s.skippedNoCoords || 0) +
     (s.duplicateCustomerIds || 0) +
@@ -746,25 +767,60 @@ function renderUploadStatus() {
     (s.missingAssignedRep || 0) +
     ((s.unmappedFields || []).length ? 1 : 0);
 
-  els.uploadStatusPill.classList.remove('upload-status-neutral', 'upload-status-good', 'upload-status-bad');
-
-  if (!hasLoad) {
-    els.uploadStatusPill.classList.add('upload-status-neutral');
-    els.uploadStatusIcon.textContent = '•';
-    els.uploadStatusText.textContent = 'No file loaded';
+  if ((s.loadedRows || 0) === 0) {
+    setUploadStatus('bad', 'No valid rows found');
     return;
   }
 
   if (issueCount === 0) {
-    els.uploadStatusPill.classList.add('upload-status-good');
-    els.uploadStatusIcon.textContent = '✓';
-    els.uploadStatusText.textContent = `${(s.loadedRows || 0).toLocaleString()} loaded clean`;
+    setUploadStatus('good', `${(s.loadedRows || 0).toLocaleString()} loaded clean`);
     return;
   }
 
-  els.uploadStatusPill.classList.add('upload-status-bad');
-  els.uploadStatusIcon.textContent = '✕';
-  els.uploadStatusText.textContent = `${(s.loadedRows || 0).toLocaleString()} loaded • issues found`;
+  const parts = [];
+  if (s.skippedNoCoords) parts.push(`${s.skippedNoCoords} skipped`);
+  if (s.duplicateCustomerIds) parts.push(`${s.duplicateCustomerIds} duplicate ID${s.duplicateCustomerIds === 1 ? '' : 's'}`);
+  if (s.missingCurrentRep) parts.push(`${s.missingCurrentRep} blank current rep`);
+  if (s.missingAssignedRep) parts.push(`${s.missingAssignedRep} blank assigned rep`);
+  if (s.unmappedFields?.length) parts.push('unmapped fields');
+
+  setUploadStatus('warning', `${(s.loadedRows || 0).toLocaleString()} loaded • ${parts.join(' • ')}`);
+}
+
+function renderUploadStatus() {
+  const status = state.uploadStatus || { level: 'neutral', text: 'No file loaded' };
+
+  els.uploadStatusPill.classList.remove(
+    'upload-status-neutral',
+    'upload-status-good',
+    'upload-status-warning',
+    'upload-status-bad'
+  );
+
+  if (status.level === 'good') {
+    els.uploadStatusPill.classList.add('upload-status-good');
+    els.uploadStatusIcon.textContent = '✓';
+    els.uploadStatusText.textContent = status.text;
+    return;
+  }
+
+  if (status.level === 'warning') {
+    els.uploadStatusPill.classList.add('upload-status-warning');
+    els.uploadStatusIcon.textContent = '!';
+    els.uploadStatusText.textContent = status.text;
+    return;
+  }
+
+  if (status.level === 'bad') {
+    els.uploadStatusPill.classList.add('upload-status-bad');
+    els.uploadStatusIcon.textContent = '✕';
+    els.uploadStatusText.textContent = status.text;
+    return;
+  }
+
+  els.uploadStatusPill.classList.add('upload-status-neutral');
+  els.uploadStatusIcon.textContent = '•';
+  els.uploadStatusText.textContent = status.text || 'No file loaded';
 }
 
 function rebuildMarkers() {
