@@ -156,6 +156,16 @@
       </div>
     </div>
 
+    <div class="status-bar import-status" id="import-summary-bar">
+      <div class="status-title">Load summary</div>
+      <div class="status-text" id="import-summary-text">No file loaded yet.</div>
+    </div>
+
+    <div class="status-bar optimize-status is-hidden" id="optimize-summary-bar">
+      <div class="status-title">Optimization summary</div>
+      <div class="status-text" id="optimize-summary-text">No optimization has run yet.</div>
+    </div>
+
     <div class="stats">
       <div class="stat"><div class="k">Accounts</div><div class="v" id="global-accounts">0</div></div>
       <div class="stat"><div class="k">Revenue</div><div class="v" id="global-revenue">$0</div></div>
@@ -197,20 +207,20 @@
             <table>
               <thead>
                 <tr>
-                  <th>Rep</th>
-                  <th>Stops</th>
-                  <th>+/- Stops</th>
-                  <th>Revenue</th>
-                  <th>+/- Revenue</th>
-                  <th>A</th>
-                  <th>B</th>
-                  <th>C</th>
-                  <th>D</th>
-                  <th>Planned 4W</th>
-                  <th>Avg Weekly</th>
-                  <th>Protected</th>
-                  <th>Moved In</th>
-                  <th>Moved Out</th>
+                  <th data-sort="rep" class="sortable is-active asc">Rep <span class="sort-indicator">▲</span></th>
+                  <th data-sort="stops" class="sortable">Stops <span class="sort-indicator">↕</span></th>
+                  <th data-sort="deltaStops" class="sortable">+/- Stops <span class="sort-indicator">↕</span></th>
+                  <th data-sort="revenue" class="sortable">Revenue <span class="sort-indicator">↕</span></th>
+                  <th data-sort="deltaRevenue" class="sortable">+/- Revenue <span class="sort-indicator">↕</span></th>
+                  <th data-sort="A" class="sortable">A <span class="sort-indicator">↕</span></th>
+                  <th data-sort="B" class="sortable">B <span class="sort-indicator">↕</span></th>
+                  <th data-sort="C" class="sortable">C <span class="sort-indicator">↕</span></th>
+                  <th data-sort="D" class="sortable">D <span class="sort-indicator">↕</span></th>
+                  <th data-sort="planned4W" class="sortable">Planned 4W <span class="sort-indicator">↕</span></th>
+                  <th data-sort="avgWeekly" class="sortable">Avg Weekly <span class="sort-indicator">↕</span></th>
+                  <th data-sort="protected" class="sortable">Protected <span class="sort-indicator">↕</span></th>
+                  <th data-sort="movedIn" class="sortable">Moved In <span class="sort-indicator">↕</span></th>
+                  <th data-sort="movedOut" class="sortable">Moved Out <span class="sort-indicator">↕</span></th>
                 </tr>
               </thead>
               <tbody id="rep-table-body">
