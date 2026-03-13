@@ -9,6 +9,9 @@
   --primary:#3067d6;
   --primary-soft:#8eaee6;
   --green:#16a272;
+  --green-soft:#eaf8f3;
+  --red:#d84b4b;
+  --red-soft:#fdf0f0;
   --shadow:0 4px 14px rgba(35,67,106,.07);
 }
 
@@ -133,6 +136,49 @@ button,input,select,textarea{
 
 input[type="file"]{ display:none; }
 
+.upload-status-pill{
+  height:34px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border-radius:12px;
+  padding:0 12px;
+  font-size:12px;
+  font-weight:800;
+  border:1px solid var(--border);
+  background:#fff;
+  color:var(--muted);
+  white-space:nowrap;
+}
+
+.upload-status-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:16px;
+  min-width:16px;
+  font-size:13px;
+  line-height:1;
+}
+
+.upload-status-neutral{
+  background:#f7fbff;
+  color:#667d94;
+  border-color:#d9e4ef;
+}
+
+.upload-status-good{
+  background:var(--green-soft);
+  color:#0d7e58;
+  border-color:#bfe8d8;
+}
+
+.upload-status-bad{
+  background:var(--red-soft);
+  color:#bf3d3d;
+  border-color:#f1c3c3;
+}
+
 .controls-card{
   background:var(--panel);
   border:1px solid var(--border);
@@ -210,50 +256,9 @@ input[type="file"]{ display:none; }
   width:100%;
 }
 
-.status-bar{
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:16px;
-  box-shadow:var(--shadow);
-  padding:9px 12px;
-  display:flex;
-  align-items:flex-start;
-  gap:12px;
-  flex:0 0 auto;
-}
-
-.status-title{
-  min-width:132px;
-  font-size:11px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.32px;
-  color:var(--muted);
-  padding-top:2px;
-}
-
-.status-text{
-  font-size:13px;
-  line-height:1.35;
-  font-weight:700;
-  color:var(--text);
-}
-
-.import-status{
-  border-left:4px solid #7fa4ee;
-}
-
-.optimize-status{
-  border-left:4px solid #16a272;
-}
-
-.is-hidden{
-  display:none !important;
-}
-
 .stats{
   display:grid;
-  grid-template-columns:repeat(7,minmax(0,1fr));
+  grid-template-columns:repeat(6,minmax(0,1fr));
   gap:10px;
   flex:0 0 auto;
   position:relative;
@@ -795,15 +800,7 @@ tbody tr.rep-row-active td{
   body{ overflow:auto; }
   .app{ height:auto; min-height:100%; }
   .controls-grid{ grid-template-columns:repeat(6,minmax(0,1fr)); }
-  .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .stats{ grid-template-columns:repeat(3,minmax(0,1fr)); }
   .main{ grid-template-columns:1fr; }
   .side{ grid-template-rows:minmax(320px,360px) minmax(340px,1fr); }
-  .status-bar{
-    flex-direction:column;
-    gap:6px;
-  }
-  .status-title{
-    min-width:0;
-    padding-top:0;
-  }
 }
