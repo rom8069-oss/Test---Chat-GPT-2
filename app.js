@@ -35,6 +35,7 @@ const state = {
   drawControl: null,
   workbook: null,
   workbookSheets: {},
+  currentSheetName: '',
   accounts: [],
   accountById: new Map(),
   neighborMap: new Map(),
@@ -93,8 +94,7 @@ function init() {
   updateLastAction('No actions yet');
   fillSimpleSelect(els.premiseFilter, ['ALL'], 'ALL', v => 'All premises');
   renderMultiFilterOptions();
-  renderImportSummary();
-  renderOptimizationSummary();
+  renderUploadStatus();
   syncControlState();
 
   requestAnimationFrame(() => {
@@ -111,7 +111,7 @@ function bindElements() {
     'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
     'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
-    'routes-table-wrap','moved-search-input','import-summary-bar','import-summary-text','optimize-summary-bar','optimize-summary-text'
+    'routes-table-wrap','moved-search-input','upload-status-pill','upload-status-icon','upload-status-text'
   ].forEach(id => {
     els[toCamel(id)] = document.getElementById(id);
   });
@@ -382,6 +382,8 @@ function loadSelectedSheet() {
     showToast('No sheet selected.');
     return;
   }
+
+  state.currentSheetName = sheetName;
 
   const rows = state.workbookSheets[sheetName];
   const normalizedResult = normalizeRows(rows);
@@ -688,8 +690,7 @@ function getMultiValuesForKey(key) {
 function refreshUI(rebuildMap = false) {
   syncControlState();
   renderRepControls();
-  renderImportSummary();
-  renderOptimizationSummary();
+  renderUploadStatus();
   if (rebuildMap) rebuildMarkers();
   refreshMarkerStyles();
   renderRepTable();
@@ -735,42 +736,35 @@ function renderRepControls() {
   };
 }
 
-function renderImportSummary() {
+function renderUploadStatus() {
   const s = state.importSummary || {};
-  const parts = [
-    `${(s.loadedRows || 0).toLocaleString()} loaded`,
-    `${(s.sourceRows || 0).toLocaleString()} source rows`,
-    `${(s.skippedNoCoords || 0).toLocaleString()} skipped for missing lat/long`,
-    `${(s.duplicateCustomerIds || 0).toLocaleString()} duplicate ID${(s.duplicateCustomerIds || 0) === 1 ? '' : 's'} adjusted`,
-    `${(s.missingCurrentRep || 0).toLocaleString()} blank current rep`,
-    `${(s.missingAssignedRep || 0).toLocaleString()} blank assigned rep`
-  ];
+  const hasLoad = !!s.loadedRows;
+  const issueCount =
+    (s.skippedNoCoords || 0) +
+    (s.duplicateCustomerIds || 0) +
+    (s.missingCurrentRep || 0) +
+    (s.missingAssignedRep || 0) +
+    ((s.unmappedFields || []).length ? 1 : 0);
 
-  if (s.unmappedFields?.length) {
-    parts.push(`Unmapped fields: ${s.unmappedFields.join(', ')}`);
-  }
+  els.uploadStatusPill.classList.remove('upload-status-neutral', 'upload-status-good', 'upload-status-bad');
 
-  els.importSummaryText.textContent = parts.join(' • ');
-}
-
-function renderOptimizationSummary() {
-  const s = state.optimizationSummary;
-
-  if (!s) {
-    els.optimizeSummaryBar.classList.add('is-hidden');
-    els.optimizeSummaryText.textContent = 'No optimization has run yet.';
+  if (!hasLoad) {
+    els.uploadStatusPill.classList.add('upload-status-neutral');
+    els.uploadStatusIcon.textContent = '•';
+    els.uploadStatusText.textContent = 'No file loaded';
     return;
   }
 
-  els.optimizeSummaryBar.classList.remove('is-hidden');
-  els.optimizeSummaryText.textContent = [
-    `${s.repCount} reps`,
-    `${s.movedCount} moved`,
-    `${s.protectedHeld} protected held`,
-    `Stops range ${s.minStops}–${s.maxStops}`,
-    `Revenue range ${formatCurrency(s.minRevenue)}–${formatCurrency(s.maxRevenue)}`,
-    `Avg stops ${formatNumber(s.avgStops, 1)}`
-  ].join(' • ');
+  if (issueCount === 0) {
+    els.uploadStatusPill.classList.add('upload-status-good');
+    els.uploadStatusIcon.textContent = '✓';
+    els.uploadStatusText.textContent = `${(s.loadedRows || 0).toLocaleString()} loaded clean`;
+    return;
+  }
+
+  els.uploadStatusPill.classList.add('upload-status-bad');
+  els.uploadStatusIcon.textContent = '✕';
+  els.uploadStatusText.textContent = `${(s.loadedRows || 0).toLocaleString()} loaded • issues found`;
 }
 
 function rebuildMarkers() {
@@ -1403,6 +1397,7 @@ function optimizeRoutes() {
 
     applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`, repsBefore);
     state.optimizationSummary = buildOptimizationSummary();
+    updateLastActionWithOptimization(`Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
     refreshUI(false);
   } catch (err) {
     console.error('Optimize Routes failed:', err);
@@ -1428,6 +1423,18 @@ function buildOptimizationSummary() {
     maxRevenue: Math.max(...revenue),
     avgStops: rows.reduce((sum, r) => sum + r.stops, 0) / Math.max(1, rows.length)
   };
+}
+
+function updateLastActionWithOptimization(baseText) {
+  const s = state.optimizationSummary;
+  if (!s) {
+    updateLastAction(baseText);
+    return;
+  }
+
+  updateLastAction(
+    `${baseText} • Stops range ${s.minStops}-${s.maxStops} • Avg stops ${formatNumber(s.avgStops, 1)}`
+  );
 }
 
 function createAssignmentContext(targetRepNames, assignments) {
@@ -2166,6 +2173,7 @@ function buildRunSettingsExportRows() {
   return [
     { Setting: 'Export Timestamp', Value: new Date().toLocaleString() },
     { Setting: 'Loaded File Name', Value: state.loadedFileName || '' },
+    { Setting: 'Sheet Name', Value: state.currentSheetName || '' },
     { Setting: 'Target Rep Count', Value: els.repCountInput.value || '' },
     { Setting: 'Minimum Stops / Rep', Value: els.minStopsInput.value || '' },
     { Setting: 'Maximum Stops / Rep', Value: els.maxStopsInput.value || '' },
@@ -2177,7 +2185,7 @@ function buildRunSettingsExportRows() {
     { Setting: 'Duplicate IDs Adjusted', Value: s.duplicateCustomerIds || 0 },
     { Setting: 'Missing Current Rep', Value: s.missingCurrentRep || 0 },
     { Setting: 'Missing Assigned Rep', Value: s.missingAssignedRep || 0 },
-    { Setting: 'Optimization Summary', Value: o ? `${o.repCount} reps / ${o.movedCount} moved / stops ${o.minStops}-${o.maxStops}` : 'No optimization run' }
+    { Setting: 'Optimization Summary', Value: o ? `${o.repCount} reps / ${o.movedCount} moved / stops ${o.minStops}-${o.maxStops} / avg ${formatNumber(o.avgStops, 1)}` : 'No optimization run' }
   ];
 }
 
