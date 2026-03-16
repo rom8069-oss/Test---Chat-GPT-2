@@ -764,7 +764,6 @@ function updateUploadStatusFromSummary() {
     (s.skippedNoCoords || 0) +
     (s.duplicateCustomerIds || 0) +
     (s.missingCurrentRep || 0) +
-    (s.missingAssignedRep || 0) +
     ((s.unmappedFields || []).length ? 1 : 0);
 
   if ((s.loadedRows || 0) === 0) {
@@ -781,7 +780,6 @@ function updateUploadStatusFromSummary() {
   if (s.skippedNoCoords) parts.push(`${s.skippedNoCoords} skipped`);
   if (s.duplicateCustomerIds) parts.push(`${s.duplicateCustomerIds} duplicate ID${s.duplicateCustomerIds === 1 ? '' : 's'}`);
   if (s.missingCurrentRep) parts.push(`${s.missingCurrentRep} blank current rep`);
-  if (s.missingAssignedRep) parts.push(`${s.missingAssignedRep} blank assigned rep`);
   if (s.unmappedFields?.length) parts.push('unmapped fields');
 
   setUploadStatus('warning', `${(s.loadedRows || 0).toLocaleString()} loaded • ${parts.join(' • ')}`);
