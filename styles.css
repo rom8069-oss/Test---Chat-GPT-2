@@ -176,7 +176,7 @@ input[type="file"]{ display:none; }
   border-color:#bfe8d8;
 }
 
-.upload-status-warn{
+.upload-status-warning{
   background:var(--yellow-soft);
   color:var(--yellow);
   border-color:var(--yellow-border);
