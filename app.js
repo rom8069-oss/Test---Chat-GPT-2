@@ -112,7 +112,7 @@ function bindElements() {
     'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
     'assign-rep-select','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode',
     'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count',
-    'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly',
+    'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly','global-avg-weekly-per-rep',
     'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
     'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
@@ -1328,6 +1328,8 @@ function renderSummary() {
   const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts) * 100 : 0;
   const totalPlanned4W = state.accounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
   const avgWeekly = totalPlanned4W / 4;
+  const repCount = Math.max(1, getAllAssignedReps().length);
+  const avgWeeklyPerRep = avgWeekly / repCount;
 
   els.globalAccounts.textContent = totalAccounts.toLocaleString();
   els.globalRevenue.textContent = formatCurrency(totalRevenue);
@@ -1335,6 +1337,7 @@ function renderSummary() {
   els.globalMoved.textContent = movedCount.toLocaleString();
   els.globalUnchanged.textContent = `${unchangedPct.toFixed(1)}%`;
   els.globalAvgWeekly.textContent = formatNumber(avgWeekly, 1);
+  els.globalAvgWeeklyPerRep.textContent = formatNumber(avgWeeklyPerRep, 1);
 }
 
 function handleDrawCreated(event) {
@@ -1565,6 +1568,11 @@ function optimizeRoutes() {
       return;
     }
 
+    if (Math.ceil(totalAccounts / targetCount) > maxStops) {
+      showToast(`Maximum stops too low. ${targetCount} reps cannot cover ${totalAccounts} accounts with a max of ${maxStops} per rep.`);
+      return;
+    }
+
     if (movableCount === 0) {
       showToast('All accounts are protected. Nothing can be optimized.');
       return;
@@ -1579,11 +1587,6 @@ function optimizeRoutes() {
     const currentReps = getAllAssignedReps();
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
     const adjacency = state.neighborMap;
-
-    if (maxStops < Math.ceil(totalAccounts / targetRepNames.length) * 0.35) {
-      showToast('Maximum stops looks very low for the selected rep count. Increase it and try again.');
-      return;
-    }
 
     targetRepNames.forEach(rep => ensureRepColor(rep));
 
@@ -1616,6 +1619,9 @@ function optimizeRoutes() {
         for (const rep of targetRepNames) {
           const centroid = centroids.get(rep);
           const repStat = repStats.get(rep);
+
+          if (repStat.stops >= maxStops) continue;
+
           const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
 
           const compactnessScore = dist * (1.08 + geographyWeight * 1.15);
@@ -1624,21 +1630,39 @@ function optimizeRoutes() {
 
           let balancePenalty = 0;
           if (balanceMode === 'stops') {
-            balancePenalty = Math.max(0, repStat.stops - maxStops) * 0.7 + repStat.stops * 0.007;
+            balancePenalty = repStat.stops * 0.04;
           } else if (balanceMode === 'revenue') {
             balancePenalty = repStat.revenue * 0.0000013;
           } else {
-            balancePenalty = repStat.stops * 0.0055 + repStat.revenue * 0.00000065;
+            balancePenalty = repStat.stops * 0.028 + repStat.revenue * 0.00000065;
           }
 
+          const underMinBoost = repStat.stops < minStops ? -2.2 : 0;
           const localPenalty = localDominancePenalty(account, rep, assignments, adjacency);
-          const maxStopsPenalty = repStat.stops >= maxStops ? 8 : 0;
-          const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + maxStopsPenalty;
+
+          const score =
+            compactnessScore +
+            continuityPenalty +
+            existingPenalty +
+            balancePenalty +
+            localPenalty +
+            underMinBoost;
 
           if (score < bestScore) {
             bestScore = score;
             bestRep = rep;
           }
+        }
+
+        if (!bestRep) {
+          bestRep = targetRepNames
+            .slice()
+            .sort((a, b) => {
+              const ac = assignmentCtx.count(a);
+              const bc = assignmentCtx.count(b);
+              if (ac !== bc) return ac - bc;
+              return (assignmentCtx.revenue(a) || 0) - (assignmentCtx.revenue(b) || 0);
+            })[0];
         }
 
         assignments.set(account._id, bestRep);
@@ -1653,11 +1677,22 @@ function optimizeRoutes() {
 
     enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx);
     runEnclaveCleanupFast(assignments, targetRepNames, minStops, adjacency, assignmentCtx);
     runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacency, assignmentCtx);
     enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+
+    const finalViolations = targetRepNames.filter(rep => {
+      const count = assignmentCtx.count(rep);
+      return count < minStops || count > maxStops;
+    });
+
+    if (finalViolations.length) {
+      showToast('Optimizer could not fully satisfy the stop limits with the current constraints. Try adjusting rep count or stop limits.');
+    }
 
     const changes = [];
     const repsBefore = getAllAssignedReps();
@@ -2154,6 +2189,103 @@ function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops
     }
 
     if (!movedThisPass) break;
+  }
+}
+
+function rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx) {
+  let moved = true;
+  let safety = 0;
+
+  while (moved && safety < 2000) {
+    safety += 1;
+    moved = false;
+
+    const underfilled = targetRepNames
+      .filter(rep => assignmentCtx.count(rep) < minStops)
+      .sort((a, b) => assignmentCtx.count(a) - assignmentCtx.count(b));
+
+    const overfilled = targetRepNames
+      .filter(rep => assignmentCtx.count(rep) > maxStops)
+      .sort((a, b) => assignmentCtx.count(b) - assignmentCtx.count(a));
+
+    if (!underfilled.length && !overfilled.length) break;
+
+    for (const needyRep of underfilled) {
+      let bestMove = null;
+      const needyCentroid = assignmentCtx.centroid(needyRep);
+
+      const donorReps = targetRepNames
+        .filter(rep => rep !== needyRep && assignmentCtx.count(rep) > minStops)
+        .sort((a, b) => assignmentCtx.count(b) - assignmentCtx.count(a));
+
+      for (const donorRep of donorReps) {
+        const donorIds = assignmentCtx.membersArray(donorRep);
+
+        for (const accountId of donorIds) {
+          const account = state.accountById.get(accountId);
+          if (!account || account.protected) continue;
+          if (assignmentCtx.count(donorRep) <= minStops) continue;
+          if (assignmentCtx.count(needyRep) >= maxStops) continue;
+
+          const score =
+            squaredDistance(account.latitude, account.longitude, needyCentroid.lat, needyCentroid.lng) +
+            (account.currentRep === needyRep ? -0.15 : 0) +
+            (account.currentRep === donorRep ? 0.15 : 0);
+
+          if (!bestMove || score < bestMove.score) {
+            bestMove = {
+              account,
+              from: donorRep,
+              to: needyRep,
+              score
+            };
+          }
+        }
+      }
+
+      if (bestMove) {
+        if (moveAssignmentFast(assignments, assignmentCtx, bestMove.account, bestMove.to)) {
+          moved = true;
+        }
+      }
+    }
+
+    for (const donorRep of overfilled) {
+      let bestMove = null;
+
+      const donorIds = assignmentCtx.membersArray(donorRep);
+      for (const accountId of donorIds) {
+        const account = state.accountById.get(accountId);
+        if (!account || account.protected) continue;
+        if (assignmentCtx.count(donorRep) <= maxStops) continue;
+
+        for (const targetRep of targetRepNames) {
+          if (targetRep === donorRep) continue;
+          if (assignmentCtx.count(targetRep) >= maxStops) continue;
+
+          const targetCentroid = assignmentCtx.centroid(targetRep);
+          const score =
+            squaredDistance(account.latitude, account.longitude, targetCentroid.lat, targetCentroid.lng) +
+            (assignmentCtx.count(targetRep) < minStops ? -2.5 : 0) +
+            (account.currentRep === targetRep ? -0.15 : 0);
+
+          if (!bestMove || score < bestMove.score) {
+            bestMove = {
+              account,
+              from: donorRep,
+              to: targetRep,
+              score
+            };
+          }
+        }
+      }
+
+      if (bestMove) {
+        if (moveAssignmentFast(assignments, assignmentCtx, bestMove.account, bestMove.to)) {
+          moved = true;
+        }
+      }
+    }
   }
 }
 
