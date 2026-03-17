@@ -506,7 +506,7 @@ function normalizeRows(rows) {
   let missingAssignedRep = 0;
 
   const recommendedFields = [
-  'latitude','longitude','customerId','customerName','currentRep','overallSales','rank','cadence4w','protected'
+  'latitude','longitude','customerId','customerName','currentRep','overallSales','rank','protected'
 ];
 
   const unmappedFields = recommendedFields.filter(key => !headerMap[key]);
