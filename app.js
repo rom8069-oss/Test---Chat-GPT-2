@@ -31,6 +31,7 @@ const state = {
   darkLayer: null,
   markerLayer: null,
   territoryLayer: null,
+  territoryLabelLayer: null,
   drawLayer: null,
   drawControl: null,
   workbook: null,
@@ -180,6 +181,7 @@ function bindEvents() {
     if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
     if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden) positionUploadStatusPanel();
     if (state.map) state.map.invalidateSize();
+    refreshTerritories();
   });
 
   window.addEventListener('scroll', () => {
@@ -212,6 +214,7 @@ function initMap() {
 
   state.markerLayer = L.layerGroup().addTo(state.map);
   state.territoryLayer = L.layerGroup().addTo(state.map);
+  state.territoryLabelLayer = L.layerGroup().addTo(state.map);
   state.drawLayer = new L.FeatureGroup().addTo(state.map);
 
   state.drawControl = new L.Control.Draw({
@@ -243,6 +246,8 @@ function initMap() {
     clearSelection();
     showToast('Selection cleared.');
   });
+  state.map.on('zoomend', refreshTerritories);
+  state.map.on('moveend', refreshTerritories);
 }
 
 function initMultiFilters() {
@@ -2134,10 +2139,14 @@ function buildFullRepStats(reps) {
 }
 
 function refreshTerritories() {
-  state.territoryLayer.clearLayers();
-  if (!els.showTerritoryCheckbox.checked || !state.accounts.length) return;
+  if (state.territoryLayer) state.territoryLayer.clearLayers();
+  if (state.territoryLabelLayer) state.territoryLabelLayer.clearLayers();
+  if (!els.showTerritoryCheckbox.checked || !state.accounts.length || !state.map) return;
 
   const reps = getAllAssignedReps().filter(rep => state.filters.rep.has(rep));
+  const zoom = state.map.getZoom();
+  const allowAllLabels = zoom >= 9;
+  const allowFocusedOnly = !!state.repFocus && zoom >= 7;
 
   reps.forEach(rep => {
     const members = state.accounts.filter(a => a.assignedRep === rep);
@@ -2167,7 +2176,64 @@ function refreshTerritories() {
     });
 
     poly.addTo(state.territoryLayer);
+
+    const shouldLabel = allowAllLabels || (allowFocusedOnly && isFocusedRep);
+    if (!shouldLabel) return;
+
+    if (!territoryHasEnoughScreenRoom(coords, isFocusedRep)) return;
+
+    const centroid = getHullLabelLatLng(hull, coords);
+    if (!centroid) return;
+
+    const labelHtml = `
+      <div class="territory-label-inner ${isFocusedRep ? 'territory-label-focused' : ''}">
+        <div class="territory-label-name">${escapeHtml(rep)}</div>
+      </div>
+    `;
+
+    const marker = L.marker(centroid, {
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: isFocusedRep ? 800 : 500,
+      icon: L.divIcon({
+        className: 'territory-label',
+        html: labelHtml,
+        iconSize: null
+      })
+    });
+
+    marker.addTo(state.territoryLabelLayer);
   });
+}
+
+function territoryHasEnoughScreenRoom(coords, isFocusedRep) {
+  if (!state.map || !coords?.length) return false;
+
+  const bounds = L.latLngBounds(coords);
+  const nw = state.map.latLngToContainerPoint(bounds.getNorthWest());
+  const se = state.map.latLngToContainerPoint(bounds.getSouthEast());
+
+  const width = Math.abs(se.x - nw.x);
+  const height = Math.abs(se.y - nw.y);
+
+  if (isFocusedRep) return width >= 70 && height >= 26;
+  return width >= 95 && height >= 34;
+}
+
+function getHullLabelLatLng(hull, coords) {
+  try {
+    const centroid = turf.centroid(hull);
+    const [lng, lat] = centroid.geometry.coordinates;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+  } catch (e) {}
+
+  try {
+    const bounds = L.latLngBounds(coords);
+    const center = bounds.getCenter();
+    return [center.lat, center.lng];
+  } catch (e) {}
+
+  return null;
 }
 
 function summarizeByRep() {
