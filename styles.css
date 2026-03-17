@@ -865,6 +865,39 @@ tbody tr.rep-row-active td{
   white-space:nowrap;
 }
 
+.territory-label{
+  background:transparent;
+  border:none;
+}
+
+.territory-label-inner{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:24px;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.9);
+  border:1px solid rgba(190,205,222,.95);
+  box-shadow:0 2px 8px rgba(35,67,106,.12);
+  color:var(--text);
+  pointer-events:none;
+  backdrop-filter:blur(2px);
+}
+
+.territory-label-focused{
+  background:rgba(255,255,255,.96);
+  border-color:#9cbcf3;
+  box-shadow:0 3px 10px rgba(48,103,214,.16);
+}
+
+.territory-label-name{
+  font-size:11px;
+  font-weight:800;
+  line-height:1;
+  white-space:nowrap;
+}
+
 .toast{
   position:fixed;
   left:50%;
