@@ -361,7 +361,7 @@ input[type="file"]{ display:none; }
 
 .stats{
   display:grid;
-  grid-template-columns:repeat(6,minmax(0,1fr));
+  grid-template-columns:repeat(7,minmax(0,1fr));
   gap:10px;
   flex:0 0 auto;
   position:relative;
@@ -937,7 +937,7 @@ tbody tr.rep-row-active td{
   body{ overflow:auto; }
   .app{ height:auto; min-height:100%; }
   .controls-grid{ grid-template-columns:repeat(6,minmax(0,1fr)); }
-  .stats{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
   .main{ grid-template-columns:1fr; }
   .side{ grid-template-rows:minmax(320px,360px) minmax(340px,1fr); }
 }
