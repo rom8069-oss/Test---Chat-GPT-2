@@ -115,7 +115,7 @@ function bindElements() {
     'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
     'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
-    'routes-table-wrap','moved-search-input','upload-status-pill','upload-status-icon','upload-status-text'
+    'routes-table-wrap','moved-search-input','upload-status-pill','upload-status-icon','upload-status-text','upload-status-panel','upload-status-body'
   ].forEach(id => {
     els[toCamel(id)] = document.getElementById(id);
   });
@@ -129,7 +129,12 @@ function bindEvents() {
   els.resetBtn.addEventListener('click', resetAssignments);
   els.optimizeBtn.addEventListener('click', optimizeRoutes);
   els.exportBtn.addEventListener('click', exportWorkbook);
-  els.clearSelectionBtn.addEventListener('click', clearSelection);
+  if (els.uploadStatusPill) {
+    els.uploadStatusPill.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleUploadStatusPanel();
+    });
+  }
 
   els.themeToggleCheck.addEventListener('change', toggleTheme);
   els.dimOthersCheckbox.addEventListener('change', refreshUI);
@@ -174,13 +179,18 @@ function bindEvents() {
     if (state.map) state.map.invalidateSize();
   });
 
-  window.addEventListener('scroll', () => {
+    window.addEventListener('scroll', () => {
     if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+    if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden) positionUploadStatusPanel();
   }, true);
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeAllMultiPanels();
+    if (e.key === 'Escape') {
+      closeAllMultiPanels();
+      closeUploadStatusPanel();
+    }
   });
+
 }
 
 function initMap() {
@@ -266,8 +276,16 @@ function initMultiFilters() {
 
 function handleDocumentClickForPanels(event) {
   const openMulti = document.querySelector('.multi.open');
-  if (!openMulti) return;
-  if (!openMulti.contains(event.target)) closeAllMultiPanels();
+  if (openMulti && !openMulti.contains(event.target)) closeAllMultiPanels();
+
+  if (
+    els.uploadStatusPanel &&
+    !els.uploadStatusPanel.hidden &&
+    !els.uploadStatusPanel.contains(event.target) &&
+    !els.uploadStatusPill.contains(event.target)
+  ) {
+    closeUploadStatusPanel();
+  }
 }
 
 function toggleMultiPanel(key) {
@@ -313,6 +331,150 @@ function positionMultiPanel(key) {
     top = Math.max(10, rect.top - desiredAbove - 6);
     maxHeight = desiredAbove;
   }
+
+  function toggleUploadStatusPanel() {
+  if (!els.uploadStatusPanel) return;
+
+  const isOpen = !els.uploadStatusPanel.hidden;
+  if (isOpen) {
+    closeUploadStatusPanel();
+    return;
+  }
+
+  els.uploadStatusBody.innerHTML = buildUploadStatusDetailsHtml();
+  els.uploadStatusPanel.hidden = false;
+  els.uploadStatusPill.setAttribute('aria-expanded', 'true');
+  positionUploadStatusPanel();
+}
+
+function closeUploadStatusPanel() {
+  if (!els.uploadStatusPanel) return;
+  els.uploadStatusPanel.hidden = true;
+  els.uploadStatusPill.setAttribute('aria-expanded', 'false');
+}
+
+function positionUploadStatusPanel() {
+  if (!els.uploadStatusPanel || els.uploadStatusPanel.hidden || !els.uploadStatusPill) return;
+
+  const rect = els.uploadStatusPill.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const width = Math.min(320, viewportWidth - 20);
+
+  let left = rect.left;
+  if (left + width > viewportWidth - 10) left = viewportWidth - width - 10;
+  if (left < 10) left = 10;
+
+  let top = rect.bottom + 8;
+  const estimatedHeight = Math.min(420, els.uploadStatusPanel.offsetHeight || 220);
+
+  if (top + estimatedHeight > viewportHeight - 10) {
+    top = Math.max(10, rect.top - estimatedHeight - 8);
+  }
+
+  els.uploadStatusPanel.style.width = `${width}px`;
+  els.uploadStatusPanel.style.left = `${left}px`;
+  els.uploadStatusPanel.style.top = `${top}px`;
+}
+
+function buildUploadStatusDetailsHtml() {
+  const status = state.uploadStatus || { level: 'neutral', text: 'No file loaded' };
+  const s = state.importSummary || {};
+  const warningFields = (s.unmappedFields || []).filter(key => isWarningField(key));
+  const infoFields = (s.unmappedFields || []).filter(key => !isWarningField(key));
+
+  if (status.level === 'neutral') {
+    return `
+      <div class="upload-diag-summary">No file loaded yet.</div>
+      <div class="upload-diag-empty">Upload an Excel or CSV file to view import diagnostics.</div>
+    `;
+  }
+
+  if (status.level === 'bad' && !s.loadedRows) {
+    return `
+      <div class="upload-diag-summary">${escapeHtml(status.text || 'Import failed.')}</div>
+      <div class="upload-diag-empty">No valid account rows were loaded.</div>
+    `;
+  }
+
+  const warnings = [];
+  if (s.skippedNoCoords) warnings.push(`${s.skippedNoCoords.toLocaleString()} row(s) skipped for missing latitude/longitude`);
+  if (s.duplicateCustomerIds) warnings.push(`${s.duplicateCustomerIds.toLocaleString()} duplicate customer ID(s) adjusted`);
+  if (s.missingCurrentRep) warnings.push(`${s.missingCurrentRep.toLocaleString()} row(s) missing current rep`);
+  if (warningFields.length) warnings.push(`Unmapped warning field(s): ${warningFields.map(prettyFieldName).join(', ')}`);
+
+  const info = [];
+  if (s.missingAssignedRep) info.push(`${s.missingAssignedRep.toLocaleString()} row(s) had blank assigned rep and defaulted from current rep`);
+  if (infoFields.length) info.push(`Optional unmapped field(s): ${infoFields.map(prettyFieldName).join(', ')}`);
+  if (!headerMapped('cadence4w')) info.push('Cadence 4W not mapped; cadence defaults from rank');
+
+  return `
+    <div class="upload-diag-summary">${escapeHtml(status.text || '')}</div>
+
+    <div class="upload-diag-grid">
+      <div class="upload-diag-label">Source rows</div>
+      <div class="upload-diag-value">${Number(s.sourceRows || 0).toLocaleString()}</div>
+
+      <div class="upload-diag-label">Loaded rows</div>
+      <div class="upload-diag-value">${Number(s.loadedRows || 0).toLocaleString()}</div>
+
+      <div class="upload-diag-label">Skipped rows</div>
+      <div class="upload-diag-value">${Number(s.skippedNoCoords || 0).toLocaleString()}</div>
+
+      <div class="upload-diag-label">Duplicate IDs adjusted</div>
+      <div class="upload-diag-value">${Number(s.duplicateCustomerIds || 0).toLocaleString()}</div>
+
+      <div class="upload-diag-label">Blank current rep</div>
+      <div class="upload-diag-value">${Number(s.missingCurrentRep || 0).toLocaleString()}</div>
+
+      <div class="upload-diag-label">Blank assigned rep</div>
+      <div class="upload-diag-value">${Number(s.missingAssignedRep || 0).toLocaleString()}</div>
+    </div>
+
+    <div class="upload-diag-section">
+      <div class="upload-diag-label">Warnings</div>
+      ${
+        warnings.length
+          ? `<ul class="upload-diag-list">${warnings.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`
+          : `<div class="upload-diag-empty">No actionable warnings.</div>`
+      }
+    </div>
+
+    <div class="upload-diag-section">
+      <div class="upload-diag-label">Info</div>
+      ${
+        info.length
+          ? `<ul class="upload-diag-list">${info.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`
+          : `<div class="upload-diag-empty">No additional notes.</div>`
+      }
+    </div>
+  `;
+}
+
+function isWarningField(key) {
+  return ['latitude','longitude','customerId','customerName','currentRep','overallSales','rank','protected'].includes(key);
+}
+
+function prettyFieldName(key) {
+  const map = {
+    latitude: 'Latitude',
+    longitude: 'Longitude',
+    customerId: 'Customer ID',
+    customerName: 'Customer Name',
+    currentRep: 'Current Rep',
+    assignedRep: 'Assigned Rep',
+    overallSales: 'Overall Sales',
+    rank: 'Rank',
+    cadence4w: 'Cadence 4W',
+    protected: 'Protected'
+  };
+  return map[key] || key;
+}
+
+function headerMapped(key) {
+  const fields = state.importSummary?.unmappedFields || [];
+  return !fields.includes(key);
+}
 
   panel.style.width = `${width}px`;
   panel.style.maxHeight = `${maxHeight}px`;
@@ -406,6 +568,7 @@ function loadSelectedSheet() {
 
   state.importSummary = normalizedResult.summary;
   state.optimizationSummary = null;
+  closeUploadStatusPanel();
 
   if (!normalized.length) {
     state.accounts = [];
@@ -799,26 +962,24 @@ function renderUploadStatus() {
     els.uploadStatusPill.classList.add('upload-status-good');
     els.uploadStatusIcon.textContent = '✓';
     els.uploadStatusText.textContent = status.text;
-    return;
-  }
-
-  if (status.level === 'warning') {
+  } else if (status.level === 'warning') {
     els.uploadStatusPill.classList.add('upload-status-warning');
     els.uploadStatusIcon.textContent = '!';
     els.uploadStatusText.textContent = status.text;
-    return;
-  }
-
-  if (status.level === 'bad') {
+  } else if (status.level === 'bad') {
     els.uploadStatusPill.classList.add('upload-status-bad');
     els.uploadStatusIcon.textContent = '✕';
     els.uploadStatusText.textContent = status.text;
-    return;
+  } else {
+    els.uploadStatusPill.classList.add('upload-status-neutral');
+    els.uploadStatusIcon.textContent = '•';
+    els.uploadStatusText.textContent = status.text || 'No file loaded';
   }
 
-  els.uploadStatusPill.classList.add('upload-status-neutral');
-  els.uploadStatusIcon.textContent = '•';
-  els.uploadStatusText.textContent = status.text || 'No file loaded';
+  if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden) {
+    els.uploadStatusBody.innerHTML = buildUploadStatusDetailsHtml();
+    positionUploadStatusPanel();
+  }
 }
 
 function rebuildMarkers() {
