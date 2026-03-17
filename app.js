@@ -2152,37 +2152,23 @@ function refreshTerritories() {
     const members = state.accounts.filter(a => a.assignedRep === rep);
     if (members.length < 3) return;
 
-    const points = members.map(a => [a.longitude, a.latitude]);
-    const featureCollection = turf.featureCollection(points.map(p => turf.point(p)));
+    const territoryFeature = buildTerritoryFeatureForRep(rep, members);
+    if (!territoryFeature) return;
 
-    let hull = null;
-    try {
-      hull = turf.convex(featureCollection);
-    } catch (e) {
-      hull = null;
-    }
-
-    if (!hull) return;
-
-    const coords = hull.geometry.coordinates[0].map(([lng, lat]) => [lat, lng]);
     const isFocusedRep = state.repFocus && rep === state.repFocus;
-
-    const poly = L.polygon(coords, {
-      color: getRepColor(rep),
-      weight: isFocusedRep ? 3 : 2,
-      fillOpacity: isFocusedRep ? 0.1 : 0.05,
-      opacity: state.repFocus ? (isFocusedRep ? 0.95 : 0.18) : 0.75,
-      interactive: false
-    });
-
-    poly.addTo(state.territoryLayer);
+    addTerritoryFeatureToMap(territoryFeature, rep, isFocusedRep);
 
     const shouldLabel = allowAllLabels || (allowFocusedOnly && isFocusedRep);
     if (!shouldLabel) return;
 
-    if (!territoryHasEnoughScreenRoom(coords, isFocusedRep)) return;
+    const rings = getFeatureOuterRings(territoryFeature);
+    if (!rings.length) return;
 
-    const centroid = getHullLabelLatLng(hull, coords);
+    const labelRing = pickBestLabelRing(rings);
+    if (!labelRing) return;
+    if (!territoryHasEnoughScreenRoom(labelRing, isFocusedRep)) return;
+
+    const centroid = getHullLabelLatLng(territoryFeature, labelRing);
     if (!centroid) return;
 
     const labelHtml = `
@@ -2206,6 +2192,150 @@ function refreshTerritories() {
   });
 }
 
+function buildTerritoryFeatureForRep(rep, members) {
+  const trimmedMembers = trimTerritoryOutliers(members);
+  const points = trimmedMembers.map(a => [a.longitude, a.latitude]);
+  if (points.length < 3) return null;
+
+  const featureCollection = turf.featureCollection(points.map(p => turf.point(p)));
+
+  let feature = null;
+
+  try {
+    feature = turf.concave(featureCollection, {
+      maxEdge: getConcaveMaxEdgeKm(trimmedMembers),
+      units: 'kilometers'
+    });
+  } catch (e) {
+    feature = null;
+  }
+
+  if (!isUsableTerritoryFeature(feature)) {
+    try {
+      feature = turf.convex(featureCollection);
+    } catch (e) {
+      feature = null;
+    }
+  }
+
+  if (!isUsableTerritoryFeature(feature)) return null;
+  return feature;
+}
+
+function trimTerritoryOutliers(members) {
+  if (!members || members.length <= 6) return members;
+
+  const centroid = members.reduce((acc, a) => {
+    acc.lat += a.latitude;
+    acc.lng += a.longitude;
+    return acc;
+  }, { lat: 0, lng: 0 });
+
+  centroid.lat /= members.length;
+  centroid.lng /= members.length;
+
+  const distances = members.map(account => ({
+    account,
+    d: squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng)
+  })).sort((a, b) => a.d - b.d);
+
+  const maxTrimCount = Math.min(2, Math.floor(members.length * 0.08));
+  if (maxTrimCount <= 0) return members;
+
+  const keepCount = Math.max(4, distances.length - maxTrimCount);
+  const kept = distances.slice(0, keepCount);
+
+  const keptMax = kept[kept.length - 1]?.d || 0;
+  const trimmed = distances.slice(keepCount);
+
+  if (!trimmed.length) return members;
+
+  const shouldTrim = trimmed.every(x => x.d > keptMax * 1.35);
+  return shouldTrim ? kept.map(x => x.account) : members;
+}
+
+function getConcaveMaxEdgeKm(members) {
+  if (!members || members.length < 2) return 20;
+
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+
+  members.forEach(a => {
+    if (a.latitude < minLat) minLat = a.latitude;
+    if (a.latitude > maxLat) maxLat = a.latitude;
+    if (a.longitude < minLng) minLng = a.longitude;
+    if (a.longitude > maxLng) maxLng = a.longitude;
+  });
+
+  const latKm = Math.abs(maxLat - minLat) * 111;
+  const avgLatRad = ((minLat + maxLat) / 2) * Math.PI / 180;
+  const lngKm = Math.abs(maxLng - minLng) * 111 * Math.max(0.25, Math.cos(avgLatRad));
+  const spanKm = Math.sqrt((latKm * latKm) + (lngKm * lngKm));
+
+  return Math.max(4, Math.min(28, spanKm * 0.42));
+}
+
+function isUsableTerritoryFeature(feature) {
+  if (!feature || !feature.geometry) return false;
+  return feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon';
+}
+
+function addTerritoryFeatureToMap(feature, rep, isFocusedRep) {
+  const color = getRepColor(rep);
+
+  const style = {
+    color,
+    weight: isFocusedRep ? 3 : 2,
+    fillOpacity: isFocusedRep ? 0.1 : 0.05,
+    opacity: state.repFocus ? (isFocusedRep ? 0.95 : 0.18) : 0.75,
+    interactive: false
+  };
+
+  L.geoJSON(feature, { style }).addTo(state.territoryLayer);
+}
+
+function getFeatureOuterRings(feature) {
+  if (!feature?.geometry) return [];
+
+  if (feature.geometry.type === 'Polygon') {
+    const outer = feature.geometry.coordinates?.[0];
+    return outer ? [outer.map(([lng, lat]) => [lat, lng])] : [];
+  }
+
+  if (feature.geometry.type === 'MultiPolygon') {
+    return feature.geometry.coordinates
+      .map(poly => poly?.[0] ? poly[0].map(([lng, lat]) => [lat, lng]) : null)
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function pickBestLabelRing(rings) {
+  if (!rings?.length) return null;
+  return [...rings].sort((a, b) => polygonRingAreaEstimate(b) - polygonRingAreaEstimate(a))[0] || null;
+}
+
+function polygonRingAreaEstimate(coords) {
+  if (!coords || coords.length < 3) return 0;
+
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+
+  coords.forEach(([lat, lng]) => {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  });
+
+  return Math.abs((maxLat - minLat) * (maxLng - minLng));
+}
+
 function territoryHasEnoughScreenRoom(coords, isFocusedRep) {
   if (!state.map || !coords?.length) return false;
 
@@ -2220,9 +2350,9 @@ function territoryHasEnoughScreenRoom(coords, isFocusedRep) {
   return width >= 95 && height >= 34;
 }
 
-function getHullLabelLatLng(hull, coords) {
+function getHullLabelLatLng(feature, coords) {
   try {
-    const centroid = turf.centroid(hull);
+    const centroid = turf.centroid(feature);
     const [lng, lat] = centroid.geometry.coordinates;
     if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
   } catch (e) {}
