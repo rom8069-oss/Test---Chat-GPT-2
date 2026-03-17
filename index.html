@@ -25,19 +25,28 @@
       <div class="topbar-actions">
         <label class="file-label" for="file-input">Upload Excel / CSV</label>
         <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
-        <div class="upload-status-wrap">
-  <button id="upload-status-pill" type="button" class="upload-status-pill upload-status-neutral" aria-expanded="false">
-    <span id="upload-status-icon" class="upload-status-icon">•</span>
-    <span id="upload-status-text" class="upload-status-text">No file loaded</span>
-  </button>
 
-  <div id="upload-status-panel" class="upload-status-panel" hidden>
-    <div class="upload-status-panel-head">
-      <div class="upload-status-panel-title">Import diagnostics</div>
+        <div class="upload-status-wrap">
+          <button id="upload-status-pill" type="button" class="upload-status-pill upload-status-neutral" aria-expanded="false">
+            <span id="upload-status-icon" class="upload-status-icon">•</span>
+            <span id="upload-status-text" class="upload-status-text">No file loaded</span>
+          </button>
+
+          <div id="upload-status-panel" class="upload-status-panel" hidden>
+            <div class="upload-status-panel-head">
+              <div class="upload-status-panel-title">Import diagnostics</div>
+            </div>
+            <div id="upload-status-body" class="upload-status-body"></div>
+          </div>
+        </div>
+
+        <select id="sheet-select" class="input" disabled></select>
+        <button id="load-sheet-btn" class="btn btn-subtle" disabled>Load Sheet</button>
+        <button id="undo-btn" class="btn btn-subtle" disabled>Undo</button>
+        <button id="reset-btn" class="btn btn-subtle" disabled>Reset All</button>
+        <button id="export-btn" class="btn btn-subtle" disabled>Export Excel</button>
+      </div>
     </div>
-    <div id="upload-status-body" class="upload-status-body"></div>
-  </div>
-</div>
 
     <div class="controls-card">
       <div class="controls-grid">
