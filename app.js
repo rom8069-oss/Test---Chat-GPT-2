@@ -129,6 +129,8 @@ function bindEvents() {
   els.resetBtn.addEventListener('click', resetAssignments);
   els.optimizeBtn.addEventListener('click', optimizeRoutes);
   els.exportBtn.addEventListener('click', exportWorkbook);
+  els.clearSelectionBtn.addEventListener('click', clearSelection);
+
   if (els.uploadStatusPill) {
     els.uploadStatusPill.addEventListener('click', e => {
       e.stopPropagation();
@@ -176,10 +178,11 @@ function bindEvents() {
 
   window.addEventListener('resize', () => {
     if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+    if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden) positionUploadStatusPanel();
     if (state.map) state.map.invalidateSize();
   });
 
-    window.addEventListener('scroll', () => {
+  window.addEventListener('scroll', () => {
     if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
     if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden) positionUploadStatusPanel();
   }, true);
@@ -190,7 +193,6 @@ function bindEvents() {
       closeUploadStatusPanel();
     }
   });
-
 }
 
 function initMap() {
@@ -332,7 +334,20 @@ function positionMultiPanel(key) {
     maxHeight = desiredAbove;
   }
 
-  function toggleUploadStatusPanel() {
+  panel.style.width = `${width}px`;
+  panel.style.maxHeight = `${maxHeight}px`;
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+
+  const list = panel.querySelector('.multi-list');
+  if (list) {
+    const searchRow = panel.querySelector('.multi-actions');
+    const searchHeight = searchRow ? searchRow.offsetHeight : 46;
+    list.style.maxHeight = `${Math.max(140, maxHeight - searchHeight - 8)}px`;
+  }
+}
+
+function toggleUploadStatusPanel() {
   if (!els.uploadStatusPanel) return;
 
   const isOpen = !els.uploadStatusPanel.hidden;
@@ -476,24 +491,12 @@ function headerMapped(key) {
   return !fields.includes(key);
 }
 
-  panel.style.width = `${width}px`;
-  panel.style.maxHeight = `${maxHeight}px`;
-  panel.style.left = `${left}px`;
-  panel.style.top = `${top}px`;
-
-  const list = panel.querySelector('.multi-list');
-  if (list) {
-    const searchRow = panel.querySelector('.multi-actions');
-    const searchHeight = searchRow ? searchRow.offsetHeight : 46;
-    list.style.maxHeight = `${Math.max(140, maxHeight - searchHeight - 8)}px`;
-  }
-}
-
 function onFileChosen(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
   state.loadedFileName = file.name.replace(/\.[^.]+$/, '') + '_updated.xlsx';
+  closeUploadStatusPanel();
   setUploadStatus('neutral', `Reading ${file.name}...`);
   renderUploadStatus();
 
@@ -669,14 +672,15 @@ function normalizeRows(rows) {
   let missingAssignedRep = 0;
 
   const recommendedFields = [
-  'latitude','longitude','customerId','customerName','currentRep','overallSales','rank','protected'
-];
+    'latitude','longitude','customerId','customerName','currentRep','overallSales','rank','protected'
+  ];
 
   const unmappedFields = recommendedFields.filter(key => !headerMap[key]);
 
   for (const row of rows) {
     const lat = toNumber(row[headerMap.latitude]);
     const lng = toNumber(row[headerMap.longitude]);
+
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       skippedNoCoords += 1;
       continue;
@@ -698,7 +702,7 @@ function normalizeRows(rows) {
     const rawAssignedRep = safeString(row[headerMap.assignedRep]);
 
     if (!rawCurrentRep) missingCurrentRep += 1;
-    if (!rawAssignedRep) missingAssignedRep += 1;
+    if (headerMap.assignedRep && !rawAssignedRep) missingAssignedRep += 1;
 
     const currentRep = rawCurrentRep || 'Unassigned';
     const assignedRep = rawAssignedRep || currentRep || 'Unassigned';
@@ -927,7 +931,7 @@ function updateUploadStatusFromSummary() {
     (s.skippedNoCoords || 0) +
     (s.duplicateCustomerIds || 0) +
     (s.missingCurrentRep || 0) +
-    ((s.unmappedFields || []).length ? 1 : 0);
+    ((s.unmappedFields || []).filter(key => isWarningField(key)).length ? 1 : 0);
 
   if ((s.loadedRows || 0) === 0) {
     setUploadStatus('bad', 'No valid rows found');
@@ -943,7 +947,7 @@ function updateUploadStatusFromSummary() {
   if (s.skippedNoCoords) parts.push(`${s.skippedNoCoords} skipped`);
   if (s.duplicateCustomerIds) parts.push(`${s.duplicateCustomerIds} duplicate ID${s.duplicateCustomerIds === 1 ? '' : 's'}`);
   if (s.missingCurrentRep) parts.push(`${s.missingCurrentRep} blank current rep`);
-  if (s.unmappedFields?.length) parts.push('unmapped fields');
+  if ((s.unmappedFields || []).filter(key => isWarningField(key)).length) parts.push('unmapped fields');
 
   setUploadStatus('warning', `${(s.loadedRows || 0).toLocaleString()} loaded • ${parts.join(' • ')}`);
 }
