@@ -996,14 +996,29 @@ function rebuildMarkers() {
   state.markerById.clear();
 
   for (const account of state.accounts) {
-    const marker = L.circleMarker([account.latitude, account.longitude], markerStyleForAccount(account))
-      .bindPopup(buildPopupHtml(account));
+    const marker = L.circleMarker(
+      [account.latitude, account.longitude],
+      markerStyleForAccount(account)
+    );
 
-    marker.on('click', () => toggleSelection(account._id, true));
+    marker.__accountId = account._id;
+    syncMarkerPopupContent(marker, account._id);
+
+    marker.on('click', () => {
+      const id = marker.__accountId;
+      syncMarkerPopupContent(marker, id);
+      toggleSelection(id, true);
+    });
+
+    marker.on('popupopen', () => {
+      syncMarkerPopupContent(marker, marker.__accountId);
+    });
 
     state.markerLayer.addLayer(marker);
     state.markerById.set(account._id, marker);
   }
+
+  syncMarkerZOrder();
 }
 
 function refreshMarkerStyles() {
@@ -1013,9 +1028,52 @@ function refreshMarkerStyles() {
 
     marker.setStyle(markerStyleForAccount(account));
     marker.setRadius(state.selection.has(account._id) ? 8 : (state.repFocus && account.assignedRep === state.repFocus ? 7 : 6));
+    syncMarkerPopupContent(marker, account._id);
+  }
 
-    const popup = marker.getPopup();
-    if (popup) popup.setContent(buildPopupHtml(account));
+  syncMarkerZOrder();
+}
+
+function syncMarkerPopupContent(marker, accountId) {
+  const account = state.accountById.get(accountId);
+  if (!marker || !account) return;
+
+  const popup = marker.getPopup();
+  const html = buildPopupHtml(account);
+
+  if (popup) {
+    popup.setContent(html);
+  } else {
+    marker.bindPopup(html);
+  }
+}
+
+function syncMarkerZOrder() {
+  if (!state.markerById.size) return;
+
+  for (const account of state.accounts) {
+    const marker = state.markerById.get(account._id);
+    if (!marker || typeof marker.bringToBack !== 'function') continue;
+
+    if (!state.selection.has(account._id) && !(state.repFocus && account.assignedRep === state.repFocus)) {
+      marker.bringToBack();
+    }
+  }
+
+  for (const account of state.accounts) {
+    const marker = state.markerById.get(account._id);
+    if (!marker || typeof marker.bringToFront !== 'function') continue;
+
+    if (state.repFocus && account.assignedRep === state.repFocus && !state.selection.has(account._id)) {
+      marker.bringToFront();
+    }
+  }
+
+  for (const id of state.selection) {
+    const marker = state.markerById.get(id);
+    if (marker && typeof marker.bringToFront === 'function') {
+      marker.bringToFront();
+    }
   }
 }
 
@@ -1328,6 +1386,7 @@ function zoomToAccount(id, openPopup = true) {
 
   if (openPopup) {
     setTimeout(() => {
+      syncMarkerPopupContent(marker, id);
       marker.openPopup();
     }, 120);
   }
