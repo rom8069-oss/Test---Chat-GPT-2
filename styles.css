@@ -139,6 +139,12 @@ button,input,select,textarea{
 
 input[type="file"]{ display:none; }
 
+.upload-status-wrap{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+}
+
 .upload-status-pill{
   height:34px;
   display:inline-flex;
@@ -152,6 +158,14 @@ input[type="file"]{ display:none; }
   background:#fff;
   color:var(--muted);
   white-space:nowrap;
+  cursor:pointer;
+  appearance:none;
+  -webkit-appearance:none;
+  box-shadow:none;
+}
+
+.upload-status-pill:hover{
+  filter:brightness(.995);
 }
 
 .upload-status-icon{
@@ -186,20 +200,6 @@ input[type="file"]{ display:none; }
   background:var(--red-soft);
   color:#bf3d3d;
   border-color:#f1c3c3;
-}
-
-.upload-status-wrap{
-  position:relative;
-  display:inline-flex;
-  align-items:center;
-}
-
-.upload-status-pill{
-  cursor:pointer;
-}
-
-.upload-status-pill:hover{
-  filter:brightness(.995);
 }
 
 .upload-status-panel{
@@ -281,7 +281,6 @@ input[type="file"]{ display:none; }
   font-size:12px;
   color:var(--muted);
 }
-
 
 .controls-card{
   background:var(--panel);
