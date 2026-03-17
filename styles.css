@@ -188,6 +188,101 @@ input[type="file"]{ display:none; }
   border-color:#f1c3c3;
 }
 
+.upload-status-wrap{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+}
+
+.upload-status-pill{
+  cursor:pointer;
+}
+
+.upload-status-pill:hover{
+  filter:brightness(.995);
+}
+
+.upload-status-panel{
+  position:fixed;
+  top:-9999px;
+  left:-9999px;
+  width:320px;
+  max-width:min(360px, calc(100vw - 20px));
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:14px;
+  box-shadow:0 16px 34px rgba(25,56,93,.18);
+  z-index:25000;
+  overflow:hidden;
+}
+
+.upload-status-panel-head{
+  padding:10px 12px 8px;
+  border-bottom:1px solid var(--border-soft);
+  background:#fbfdff;
+}
+
+.upload-status-panel-title{
+  font-size:13px;
+  font-weight:800;
+  color:var(--text);
+}
+
+.upload-status-body{
+  padding:10px 12px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.upload-diag-summary{
+  font-size:13px;
+  font-weight:700;
+  color:var(--text);
+}
+
+.upload-diag-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:6px 10px;
+  align-items:center;
+}
+
+.upload-diag-label{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.upload-diag-value{
+  font-size:12px;
+  font-weight:800;
+  color:var(--text);
+  text-align:right;
+}
+
+.upload-diag-section{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.upload-diag-list{
+  margin:0;
+  padding-left:16px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.upload-diag-list li{
+  margin:0 0 4px;
+}
+
+.upload-diag-empty{
+  font-size:12px;
+  color:var(--muted);
+}
+
+
 .controls-card{
   background:var(--panel);
   border:1px solid var(--border);
