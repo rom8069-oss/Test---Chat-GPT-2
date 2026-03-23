@@ -1027,7 +1027,7 @@ function refreshMarkerStyles() {
     if (!marker) continue;
 
     marker.setStyle(markerStyleForAccount(account));
-    marker.setRadius(state.selection.has(account._id) ? 7 : (state.repFocus && account.assignedRep === state.repFocus ? 6 : 5));
+    marker.setRadius(state.selection.has(account._id) ? 5 : (state.repFocus && account.assignedRep === state.repFocus ? 4.5 : 3.5));
     syncMarkerPopupContent(marker, account._id);
   }
 
@@ -1099,9 +1099,9 @@ function markerStyleForAccount(account) {
   }
 
   return {
-    radius: isSelected ? 7 : (isFocusedRep ? 6 : 5),
+    radius: isSelected ? 5 : (isFocusedRep ? 4.5 : 3.5),
     color: isSelected ? '#1e293b' : color,
-    weight: isSelected ? 2.5 : (isFocusedRep ? 2 : 1),
+    weight: isSelected ? 2 : (isFocusedRep ? 1.5 : 0.8),
     opacity,
     fillColor: color,
     fillOpacity
