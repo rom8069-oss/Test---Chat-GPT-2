@@ -5,11 +5,12 @@ const COLOR_PALETTE = [
 ];
 
 const COLUMN_ALIASES = {
-  latitude: ['latitude','lat','y','geo_lat','customer_latitude'],
-  longitude: ['longitude','lng','lon','x','geo_longitude','customer_longitude'],
+  latitude: ['latitude','lat','geo_lat','customer_latitude'],
+  longitude: ['longitude','lng','lon','geo_longitude','customer_longitude'],
   customerId: ['cust id','customer id','customerid','id','account id','acct id'],
   customerName: ['company','customer name','name','account name','cust name'],
   address: ['address','street address','addr','full address'],
+  city: ['city','town','municipality','locality'],
   zip: ['zip','zip code','zipcode','postal code'],
   chain: ['chain','chain name'],
   segment: ['segment','customer segment'],
@@ -639,6 +640,26 @@ function normalizeRows(rows) {
     };
   }
 
+  function normalizeCoordinates(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const latLooksValid = lat >= -90 && lat <= 90;
+  const lngLooksValid = lng >= -180 && lng <= 180;
+
+  if (latLooksValid && lngLooksValid) {
+    return { latitude: lat, longitude: lng };
+  }
+
+  const swappedLatLooksValid = lng >= -90 && lng <= 90;
+  const swappedLngLooksValid = lat >= -180 && lat <= 180;
+
+  if (swappedLatLooksValid && swappedLngLooksValid) {
+    return { latitude: lng, longitude: lat };
+  }
+
+  return null;
+}
+  
   const mapped = [];
   const headers = Object.keys(rows[0] || {});
   const headerMap = {};
@@ -647,6 +668,7 @@ function normalizeRows(rows) {
 
   Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
     let match = null;
+    const exactAliases = new Set(aliases.map(cleanHeader));
 
     for (const alias of aliases) {
       const cleaned = cleanHeader(alias);
@@ -655,16 +677,38 @@ function normalizeRows(rows) {
         match = cleanedHeaderLookup.get(cleaned);
         break;
       }
+    }
 
-      for (const original of headers) {
-        const c = cleanHeader(original);
-        if (c === cleaned || c.includes(cleaned) || cleaned.includes(c)) {
-          match = original;
-          break;
+    if (!match) {
+      for (const alias of aliases) {
+        const cleaned = cleanHeader(alias);
+
+        for (const original of headers) {
+          const c = cleanHeader(original);
+          if (c === cleaned) {
+            match = original;
+            break;
+          }
         }
-      }
 
-      if (match) break;
+        if (match) break;
+      }
+    }
+
+    if (!match) {
+      for (const alias of aliases) {
+        const cleaned = cleanHeader(alias);
+
+        for (const original of headers) {
+          const c = cleanHeader(original);
+          if (!exactAliases.has(c) && (c.includes(cleaned) || cleaned.includes(c))) {
+            match = original;
+            break;
+          }
+        }
+
+        if (match) break;
+      }
     }
 
     headerMap[key] = match;
@@ -683,10 +727,12 @@ function normalizeRows(rows) {
   const unmappedFields = recommendedFields.filter(key => !headerMap[key]);
 
   for (const row of rows) {
-    const lat = toNumber(row[headerMap.latitude]);
-    const lng = toNumber(row[headerMap.longitude]);
+    const coords = normalizeCoordinates(
+      toNumber(row[headerMap.latitude]),
+      toNumber(row[headerMap.longitude])
+    );
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    if (!coords) {
       skippedNoCoords += 1;
       continue;
     }
@@ -719,11 +765,12 @@ function normalizeRows(rows) {
 
     mapped.push({
       _id: uniqueCustomerId,
-      latitude: lat,
-      longitude: lng,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
       customerId: rawCustomerId,
       customerName,
       address: safeString(row[headerMap.address]),
+      city: safeString(row[headerMap.city]),
       zip: safeString(row[headerMap.zip]),
       chain: safeString(row[headerMap.chain]) || 'Independent',
       segment: safeString(row[headerMap.segment]) || 'Unknown',
@@ -752,6 +799,7 @@ function normalizeRows(rows) {
     }
   };
 }
+
 
 function seedFiltersFromData() {
   state.filters.rep = new Set(getAllAssignedReps());
@@ -1128,8 +1176,10 @@ function passesFilters(account) {
   return repPass && rankPass && chainPass && segmentPass && premisePass && protectedPass && movedPass;
 }
 
-function buildPopupHtml(account) {
-  const addressLine = [account.address, account.zip].filter(Boolean).join(' ');
+const addressLine = [
+  account.city,
+  [account.address, account.zip].filter(Boolean).join(' ')
+].filter(Boolean).join(' - ');
 
   return `
     <div style="min-width:250px;">
