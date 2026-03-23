@@ -639,26 +639,6 @@ function normalizeRows(rows) {
       }
     };
   }
-
-  function normalizeCoordinates(lat, lng) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-  const latLooksValid = lat >= -90 && lat <= 90;
-  const lngLooksValid = lng >= -180 && lng <= 180;
-
-  if (latLooksValid && lngLooksValid) {
-    return { latitude: lat, longitude: lng };
-  }
-
-  const swappedLatLooksValid = lng >= -90 && lng <= 90;
-  const swappedLngLooksValid = lat >= -180 && lat <= 180;
-
-  if (swappedLatLooksValid && swappedLngLooksValid) {
-    return { latitude: lng, longitude: lat };
-  }
-
-  return null;
-}
   
   const mapped = [];
   const headers = Object.keys(rows[0] || {});
@@ -800,6 +780,25 @@ function normalizeRows(rows) {
   };
 }
 
+function normalizeCoordinates(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const latLooksValid = lat >= -90 && lat <= 90;
+  const lngLooksValid = lng >= -180 && lng <= 180;
+
+  if (latLooksValid && lngLooksValid) {
+    return { latitude: lat, longitude: lng };
+  }
+
+  const swappedLatLooksValid = lng >= -90 && lng <= 90;
+  const swappedLngLooksValid = lat >= -180 && lat <= 180;
+
+  if (swappedLatLooksValid && swappedLngLooksValid) {
+    return { latitude: lng, longitude: lat };
+  }
+
+  return null;
+}
 
 function seedFiltersFromData() {
   state.filters.rep = new Set(getAllAssignedReps());
