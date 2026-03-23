@@ -1175,15 +1175,22 @@ function passesFilters(account) {
   return repPass && rankPass && chainPass && segmentPass && premisePass && protectedPass && movedPass;
 }
 
-const addressLine = [
-  account.city,
-  [account.address, account.zip].filter(Boolean).join(' ')
-].filter(Boolean).join(' - ');
+function buildPopupHtml(account) {
+  const addressLine = [
+    account.city,
+    [account.address, account.zip].filter(Boolean).join(' ')
+  ].filter(Boolean).join(' - ');
 
   return `
     <div style="min-width:250px;">
-      <div style="font-size:15px;font-weight:800;">${escapeHtml(account.customerName || account.customerId)}</div>
-      <div style="margin-top:5px;color:#5d7286;font-size:12px;">${escapeHtml(addressLine)}</div>
+      <div style="font-size:15px;font-weight:800;">
+        ${escapeHtml(account.customerName || account.customerId)}
+      </div>
+
+      <div style="margin-top:5px;color:#5d7286;font-size:12px;">
+        ${escapeHtml(addressLine)}
+      </div>
+
       <div style="margin-top:8px;"><strong>Premise:</strong> ${escapeHtml(account.premise)}</div>
       <div><strong>Segment:</strong> ${escapeHtml(account.segment)}</div>
       <div><strong>Chain:</strong> ${escapeHtml(account.chain)}</div>
