@@ -23,60 +23,134 @@
       </div>
 
       <div class="topbar-actions">
-        <label class="file-label btn btn-subtle">
-          Load Excel / CSV
-          <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
-        </label>
-
-        <select id="sheet-select" class="input" disabled>
-          <option value="">Sheet</option>
-        </select>
-
-        <button id="load-sheet-btn" class="btn btn-subtle" disabled>Load Sheet</button>
+        <label class="file-label" for="file-input">Upload Excel / CSV</label>
+        <input id="file-input" type="file" accept=".xlsx,.xls,.csv" />
 
         <div class="upload-status-wrap">
-          <button id="upload-status-pill" class="upload-status-pill upload-status-neutral" type="button">
-            <span id="upload-status-icon" class="upload-status-icon">i</span>
-            <span id="upload-status-text">No file loaded</span>
+          <button id="upload-status-pill" type="button" class="upload-status-pill upload-status-neutral" aria-expanded="false">
+            <span id="upload-status-icon" class="upload-status-icon">•</span>
+            <span id="upload-status-text" class="upload-status-text">No file loaded</span>
           </button>
 
           <div id="upload-status-panel" class="upload-status-panel" hidden>
             <div class="upload-status-panel-head">
-              <div class="upload-status-panel-title">Upload diagnostics</div>
+              <div class="upload-status-panel-title">Import diagnostics</div>
             </div>
             <div id="upload-status-body" class="upload-status-body"></div>
           </div>
         </div>
 
+        <select id="sheet-select" class="input" disabled></select>
+        <button id="load-sheet-btn" class="btn btn-subtle" disabled>Load Sheet</button>
         <button id="undo-btn" class="btn btn-subtle" disabled>Undo</button>
-        <button id="reset-btn" class="btn btn-subtle" disabled>Reset</button>
-        <button id="export-btn" class="btn btn-primary" disabled>Export Excel</button>
+        <button id="reset-btn" class="btn btn-subtle" disabled>Reset All</button>
+        <button id="export-btn" class="btn btn-subtle" disabled>Export Excel</button>
       </div>
     </div>
 
     <div class="controls-card">
       <div class="controls-grid">
-        <div class="field grow">
-          <label>Assign selection to rep</label>
-          <div class="assign-row">
-            <select id="assign-rep-select" class="input"></select>
-            <button id="assign-btn" class="btn btn-primary" disabled>Assign</button>
+        <div class="field">
+          <label>Assign selected to</label>
+          <select id="assign-rep-select"></select>
+        </div>
+
+        <div class="field multi" id="rep-filter-wrap">
+          <label>Rep filter</label>
+          <div class="multi-trigger" data-multi-trigger="rep">
+            <span class="multi-trigger-text" id="rep-filter-summary">All reps</span>
+            <span>▾</span>
+          </div>
+          <div class="multi-panel" data-multi-panel="rep">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="rep">Select all</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="rep" />
+            </div>
+            <div class="multi-list" id="rep-filter-options"></div>
           </div>
         </div>
 
-        <div class="field small">
-          <label>Target reps</label>
-          <input id="rep-count-input" class="input" type="number" min="1" step="1" value="1" />
+        <div class="field multi" id="rank-filter-wrap">
+          <label>Rank filter</label>
+          <div class="multi-trigger" data-multi-trigger="rank">
+            <span class="multi-trigger-text" id="rank-filter-summary">All ranks</span>
+            <span>▾</span>
+          </div>
+          <div class="multi-panel" data-multi-panel="rank">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="rank">Select all</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="rank" />
+            </div>
+            <div class="multi-list" id="rank-filter-options"></div>
+          </div>
         </div>
 
-        <div class="field small">
-          <label>Min stops / rep</label>
-          <input id="min-stops-input" class="input" type="number" min="1" step="1" value="1" />
+        <div class="field multi" id="chain-filter-wrap">
+          <label>Chain filter</label>
+          <div class="multi-trigger" data-multi-trigger="chain">
+            <span class="multi-trigger-text" id="chain-filter-summary">All chains</span>
+            <span>▾</span>
+          </div>
+          <div class="multi-panel" data-multi-panel="chain">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="chain">Select all</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="chain" />
+            </div>
+            <div class="multi-list" id="chain-filter-options"></div>
+          </div>
         </div>
 
-        <div class="field small">
-          <label>Max stops / rep</label>
-          <input id="max-stops-input" class="input" type="number" min="1" step="1" value="200" />
+        <div class="field multi" id="segment-filter-wrap">
+          <label>Segment filter</label>
+          <div class="multi-trigger" data-multi-trigger="segment">
+            <span class="multi-trigger-text" id="segment-filter-summary">All segments</span>
+            <span>▾</span>
+          </div>
+          <div class="multi-panel" data-multi-panel="segment">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="segment">Select all</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="segment" />
+            </div>
+            <div class="multi-list" id="segment-filter-options"></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Premise filter</label>
+          <select id="premise-filter"></select>
+        </div>
+
+        <div class="field">
+          <label>Protected filter</label>
+          <select id="protected-filter">
+            <option value="ALL">All</option>
+            <option value="YES">Protected only</option>
+            <option value="NO">Unprotected only</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Moved filter</label>
+          <select id="moved-filter">
+            <option value="ALL">All</option>
+            <option value="MOVED">Moved only</option>
+            <option value="UNCHANGED">Unchanged only</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Target rep count</label>
+          <input id="rep-count-input" type="number" min="1" step="1" value="1" />
+        </div>
+
+        <div class="field">
+          <label>Minimum stops / rep</label>
+          <input id="min-stops-input" type="number" min="1" step="1" value="100" />
+        </div>
+
+        <div class="field">
+          <label>Maximum stops / rep</label>
+          <input id="max-stops-input" type="number" min="1" step="1" value="200" />
         </div>
 
         <div class="field">
@@ -152,11 +226,10 @@
                   <th data-sort="protected" class="sortable">Protected <span class="sort-indicator">↕</span></th>
                   <th data-sort="movedIn" class="sortable">Moved In <span class="sort-indicator">↕</span></th>
                   <th data-sort="movedOut" class="sortable">Moved Out <span class="sort-indicator">↕</span></th>
-                  <th>Lock</th>
                 </tr>
               </thead>
               <tbody id="rep-table-body">
-                <tr><td colspan="15" class="empty">Upload a file to begin.</td></tr>
+                <tr><td colspan="14" class="empty">Upload a file to begin.</td></tr>
               </tbody>
             </table>
           </div>
@@ -185,119 +258,25 @@
             </div>
 
             <div class="moved-search-wrap">
-              <input id="moved-search-input" class="input moved-search" type="text" placeholder="Search moved accounts..." />
+              <input id="moved-search-input" class="moved-search-input" type="text" placeholder="Search moved accounts..." />
             </div>
 
-            <div class="moved-review-list" id="moved-review-list">
+            <div class="moved-review-list moved-review-list-compact" id="moved-review-list">
               <div class="empty">No moved accounts yet.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card filters-card">
-          <div class="card-head">
-            <div>
-              <div class="card-title">Filters</div>
-              <div class="card-sub">Combine multiple filters to narrow what appears on the map</div>
-            </div>
-          </div>
-
-          <div class="filters-grid">
-            <div class="field">
-              <label>Rep</label>
-              <button type="button" class="multi-trigger" data-multi-trigger="rep">
-                <span id="rep-filter-summary">All reps</span>
-                <span class="caret">▾</span>
-              </button>
-              <div class="multi-panel" data-multi-panel="rep" hidden>
-                <div class="multi-panel-head">
-                  <input type="text" class="multi-search" placeholder="Search reps..." data-search="rep" />
-                  <button type="button" class="btn btn-subtle btn-mini" data-select-all="rep">All</button>
-                </div>
-                <div class="multi-options" id="rep-filter-options"></div>
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Rank</label>
-              <button type="button" class="multi-trigger" data-multi-trigger="rank">
-                <span id="rank-filter-summary">All ranks</span>
-                <span class="caret">▾</span>
-              </button>
-              <div class="multi-panel" data-multi-panel="rank" hidden>
-                <div class="multi-panel-head">
-                  <input type="text" class="multi-search" placeholder="Search ranks..." data-search="rank" />
-                  <button type="button" class="btn btn-subtle btn-mini" data-select-all="rank">All</button>
-                </div>
-                <div class="multi-options" id="rank-filter-options"></div>
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Chain</label>
-              <button type="button" class="multi-trigger" data-multi-trigger="chain">
-                <span id="chain-filter-summary">All chains</span>
-                <span class="caret">▾</span>
-              </button>
-              <div class="multi-panel" data-multi-panel="chain" hidden>
-                <div class="multi-panel-head">
-                  <input type="text" class="multi-search" placeholder="Search chains..." data-search="chain" />
-                  <button type="button" class="btn btn-subtle btn-mini" data-select-all="chain">All</button>
-                </div>
-                <div class="multi-options" id="chain-filter-options"></div>
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Segment</label>
-              <button type="button" class="multi-trigger" data-multi-trigger="segment">
-                <span id="segment-filter-summary">All segments</span>
-                <span class="caret">▾</span>
-              </button>
-              <div class="multi-panel" data-multi-panel="segment" hidden>
-                <div class="multi-panel-head">
-                  <input type="text" class="multi-search" placeholder="Search segments..." data-search="segment" />
-                  <button type="button" class="btn btn-subtle btn-mini" data-select-all="segment">All</button>
-                </div>
-                <div class="multi-options" id="segment-filter-options"></div>
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Premise</label>
-              <select id="premise-filter"></select>
-            </div>
-
-            <div class="field">
-              <label>Protected</label>
-              <select id="protected-filter">
-                <option value="ALL">All</option>
-                <option value="YES">Protected only</option>
-                <option value="NO">Not protected</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label>Moved</label>
-              <select id="moved-filter">
-                <option value="ALL">All</option>
-                <option value="MOVED">Moved only</option>
-                <option value="UNCHANGED">Unchanged only</option>
-              </select>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <div id="toast" class="toast" hidden></div>
+    <div id="toast" class="toast"></div>
   </div>
 
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/exceljs/dist/exceljs.min.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
