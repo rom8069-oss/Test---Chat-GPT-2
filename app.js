@@ -1027,7 +1027,7 @@ function refreshMarkerStyles() {
     if (!marker) continue;
 
     marker.setStyle(markerStyleForAccount(account));
-    marker.setRadius(state.selection.has(account._id) ? 8 : (state.repFocus && account.assignedRep === state.repFocus ? 7 : 6));
+    marker.setRadius(state.selection.has(account._id) ? 7 : (state.repFocus && account.assignedRep === state.repFocus ? 6 : 5));
     syncMarkerPopupContent(marker, account._id);
   }
 
@@ -1085,23 +1085,23 @@ function markerStyleForAccount(account) {
   const isFocusedRep = isRepFocused && account.assignedRep === state.repFocus;
   const color = getRepColor(account.assignedRep);
 
-  let opacity = matches ? 0.96 : (dimOthers ? 0.05 : 0.16);
-  let fillOpacity = dimOthers && !matches ? 0.03 : (account.protected ? 0.88 : 0.74);
+  let opacity = matches ? 0.96 : (dimOthers ? 0.025 : 0.12);
+  let fillOpacity = dimOthers && !matches ? 0.015 : (account.protected ? 0.88 : 0.74);
 
   if (isRepFocused) {
     if (isFocusedRep) {
       opacity = matches ? 1 : 0.4;
       fillOpacity = account.protected ? 0.95 : 0.88;
     } else {
-      opacity = 0.1;
-      fillOpacity = 0.05;
+      opacity = 0.045;
+      fillOpacity = 0.02;
     }
   }
 
   return {
-    radius: isSelected ? 8 : (isFocusedRep ? 7 : 6),
+    radius: isSelected ? 7 : (isFocusedRep ? 6 : 5),
     color: isSelected ? '#1e293b' : color,
-    weight: isSelected ? 2.5 : (isFocusedRep ? 2.2 : 1.2),
+    weight: isSelected ? 2.5 : (isFocusedRep ? 2 : 1),
     opacity,
     fillColor: color,
     fillOpacity
