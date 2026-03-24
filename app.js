@@ -627,6 +627,7 @@ function loadSelectedSheet() {
   state.undoStack = [];
   state.changeLog = [];
   state.repFocus = null;
+  state.lockedReps = new Set();
   state.multiSearch.moved = '';
   if (els.movedSearchInput) els.movedSearchInput.value = '';
 
@@ -985,7 +986,7 @@ function syncControlState() {
 }
 
 function renderRepControls() {
-  const reps = getAllAssignedReps();
+  const reps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
   fillSimpleSelect(els.assignRepSelect, reps, reps[0] || '');
 
   if (!els.repCountInput.dataset.userTouched) {
@@ -1505,15 +1506,26 @@ function assignSelectionToRep() {
   const selectedIds = [...state.selection];
   if (!selectedIds.length || !targetRep) return;
 
+  if (isRepLocked(targetRep)) {
+    showToast(`"${targetRep}" is locked.`);
+    return;
+  }
+
   const previousAssignedReps = getAllAssignedReps();
   const changes = [];
   let skippedProtected = 0;
+  let skippedLocked = 0;
 
   ensureRepColor(targetRep);
 
   for (const id of selectedIds) {
     const account = state.accountById.get(id);
     if (!account) continue;
+
+    if (isAccountLocked(account)) {
+      skippedLocked += 1;
+      continue;
+    }
 
     if (account.protected && account.assignedRep !== targetRep) {
       skippedProtected += 1;
@@ -1530,15 +1542,29 @@ function assignSelectionToRep() {
   }
 
   if (!changes.length) {
+    if (skippedLocked) {
+      showToast(`${skippedLocked} account(s) belong to locked territories.`);
+      return;
+    }
+
     showToast(skippedProtected ? `${skippedProtected} protected account(s) were skipped.` : 'No assignment changes to make.');
     return;
   }
 
-  applyChanges(changes, `Assigned ${changes.length} account${changes.length === 1 ? '' : 's'} to ${targetRep}`, previousAssignedReps);
+  applyChanges(
+    changes,
+    `Assigned ${changes.length} account${changes.length === 1 ? '' : 's'} to ${targetRep}`,
+    previousAssignedReps
+  );
+
   clearSelection();
 
-  if (skippedProtected) {
-    showToast(`${changes.length} reassigned to ${targetRep}. ${skippedProtected} protected account(s) stayed put.`);
+  const notes = [];
+  if (skippedProtected) notes.push(`${skippedProtected} protected skipped`);
+  if (skippedLocked) notes.push(`${skippedLocked} locked skipped`);
+
+  if (notes.length) {
+    showToast(`${changes.length} reassigned to ${targetRep}. ${notes.join('. ')}.`);
   }
 }
 
@@ -1546,21 +1572,16 @@ function applyChanges(changes, label, previousAssignedReps = null) {
   const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAllAssignedReps();
 
   changes.forEach(change => {
-    const account = state.accountById.get(change.id);
-    if (!account) return;
+  const account = state.accountById.get(change.id);
+  if (!account) return;
 
-    ensureRepColor(change.to);
-    account.assignedRep = change.to;
+  if (isRepLocked(change.from) || isRepLocked(change.to) || isAccountLocked(account)) {
+    return;
+  }
 
-    state.changeLog.push({
-      timestamp: new Date().toISOString(),
-      customerId: account.customerId,
-      customerName: account.customerName,
-      fromRep: change.from,
-      toRep: change.to,
-      protected: account.protected ? 'Yes' : 'No'
-    });
-  });
+  ensureRepColor(change.to);
+  account.assignedRep = change.to;
+});
 
   state.undoStack.push({
     changes: changes.map(c => ({ ...c })),
@@ -1647,6 +1668,14 @@ function optimizeRoutes() {
   if (!state.accounts.length) return;
 
   try {
+    const lockedAccounts = state.accounts.filter(a => isAccountLocked(a));
+    const movableAccounts = state.accounts.filter(a => !isAccountLocked(a));
+    const unlockedReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
+    if (!unlockedReps.length || !movableAccounts.length) {
+      showToast('All territories are locked. Nothing to optimize.');
+      return;
+    }
+    
     const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
     const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
     const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
