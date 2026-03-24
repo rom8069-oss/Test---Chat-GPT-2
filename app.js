@@ -1240,12 +1240,26 @@ function renderRepTable() {
   syncSortHeaderIndicators();
 
   els.repTableBody.innerHTML = rows.map(row => `
-    <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''}">
+    <tr
+      data-rep-row="${encodeURIComponent(row.rep)}"
+      class="${state.repFocus === row.rep ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}"
+    >
       <td>
         <div class="rep-cell">
           <span class="color-dot" style="background:${escapeHtmlAttr(row.color)}"></span>
           <span>${escapeHtml(row.rep)}</span>
         </div>
+      </td>
+      <td class="lock-cell">
+        <label class="lock-toggle" title="Lock this territory">
+          <input
+            type="checkbox"
+            class="rep-lock-checkbox"
+            data-lock-rep="${escapeHtmlAttr(row.rep)}"
+            ${isRepLocked(row.rep) ? 'checked' : ''}
+            />
+            <span>Lock</span>
+        </label>
       </td>
       <td>${row.stops}</td>
       <td>${renderDeltaCount(row.deltaStops)}</td>
@@ -1262,6 +1276,17 @@ function renderRepTable() {
       <td>${row.movedOut}</td>
     </tr>
   `).join('');
+
+  els.repTableBody.querySelectorAll('.rep-lock-checkbox').forEach(input => {
+    input.addEventListener('click', e => {
+      e.stopPropagation();
+    });
+
+    input.addEventListener('change', e => {
+      const rep = e.target.getAttribute('data-lock-rep');
+      toggleRepLock(rep, e.target.checked);
+    });
+  });
 
   [...els.repTableBody.querySelectorAll('tr[data-rep-row]')].forEach(tr => {
     tr.addEventListener('click', () => {
