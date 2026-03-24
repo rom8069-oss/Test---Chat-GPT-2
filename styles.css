@@ -92,6 +92,36 @@ button,input,select,textarea{
   justify-content:flex-end;
 }
 
+.lock-cell{
+  text-align:center;
+  min-width:72px;
+}
+
+.lock-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  font-weight:700;
+  color:var(--text);
+  white-space:nowrap;
+  cursor:pointer;
+}
+
+.lock-toggle input{
+  margin:0;
+  width:14px;
+  height:14px;
+}
+
+tbody tr.rep-row-locked{
+  background:#f7fbff;
+}
+
+tbody tr.rep-row-locked td:first-child{
+  box-shadow:inset 4px 0 0 #7b8da6;
+}
+
 .btn,.input,.file-label{
   height:34px;
   border:1px solid #c8d4e1;
