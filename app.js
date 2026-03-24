@@ -47,6 +47,7 @@ const state = {
   changeLog: [],
   repColors: new Map(),
   repFocus: null,
+  lockedReps: new Set(),
   theme: 'light',
   loadedFileName: 'territory_export_updated.xlsx',
   lastAction: 'No actions yet',
@@ -106,6 +107,29 @@ function init() {
   requestAnimationFrame(() => {
     if (state.map) state.map.invalidateSize();
   });
+}
+
+function isRepLocked(rep) {
+  return state.lockedReps.has(rep);
+}
+
+function isAccountLocked(account) {
+  return !!account && isRepLocked(account.assignedRep);
+}
+
+function getLockedRepCount() {
+  return state.lockedReps.size;
+}
+
+function toggleRepLock(rep, shouldLock) {
+  if (!rep) return;
+
+  if (shouldLock) state.lockedReps.add(rep);
+  else state.lockedReps.delete(rep);
+
+  refreshUI();
+  updateLastAction(`${shouldLock ? 'Locked' : 'Unlocked'} territory: ${rep}`);
+  showToast(`${shouldLock ? 'Locked' : 'Unlocked'} ${rep}.`);
 }
 
 function bindElements() {
