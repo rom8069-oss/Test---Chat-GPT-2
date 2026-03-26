@@ -49,6 +49,7 @@ const state = {
   repSummaryCache: new Map(),
   globalStatsCache: null,
   territoryRefreshToken: 0,
+  territoryRefreshTimer: null,
   territoryDirty: true,
   selection: new Set(),
   undoStack: [],
@@ -152,17 +153,104 @@ function markTerritoriesDirty() {
 function scheduleTerritoryRefresh(force = false) {
   if (force) state.territoryDirty = true;
   const token = ++state.territoryRefreshToken;
-  requestAnimationFrame(() => {
-    if (token !== state.territoryRefreshToken) return;
-    if (!state.territoryDirty && !force) return;
-    refreshTerritories();
-  });
+
+  if (state.territoryRefreshTimer) {
+    clearTimeout(state.territoryRefreshTimer);
+    state.territoryRefreshTimer = null;
+  }
+
+  const delay = force ? 0 : 48;
+  state.territoryRefreshTimer = setTimeout(() => {
+    state.territoryRefreshTimer = null;
+    requestAnimationFrame(() => {
+      if (token !== state.territoryRefreshToken) return;
+      if (!state.territoryDirty && !force) return;
+      refreshTerritories();
+    });
+  }, delay);
 }
 
 function invalidateCaches() {
   state.repSummaryCache = new Map();
   state.globalStatsCache = null;
   markTerritoriesDirty();
+}
+
+function createEmptyRepSummaryRow(rep) {
+  return {
+    rep,
+    stops: 0,
+    deltaStops: 0,
+    revenue: 0,
+    deltaRevenue: 0,
+    A: 0,
+    B: 0,
+    C: 0,
+    D: 0,
+    planned4W: 0,
+    avgWeekly: 0,
+    protected: 0,
+    movedIn: 0,
+    movedOut: 0
+  };
+}
+
+function computeOriginalRepBaseline(rep) {
+  const baseline = { stops: 0, revenue: 0 };
+  for (const account of state.accounts) {
+    const originalRep = account.originalAssignedRep || 'Unassigned';
+    if (originalRep !== rep) continue;
+    baseline.stops += 1;
+    baseline.revenue += Number(account.overallSales || 0);
+  }
+  return baseline;
+}
+
+function computeRepSummaryRow(rep) {
+  const row = createEmptyRepSummaryRow(rep);
+  const baseline = computeOriginalRepBaseline(rep);
+
+  for (const account of state.accounts) {
+    const assignedRep = account.assignedRep || 'Unassigned';
+    const originalRep = account.originalAssignedRep || 'Unassigned';
+
+    if (assignedRep === rep) {
+      row.stops += 1;
+      row.revenue += Number(account.overallSales || 0);
+      row.planned4W += Number(account.cadence4w || 0);
+      if (row[account.rank] != null) row[account.rank] += 1;
+      if (account.protected) row.protected += 1;
+      if (assignedRep !== originalRep) row.movedIn += 1;
+    }
+
+    if (originalRep === rep && assignedRep !== rep) {
+      row.movedOut += 1;
+    }
+  }
+
+  row.deltaStops = row.stops - baseline.stops;
+  row.deltaRevenue = row.revenue - baseline.revenue;
+  row.avgWeekly = row.planned4W / 4;
+  return row;
+}
+
+function updateRepSummaryCacheForReps(reps) {
+  if (!reps || !reps.size) return;
+  if (!state.repSummaryCache || !state.repSummaryCache.size) {
+    summarizeByRep();
+  }
+
+  for (const rep of reps) {
+    if (!rep) continue;
+    const row = computeRepSummaryRow(rep);
+    if (row.stops || row.deltaStops || row.revenue || row.deltaRevenue || row.A || row.B || row.C || row.D || row.planned4W || row.protected || row.movedIn || row.movedOut) {
+      state.repSummaryCache.set(rep, row);
+    } else {
+      state.repSummaryCache.delete(rep);
+    }
+  }
+
+  state.globalStatsCache = null;
 }
 
 function computeFilterPass(account) {
@@ -191,6 +279,33 @@ function getChangedRepNamesFromChanges(changes) {
     if (change.to) reps.add(change.to);
   }
   return reps;
+}
+
+function refreshAfterAssignmentBatch(changes, options = {}) {
+  const { repsBefore = null, updateSelection = true, territoryForce = false } = options;
+  const dirtyIds = new Set((changes || []).map(change => change.id));
+  const touchedReps = getChangedRepNamesFromChanges(changes);
+
+  buildRepColors();
+  syncRepFilterSelection(Array.isArray(repsBefore) ? repsBefore : null);
+
+  if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
+    state.repFocus = null;
+  }
+
+  updateFilterPassCache();
+  updateRepSummaryCacheForReps(touchedReps);
+  markTerritoriesDirty();
+
+  refreshMarkerStyles(dirtyIds.size ? dirtyIds : null);
+  renderRepControls();
+  renderRepTable();
+  renderSummary();
+  renderMovedReview();
+  if (updateSelection) renderSelectionPreview();
+  renderDetail();
+  syncControlState();
+  scheduleTerritoryRefresh(territoryForce);
 }
 
 function refreshSelectionMarkerDiff(previousSelection, nextSelection) {
@@ -1026,9 +1141,9 @@ function renderDetail() {
         ${escapeHtml([account.address, [account.city, account.zip].filter(Boolean).join(' ')].filter(Boolean).join(' • '))}
       </div>
       <div class="transfer-line">
+        <span class="rep-chip">${escapeHtml(account.assignedRep)}</span>
         <span class="metric-chip">${formatCurrency(account.overallSales)}</span>
         <span class="metric-chip">Rank ${escapeHtml(account.rank)}</span>
-        <span class="rep-chip">${escapeHtml(account.assignedRep)}</span>
         ${account.protected ? '<span class="metric-chip">Protected</span>' : ''}
       </div>
     </div>
@@ -1441,8 +1556,8 @@ function renderSelectionPreview() {
       <div class="selected-item">
         <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
         <div class="transfer-line">
-          <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
           <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
+          <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
         </div>
       </div>
     `;
@@ -1653,23 +1768,11 @@ function applyChanges(changes, label, previousAssignedReps = null) {
     label
   });
 
-  buildRepColors();
-  syncRepFilterSelection(repsBefore);
-
-  if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
-    state.repFocus = null;
-  }
-
-  invalidateCaches();
-  refreshMarkerStyles(new Set(appliedChanges.map(change => change.id)));
-  renderRepControls();
-  renderRepTable();
-  renderSummary();
-  renderMovedReview();
-  renderSelectionPreview();
-  renderDetail();
-  syncControlState();
-  scheduleTerritoryRefresh();
+  refreshAfterAssignmentBatch(appliedChanges, {
+    repsBefore,
+    updateSelection: true,
+    territoryForce: false
+  });
 
   updateLastAction(label);
   showToast(label);
@@ -1686,24 +1789,12 @@ function undoLastAction() {
     if (account) account.assignedRep = change.from;
   }
 
-  buildRepColors();
-  syncRepFilterSelection(repsBefore);
-
-  if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) {
-    state.repFocus = null;
-  }
-
   state.optimizationSummary = null;
-  invalidateCaches();
-  refreshMarkerStyles(new Set(action.changes.map(change => change.id)));
-  renderRepControls();
-  renderRepTable();
-  renderSummary();
-  renderMovedReview();
-  renderSelectionPreview();
-  renderDetail();
-  syncControlState();
-  scheduleTerritoryRefresh();
+  refreshAfterAssignmentBatch(action.changes, {
+    repsBefore,
+    updateSelection: true,
+    territoryForce: false
+  });
 
   updateLastAction(`Undid: ${action.label}`);
   showToast(`Undid: ${action.label}`);
@@ -1711,13 +1802,17 @@ function undoLastAction() {
 
 function resetAssignments() {
   let resetCount = 0;
-  const dirtyIds = new Set();
+  const resetChanges = [];
 
   state.accounts.forEach(account => {
     if (account.assignedRep !== account.originalAssignedRep) {
+      resetChanges.push({
+        id: account._id,
+        from: account.assignedRep,
+        to: account.originalAssignedRep
+      });
       account.assignedRep = account.originalAssignedRep;
       resetCount += 1;
-      dirtyIds.add(account._id);
     }
   });
 
@@ -1733,18 +1828,12 @@ function resetAssignments() {
   state.multiSearch.moved = '';
   if (els.movedSearchInput) els.movedSearchInput.value = '';
 
-  buildRepColors();
-  syncRepFilterSelection();
   invalidateCaches();
-  refreshMarkerStyles(dirtyIds);
-  renderRepControls();
-  renderRepTable();
-  renderSummary();
-  renderMovedReview();
-  renderSelectionPreview();
-  renderDetail();
-  syncControlState();
-  scheduleTerritoryRefresh(true);
+  refreshAfterAssignmentBatch(resetChanges, {
+    repsBefore: null,
+    updateSelection: true,
+    territoryForce: true
+  });
   fitMapToAccounts();
   updateLastAction('Reset assignments to imported values');
   showToast('Assignments reset to imported values.');
@@ -1943,7 +2032,6 @@ function optimizeRoutes() {
 
     state.optimizationSummary = buildOptimizationSummary();
     updateLastActionWithOptimization(`Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
-    refreshUI(false);
   } catch (err) {
     console.error('Optimize Routes failed:', err);
     showToast('Optimize Routes hit an error. Send me the first red error line from the browser console.');
