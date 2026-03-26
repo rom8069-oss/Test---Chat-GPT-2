@@ -1026,7 +1026,6 @@ function renderDetail() {
         ${escapeHtml([account.address, [account.city, account.zip].filter(Boolean).join(' ')].filter(Boolean).join(' • '))}
       </div>
       <div class="transfer-line">
-        <span class="metric-chip">${escapeHtml(account.customerId)}</span>
         <span class="metric-chip">${formatCurrency(account.overallSales)}</span>
         <span class="metric-chip">Rank ${escapeHtml(account.rank)}</span>
         <span class="rep-chip">${escapeHtml(account.assignedRep)}</span>
