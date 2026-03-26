@@ -43,6 +43,13 @@ const state = {
   accountById: new Map(),
   neighborMap: new Map(),
   markerById: new Map(),
+  markerMetaById: new Map(),
+  accountPointById: new Map(),
+  filterPassById: new Map(),
+  repSummaryCache: new Map(),
+  globalStatsCache: null,
+  territoryRefreshToken: 0,
+  territoryDirty: true,
   selection: new Set(),
   undoStack: [],
   changeLog: [],
@@ -110,6 +117,88 @@ function init() {
   });
 }
 
+
+function rebuildMarkers() {
+  renderMap();
+}
+
+function refreshMarkerStyles(accountIds = null) {
+  refreshMarkers(accountIds);
+}
+
+function renderSummary() {
+  updateGlobalStats();
+}
+
+function syncSortHeaderIndicators() {
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    const active = th.getAttribute('data-sort') === state.tableSort.key;
+    th.classList.toggle('is-active', active);
+    const indicator = th.querySelector('.sort-indicator');
+    if (indicator) indicator.textContent = active ? (state.tableSort.dir === 'asc' ? '▲' : '▼') : '↕';
+  });
+}
+
+function renderRepControls() {
+  const reps = getAllAssignedReps();
+  const currentValue = els.assignRepSelect ? els.assignRepSelect.value : '';
+  fillSimpleSelect(els.assignRepSelect, reps, reps.includes(currentValue) ? currentValue : '', v => v, 'Select rep');
+}
+
+function markTerritoriesDirty() {
+  state.territoryDirty = true;
+}
+
+function scheduleTerritoryRefresh(force = false) {
+  if (force) state.territoryDirty = true;
+  const token = ++state.territoryRefreshToken;
+  requestAnimationFrame(() => {
+    if (token !== state.territoryRefreshToken) return;
+    if (!state.territoryDirty && !force) return;
+    refreshTerritories();
+  });
+}
+
+function invalidateCaches() {
+  state.repSummaryCache = new Map();
+  state.globalStatsCache = null;
+  markTerritoriesDirty();
+}
+
+function computeFilterPass(account) {
+  const repOk = !state.filters.rep.size || state.filters.rep.has(account.assignedRep);
+  const rankOk = !state.filters.rank.size || state.filters.rank.has(account.rank);
+  const chainOk = !state.filters.chain.size || state.filters.chain.has(account.chain);
+  const segmentOk = !state.filters.segment.size || state.filters.segment.has(account.segment);
+  const premiseOk = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
+  const protectedOk = state.filters.protected === 'ALL' || (state.filters.protected === 'YES' ? account.protected : !account.protected);
+  const moved = account.assignedRep !== account.originalAssignedRep;
+  const movedOk = state.filters.moved === 'ALL' || (state.filters.moved === 'MOVED' ? moved : !moved);
+  return repOk && rankOk && chainOk && segmentOk && premiseOk && protectedOk && movedOk;
+}
+
+function updateFilterPassCache() {
+  state.filterPassById.clear();
+  for (const account of state.accounts) {
+    state.filterPassById.set(account._id, computeFilterPass(account));
+  }
+}
+
+function getChangedRepNamesFromChanges(changes) {
+  const reps = new Set();
+  for (const change of changes || []) {
+    if (change.from) reps.add(change.from);
+    if (change.to) reps.add(change.to);
+  }
+  return reps;
+}
+
+function refreshSelectionMarkerDiff(previousSelection, nextSelection) {
+  const dirty = new Set();
+  if (previousSelection) for (const id of previousSelection) dirty.add(id);
+  if (nextSelection) for (const id of nextSelection) dirty.add(id);
+  refreshMarkerStyles(dirty);
+}
 function bindElements() {
   [
     'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
@@ -145,7 +234,7 @@ function bindEvents() {
 
   els.themeToggleCheck.addEventListener('change', toggleTheme);
   els.dimOthersCheckbox.addEventListener('change', refreshUI);
-  els.showTerritoryCheckbox.addEventListener('change', refreshTerritories);
+  els.showTerritoryCheckbox.addEventListener('change', () => scheduleTerritoryRefresh(true));
 
   els.premiseFilter.addEventListener('change', () => {
     state.filters.premise = els.premiseFilter.value;
@@ -250,8 +339,8 @@ function initMap() {
     clearSelection();
     showToast('Selection cleared.');
   });
-  state.map.on('zoomend', refreshTerritories);
-  state.map.on('moveend', refreshTerritories);
+  state.map.on('zoomend', () => scheduleTerritoryRefresh(true));
+  state.map.on('moveend', () => scheduleTerritoryRefresh(true));
 }
 
 function initMultiFilters() {
@@ -614,6 +703,7 @@ function loadSelectedSheet() {
     state.neighborMap = new Map();
     state.markerById = new Map();
     state.currentHeaderMap = normalizedResult.headerMap || {};
+    invalidateCaches();
 
     setUploadStatus('bad', 'Load failed');
     renderUploadStatus();
@@ -627,6 +717,7 @@ function loadSelectedSheet() {
   state.accountById = new Map(normalized.map(a => [a._id, a]));
   state.neighborMap = buildNeighborMap(normalized);
   state.currentHeaderMap = normalizedResult.headerMap || {};
+  invalidateCaches();
 
   buildRepColors();
   syncRepFilterSelection();
@@ -767,24 +858,67 @@ function normalizeCoordinates(latitude, longitude) {
 
 function buildNeighborMap(accounts) {
   const map = new Map();
-  accounts.forEach(a => map.set(a._id, new Set()));
+  if (!accounts.length) return map;
 
-  for (let i = 0; i < accounts.length; i += 1) {
-    const a = accounts[i];
-    const distances = [];
-    for (let j = 0; j < accounts.length; j += 1) {
-      if (i === j) continue;
-      const b = accounts[j];
-      distances.push({
-        id: b._id,
-        d: squaredDistance(a.latitude, a.longitude, b.latitude, b.longitude)
-      });
+  const cellSize = 0.18;
+  const grid = new Map();
+
+  function cellKey(lat, lng) {
+    const x = Math.floor(lng / cellSize);
+    const y = Math.floor(lat / cellSize);
+    return `${x}|${y}`;
+  }
+
+  for (const account of accounts) {
+    map.set(account._id, new Set());
+    const key = cellKey(account.latitude, account.longitude);
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key).push(account);
+  }
+
+  for (const account of accounts) {
+    const x = Math.floor(account.longitude / cellSize);
+    const y = Math.floor(account.latitude / cellSize);
+    const candidates = [];
+
+    for (let dx = -1; dx <= 1; dx += 1) {
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const cellAccounts = grid.get(`${x + dx}|${y + dy}`);
+        if (!cellAccounts) continue;
+        for (const other of cellAccounts) {
+          if (other._id === account._id) continue;
+          candidates.push(other);
+        }
+      }
     }
-    distances.sort((x, y) => x.d - y.d);
-    distances.slice(0, 10).forEach(item => {
-      map.get(a._id).add(item.id);
-      map.get(item.id).add(a._id);
-    });
+
+    if (candidates.length < 10) {
+      for (let radius = 2; radius <= 4 && candidates.length < 20; radius += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          for (let dy = -radius; dy <= radius; dy += 1) {
+            if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+            const cellAccounts = grid.get(`${x + dx}|${y + dy}`);
+            if (!cellAccounts) continue;
+            for (const other of cellAccounts) {
+              if (other._id === account._id) continue;
+              candidates.push(other);
+            }
+          }
+        }
+      }
+    }
+
+    candidates
+      .map(other => ({
+        id: other._id,
+        d: squaredDistance(account.latitude, account.longitude, other.latitude, other.longitude)
+      }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 10)
+      .forEach(item => {
+        map.get(account._id).add(item.id);
+        map.get(item.id)?.add(account._id);
+      });
   }
 
   return map;
@@ -793,8 +927,12 @@ function buildNeighborMap(accounts) {
 function renderMap() {
   state.markerLayer.clearLayers();
   state.markerById.clear();
+  state.markerMetaById.clear();
+  state.accountPointById.clear();
 
-  state.accounts.forEach(account => {
+  updateFilterPassCache();
+
+  for (const account of state.accounts) {
     const color = getRepColor(account.assignedRep);
 
     const marker = L.circleMarker([account.latitude, account.longitude], {
@@ -808,8 +946,8 @@ function renderMap() {
 
     marker.on('click', e => {
       L.DomEvent.stopPropagation(e);
-      toggleSelection(account._id, e.originalEvent?.ctrlKey || e.originalEvent?.metaKey || false);
-      renderDetail(account);
+      const additive = !!(e.originalEvent?.ctrlKey || e.originalEvent?.metaKey);
+      toggleSelection(account._id, additive);
       marker.setPopupContent(buildPopupHtml(account));
       marker.openPopup();
     });
@@ -822,10 +960,21 @@ function renderMap() {
 
     state.markerLayer.addLayer(marker);
     state.markerById.set(account._id, marker);
-  });
+    state.markerMetaById.set(account._id, {
+      color,
+      radius: 2.8,
+      opacity: 0.95,
+      fillOpacity: 0.88,
+      weight: 1,
+      hidden: false,
+      popupKey: `${account.assignedRep}|${account.currentRep}|${account.overallSales}|${account.rank}|${account.protected ? 1 : 0}`
+    });
+    state.accountPointById.set(account._id, turf.point([account.longitude, account.latitude]));
+  }
 
-  refreshMarkers();
-  refreshTerritories();
+  invalidateCaches();
+  refreshMarkerStyles();
+  scheduleTerritoryRefresh(true);
 }
 
 function buildPopupHtml(account) {
@@ -892,88 +1041,117 @@ function refreshUI(rebuildMap = false) {
   syncControlState();
   renderRepControls();
   renderUploadStatus();
+
   if (rebuildMap) rebuildMarkers();
+
+  updateFilterPassCache();
   refreshMarkerStyles();
   renderRepTable();
   renderSelectionPreview();
   renderSummary();
   renderMovedReview();
   renderDetail();
-  refreshTerritories();
+
   if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+  scheduleTerritoryRefresh();
 }
 
-  if (state.selection.size === 1) {
-    const account = state.accountById.get([...state.selection][0]);
-    renderDetail(account);
-  } else if (state.selection.size === 0) {
-    renderDetail(null);
-  }
-}
 
 function passesFilters(account) {
-  const repOk = !state.filters.rep.size || state.filters.rep.has(account.assignedRep);
-  const rankOk = !state.filters.rank.size || state.filters.rank.has(account.rank);
-  const chainOk = !state.filters.chain.size || state.filters.chain.has(account.chain);
-  const segmentOk = !state.filters.segment.size || state.filters.segment.has(account.segment);
-  const premiseOk = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
-  const protectedOk = state.filters.protected === 'ALL' || (state.filters.protected === 'YES' ? account.protected : !account.protected);
-  const moved = account.assignedRep !== account.originalAssignedRep;
-  const movedOk = state.filters.moved === 'ALL' || (state.filters.moved === 'MOVED' ? moved : !moved);
-  return repOk && rankOk && chainOk && segmentOk && premiseOk && protectedOk && movedOk;
+  if (!account) return false;
+  if (state.filterPassById.has(account._id)) return !!state.filterPassById.get(account._id);
+  return computeFilterPass(account);
 }
 
-function refreshMarkers() {
+function refreshMarkers(accountIds = null) {
   const dimOthers = !!els.dimOthersCheckbox.checked;
+  const ids = accountIds
+    ? Array.from(accountIds)
+    : state.accounts.map(account => account._id);
 
-  state.accounts.forEach(account => {
-    const marker = state.markerById.get(account._id);
-    if (!marker) return;
+  for (const id of ids) {
+    const account = state.accountById.get(id);
+    const marker = state.markerById.get(id);
+    if (!account || !marker) continue;
 
+    const pass = passesFilters(account);
     const color = getRepColor(account.assignedRep);
-    const selected = state.selection.has(account._id);
+    const selected = state.selection.has(id);
     const focusedOut = state.repFocus && account.assignedRep !== state.repFocus;
     const dimmed = dimOthers && focusedOut && !selected;
 
-    marker.setStyle({
+    const nextState = {
       color,
-      fillColor: color,
-      opacity: dimmed ? 0.22 : 0.95,
-      fillOpacity: selected ? 1 : dimmed ? 0.18 : 0.88,
-      weight: selected ? 2 : 1
-    });
+      radius: selected ? 4.2 : (state.repFocus && account.assignedRep === state.repFocus ? 3.6 : 2.8),
+      opacity: pass ? (dimmed ? 0.22 : 0.95) : 0,
+      fillOpacity: pass ? (selected ? 1 : dimmed ? 0.18 : 0.88) : 0,
+      weight: selected ? 2 : 1,
+      hidden: !pass
+    };
 
-    marker.setRadius(selected ? 4.2 : (state.repFocus && account.assignedRep === state.repFocus ? 3.6 : 2.8));
-
-    if (!passesFilters(account)) {
-      marker.setStyle({ opacity: 0, fillOpacity: 0 });
+    const prevState = state.markerMetaById.get(id) || {};
+    if (
+      prevState.color !== nextState.color ||
+      prevState.opacity !== nextState.opacity ||
+      prevState.fillOpacity !== nextState.fillOpacity ||
+      prevState.weight !== nextState.weight
+    ) {
+      marker.setStyle({
+        color: nextState.color,
+        fillColor: nextState.color,
+        opacity: nextState.opacity,
+        fillOpacity: nextState.fillOpacity,
+        weight: nextState.weight
+      });
     }
 
-    marker.setPopupContent(buildPopupHtml(account));
-  });
+    if (prevState.radius !== nextState.radius) {
+      marker.setRadius(nextState.radius);
+    }
+
+    const popupKey = `${account.assignedRep}|${account.currentRep}|${account.overallSales}|${account.rank}|${account.protected ? 1 : 0}`;
+    if (prevState.popupKey !== popupKey) {
+      marker.setPopupContent(buildPopupHtml(account));
+      nextState.popupKey = popupKey;
+    } else {
+      nextState.popupKey = prevState.popupKey;
+    }
+
+    state.markerMetaById.set(id, nextState);
+  }
 }
 
 function refreshTerritories() {
+  state.territoryDirty = false;
   state.territoryLayer.clearLayers();
   state.territoryLabelLayer.clearLayers();
 
   if (!els.showTerritoryCheckbox.checked) return;
 
-  const reps = getAllAssignedReps();
-  reps.forEach(rep => {
-    const members = state.accounts.filter(a => a.assignedRep === rep && passesFilters(a));
-    if (members.length < 3) return;
+  const membersByRep = new Map();
+  for (const account of state.accounts) {
+    if (!passesFilters(account)) continue;
+    const rep = account.assignedRep;
+    if (!membersByRep.has(rep)) membersByRep.set(rep, []);
+    membersByRep.get(rep).push(account);
+  }
 
-    const points = members.map(a => [a.longitude, a.latitude]);
+  for (const [rep, members] of membersByRep.entries()) {
+    if (members.length < 3) continue;
+
+    const points = new Array(members.length);
+    for (let i = 0; i < members.length; i += 1) {
+      points[i] = turf.point([members[i].longitude, members[i].latitude]);
+    }
+
     let hull = null;
-
     try {
-      hull = turf.convex(turf.featureCollection(points.map(p => turf.point(p))));
+      hull = turf.convex(turf.featureCollection(points));
     } catch (err) {
       hull = null;
     }
 
-    if (!hull) return;
+    if (!hull) continue;
 
     const color = getRepColor(rep);
     const polygon = L.geoJSON(hull, {
@@ -997,7 +1175,7 @@ function refreshTerritories() {
     });
 
     state.territoryLabelLayer.addLayer(label);
-  });
+  }
 }
 
 function handleDrawCreated(event) {
@@ -1011,29 +1189,52 @@ function handleDrawCreated(event) {
   }
   if (!polygon) return;
 
-  state.selection.clear();
+  const bbox = turf.bbox(polygon);
+  const nextSelection = new Set();
+
   for (const account of state.accounts) {
-    const point = turf.point([account.longitude, account.latitude]);
+    if (
+      account.longitude < bbox[0] || account.longitude > bbox[2] ||
+      account.latitude < bbox[1] || account.latitude > bbox[3]
+    ) {
+      continue;
+    }
+
+    const point = state.accountPointById.get(account._id) || turf.point([account.longitude, account.latitude]);
     if (turf.booleanPointInPolygon(point, polygon)) {
-      state.selection.add(account._id);
+      nextSelection.add(account._id);
     }
   }
 
-  refreshUI();
+  const previousSelection = new Set(state.selection);
+  state.selection = nextSelection;
+  refreshSelectionMarkerDiff(previousSelection, nextSelection);
+  renderSelectionPreview();
+  renderDetail();
+  syncControlState();
   showToast(`${state.selection.size} account${state.selection.size === 1 ? '' : 's'} selected.`);
 }
 
 function toggleSelection(id, additive = false) {
+  const previousSelection = new Set(state.selection);
   if (!additive) state.selection.clear();
   if (state.selection.has(id)) state.selection.delete(id);
   else state.selection.add(id);
-  refreshUI();
+
+  refreshSelectionMarkerDiff(previousSelection, state.selection);
+  renderSelectionPreview();
+  renderDetail();
+  syncControlState();
 }
 
 function clearSelection() {
+  const previousSelection = new Set(state.selection);
   state.selection.clear();
   state.drawLayer.clearLayers();
-  refreshUI();
+  refreshSelectionMarkerDiff(previousSelection, state.selection);
+  renderSelectionPreview();
+  renderDetail();
+  syncControlState();
 }
 
 function isRepLocked(rep) {
@@ -1048,14 +1249,18 @@ function toggleRepLock(rep, shouldLock) {
   if (!rep) return;
   if (shouldLock) state.lockedReps.add(rep);
   else state.lockedReps.delete(rep);
-  refreshUI();
+  invalidateCaches();
+  refreshMarkerStyles();
+  renderRepTable();
+  renderSummary();
+  scheduleTerritoryRefresh();
   updateLastAction(`${shouldLock ? 'Locked' : 'Unlocked'} territory: ${rep}`);
   showToast(`${shouldLock ? 'Locked' : 'Unlocked'} ${rep}.`);
 }
 
 function renderRepTable() {
   let rows = summarizeByRep();
-  rows = sortRepRows(rows);
+  sortRepRows(rows);
 
   if (!rows.length) {
     els.repTableBody.innerHTML = '<tr><td colspan="15" class="empty">Upload a file to begin.</td></tr>';
@@ -1106,7 +1311,9 @@ function renderRepTable() {
       if (e.target.closest('.rep-lock-checkbox')) return;
       const rep = decodeURIComponent(tr.getAttribute('data-rep-row'));
       state.repFocus = state.repFocus === rep ? null : rep;
-      refreshUI();
+      refreshMarkerStyles();
+      renderRepTable();
+      scheduleTerritoryRefresh();
       if (state.repFocus) zoomToRep(state.repFocus);
     });
   });
@@ -1120,62 +1327,11 @@ function renderRepTable() {
   });
 }
 
-  sortRepRows(rows);
-
-  tbody.innerHTML = rows.map(row => `
-    <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}">
-      <td>
-        <div class="rep-cell">
-          <span class="color-dot" style="background:${getRepColor(row.rep)}"></span>
-          <span>${escapeHtml(row.rep)}</span>
-        </div>
-      </td>
-      <td class="lock-cell">
-        <label class="lock-toggle" title="Lock this territory">
-          <input
-            type="checkbox"
-            class="rep-lock-checkbox"
-            data-lock-rep="${escapeHtmlAttr(row.rep)}"
-            ${isRepLocked(row.rep) ? 'checked' : ''}
-          />
-        </label>
-      </td>
-      <td>${formatNumber(row.stops)}</td>
-      <td>${renderDeltaCount(row.deltaStops)}</td>
-      <td>${formatCurrency(row.revenue)}</td>
-      <td>${renderDeltaMoney(row.deltaRevenue)}</td>
-      <td>${formatNumber(row.A)}</td>
-      <td>${formatNumber(row.B)}</td>
-      <td>${formatNumber(row.C)}</td>
-      <td>${formatNumber(row.D)}</td>
-      <td>${formatNumber(row.planned4W, 2)}</td>
-      <td>${formatNumber(row.avgWeekly, 2)}</td>
-      <td>${formatNumber(row.protected)}</td>
-      <td>${formatNumber(row.movedIn)}</td>
-      <td>${formatNumber(row.movedOut)}</td>
-    </tr>
-  `).join('');
-
-  tbody.querySelectorAll('tr[data-rep-row]').forEach(tr => {
-    tr.addEventListener('click', e => {
-      if (e.target.closest('.rep-lock-checkbox')) return;
-      const rep = decodeURIComponent(tr.getAttribute('data-rep-row'));
-      state.repFocus = state.repFocus === rep ? null : rep;
-      refreshUI();
-      if (state.repFocus) zoomToRep(rep);
-    });
-  });
-
-  tbody.querySelectorAll('.rep-lock-checkbox').forEach(input => {
-    input.addEventListener('click', e => e.stopPropagation());
-    input.addEventListener('change', e => {
-      const rep = e.target.getAttribute('data-lock-rep');
-      toggleRepLock(rep, e.target.checked);
-    });
-  });
-}
-
 function summarizeByRep() {
+  if (state.repSummaryCache && state.repSummaryCache.size) {
+    return [...state.repSummaryCache.values()].map(row => ({ ...row }));
+  }
+
   const map = new Map();
   const originalMap = new Map();
 
@@ -1203,10 +1359,7 @@ function summarizeByRep() {
     }
 
     if (!originalMap.has(originalRep)) {
-      originalMap.set(originalRep, {
-        stops: 0,
-        revenue: 0
-      });
+      originalMap.set(originalRep, { stops: 0, revenue: 0 });
     }
 
     const row = map.get(assignedRep);
@@ -1238,38 +1391,8 @@ function summarizeByRep() {
     row.avgWeekly = row.planned4W / 4;
   }
 
-  return [...map.values()];
-}
-
-    const row = map.get(rep);
-    row.stops += 1;
-    row.revenue += account.overallSales || 0;
-    row[account.rank] += 1;
-    row.planned4W += account.cadence4w || 0;
-    if (account.protected) row.protected += 1;
-
-    if (account.originalAssignedRep !== account.assignedRep) {
-      if (account.assignedRep === rep) row.movedIn += 1;
-      if (account.originalAssignedRep === rep) row.movedOut += 1;
-    }
-  });
-
-  const originalStats = new Map();
-  state.accounts.forEach(account => {
-    const rep = account.originalAssignedRep || 'Unassigned';
-    if (!originalStats.has(rep)) originalStats.set(rep, { stops: 0, revenue: 0 });
-    originalStats.get(rep).stops += 1;
-    originalStats.get(rep).revenue += account.overallSales || 0;
-  });
-
-  map.forEach(row => {
-    const orig = originalStats.get(row.rep) || { stops: 0, revenue: 0 };
-    row.deltaStops = row.stops - orig.stops;
-    row.deltaRevenue = row.revenue - orig.revenue;
-    row.avgWeekly = row.planned4W / 4;
-  });
-
-  return [...map.values()];
+  state.repSummaryCache = map;
+  return [...map.values()].map(row => ({ ...row }));
 }
 
 function sortRepRows(rows) {
@@ -1362,23 +1485,49 @@ function renderMovedReview() {
 }
 
 function updateGlobalStats() {
-  const visibleAccounts = state.accounts.filter(passesFilters);
-  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
-  const unchangedPct = state.accounts.length
-    ? ((state.accounts.length - movedCount) / state.accounts.length) * 100
-    : 0;
-  const totalRevenue = visibleAccounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
-  const totalProtected = visibleAccounts.filter(a => a.protected).length;
-  const planned4W = visibleAccounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
-  const reps = getAllAssignedReps();
+  let stats = state.globalStatsCache;
 
-  els.globalAccounts.textContent = formatNumber(visibleAccounts.length);
-  els.globalRevenue.textContent = formatCurrency(totalRevenue);
-  els.globalProtected.textContent = formatNumber(totalProtected);
-  els.globalMoved.textContent = formatNumber(movedCount);
-  els.globalUnchanged.textContent = `${formatNumber(unchangedPct, 1)}%`;
-  els.globalAvgWeekly.textContent = formatNumber(planned4W / 4, 1);
-  els.globalAvgWeeklyPerRep.textContent = formatNumber((planned4W / 4) / Math.max(1, reps.length), 1);
+  if (!stats) {
+    let visibleCount = 0;
+    let movedCount = 0;
+    let totalRevenue = 0;
+    let totalProtected = 0;
+    let planned4W = 0;
+
+    for (const account of state.accounts) {
+      const moved = account.assignedRep !== account.originalAssignedRep;
+      if (moved) movedCount += 1;
+      if (!passesFilters(account)) continue;
+      visibleCount += 1;
+      totalRevenue += account.overallSales || 0;
+      totalProtected += account.protected ? 1 : 0;
+      planned4W += account.cadence4w || 0;
+    }
+
+    const reps = getAllAssignedReps();
+    const unchangedPct = state.accounts.length
+      ? ((state.accounts.length - movedCount) / state.accounts.length) * 100
+      : 0;
+
+    stats = {
+      visibleCount,
+      movedCount,
+      unchangedPct,
+      totalRevenue,
+      totalProtected,
+      planned4W,
+      repCount: reps.length
+    };
+    state.globalStatsCache = stats;
+  }
+
+  els.globalAccounts.textContent = formatNumber(stats.visibleCount);
+  els.globalRevenue.textContent = formatCurrency(stats.totalRevenue);
+  els.globalProtected.textContent = formatNumber(stats.totalProtected);
+  els.globalMoved.textContent = formatNumber(stats.movedCount);
+  els.globalUnchanged.textContent = `${formatNumber(stats.unchangedPct, 1)}%`;
+  els.globalAvgWeekly.textContent = formatNumber(stats.planned4W / 4, 1);
+  els.globalAvgWeeklyPerRep.textContent = formatNumber((stats.planned4W / 4) / Math.max(1, stats.repCount), 1);
 }
 
 function syncRepFilterSelection(previousAssignedReps = null) {
@@ -1388,7 +1537,8 @@ function syncRepFilterSelection(previousAssignedReps = null) {
   state.filters.rep = new Set(reps.filter(rep => prev.has(rep) || !previousAssignedReps));
   if (!state.filters.rep.size) reps.forEach(rep => state.filters.rep.add(rep));
 
-  fillSimpleSelect(els.assignRepSelect, [], '', v => v, 'Select rep');  renderMultiFilterOptions();
+  fillSimpleSelect(els.assignRepSelect, reps, '', v => v, 'Select rep');
+  renderMultiFilterOptions();
 }
 
 function syncControlState() {
@@ -1513,7 +1663,17 @@ function applyChanges(changes, label, previousAssignedReps = null) {
     state.repFocus = null;
   }
 
-  refreshUI();
+  invalidateCaches();
+  refreshMarkerStyles(new Set(appliedChanges.map(change => change.id)));
+  renderRepControls();
+  renderRepTable();
+  renderSummary();
+  renderMovedReview();
+  renderSelectionPreview();
+  renderDetail();
+  syncControlState();
+  scheduleTerritoryRefresh();
+
   updateLastAction(label);
   showToast(label);
 }
@@ -1537,18 +1697,30 @@ function undoLastAction() {
   }
 
   state.optimizationSummary = null;
-  refreshUI();
+  invalidateCaches();
+  refreshMarkerStyles(new Set(action.changes.map(change => change.id)));
+  renderRepControls();
+  renderRepTable();
+  renderSummary();
+  renderMovedReview();
+  renderSelectionPreview();
+  renderDetail();
+  syncControlState();
+  scheduleTerritoryRefresh();
+
   updateLastAction(`Undid: ${action.label}`);
   showToast(`Undid: ${action.label}`);
 }
 
 function resetAssignments() {
   let resetCount = 0;
+  const dirtyIds = new Set();
 
   state.accounts.forEach(account => {
     if (account.assignedRep !== account.originalAssignedRep) {
       account.assignedRep = account.originalAssignedRep;
       resetCount += 1;
+      dirtyIds.add(account._id);
     }
   });
 
@@ -1566,7 +1738,16 @@ function resetAssignments() {
 
   buildRepColors();
   syncRepFilterSelection();
-  refreshUI();
+  invalidateCaches();
+  refreshMarkerStyles(dirtyIds);
+  renderRepControls();
+  renderRepTable();
+  renderSummary();
+  renderMovedReview();
+  renderSelectionPreview();
+  renderDetail();
+  syncControlState();
+  scheduleTerritoryRefresh(true);
   fitMapToAccounts();
   updateLastAction('Reset assignments to imported values');
   showToast('Assignments reset to imported values.');
