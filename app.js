@@ -511,12 +511,15 @@ function onFileChosen(event) {
     els.sheetSelect.disabled = false;
     els.loadSheetBtn.disabled = false;
 
-    state.uploadStatus = {
-      level: 'good',
-      text: `${fileName} loaded`
-    };
-    renderUploadStatus();
-    showToast(`${fileName} ready. Choose a sheet and load.`);
+   state.uploadStatus = {
+    level: 'good',
+    text: `${fileName} loaded`
+};
+renderUploadStatus();
+
+// Auto-load first sheet
+loadSelectedSheet();
+showToast(`${fileName} loaded.`);
   };
 
   reader.readAsBinaryString(file);
