@@ -57,7 +57,7 @@
 
         <div class="field multi" id="rep-filter-wrap">
           <label>Rep filter</label>
-          <div class="multi-trigger" data-multi-trigger="rep">
+          <div class="multi-trigger input" data-multi-trigger="rep">
             <span class="multi-trigger-text" id="rep-filter-summary">All reps</span>
             <span>▾</span>
           </div>
@@ -72,7 +72,7 @@
 
         <div class="field multi" id="rank-filter-wrap">
           <label>Rank filter</label>
-          <div class="multi-trigger" data-multi-trigger="rank">
+          <div class="multi-trigger input" data-multi-trigger="rank">
             <span class="multi-trigger-text" id="rank-filter-summary">All ranks</span>
             <span>▾</span>
           </div>
@@ -87,7 +87,7 @@
 
         <div class="field multi" id="chain-filter-wrap">
           <label>Chain filter</label>
-          <div class="multi-trigger" data-multi-trigger="chain">
+          <div class="multi-trigger input" data-multi-trigger="chain">
             <span class="multi-trigger-text" id="chain-filter-summary">All chains</span>
             <span>▾</span>
           </div>
@@ -102,7 +102,7 @@
 
         <div class="field multi" id="segment-filter-wrap">
           <label>Segment filter</label>
-          <div class="multi-trigger" data-multi-trigger="segment">
+          <div class="multi-trigger input" data-multi-trigger="segment">
             <span class="multi-trigger-text" id="segment-filter-summary">All segments</span>
             <span>▾</span>
           </div>
@@ -213,6 +213,7 @@
               <thead>
                 <tr>
                   <th data-sort="rep" class="sortable is-active asc">Rep <span class="sort-indicator">▲</span></th>
+                  <th>Lock</th>
                   <th data-sort="stops" class="sortable">Stops <span class="sort-indicator">↕</span></th>
                   <th data-sort="deltaStops" class="sortable">+/- Stops <span class="sort-indicator">↕</span></th>
                   <th data-sort="revenue" class="sortable">Revenue <span class="sort-indicator">↕</span></th>
@@ -226,7 +227,6 @@
                   <th data-sort="protected" class="sortable">Protected <span class="sort-indicator">↕</span></th>
                   <th data-sort="movedIn" class="sortable">Moved In <span class="sort-indicator">↕</span></th>
                   <th data-sort="movedOut" class="sortable">Moved Out <span class="sort-indicator">↕</span></th>
-                  <th>Lock</th>
                 </tr>
               </thead>
               <tbody id="rep-table-body">
