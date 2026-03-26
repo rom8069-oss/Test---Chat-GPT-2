@@ -5,8 +5,8 @@ const COLOR_PALETTE = [
 ];
 
 const COLUMN_ALIASES = {
-  latitude: ['latitude','lat','geo_lat','customer_latitude'],
-  longitude: ['longitude','lng','lon','geo_longitude','customer_longitude'],
+  latitude: ['latitude','lat','geo_lat','customer_latitude','y','geo_y','customer_y'],
+  longitude: ['longitude','lng','lon','geo_longitude','customer_longitude','x','geo_x','customer_x'],
   customerId: ['cust id','customer id','customerid','id','account id','acct id'],
   customerName: ['company','customer name','name','account name','cust name'],
   address: ['address','street address','addr','full address'],
@@ -17,7 +17,7 @@ const COLUMN_ALIASES = {
   premise: ['premise','premise type','on/off premise','premise class'],
   currentRep: ['current rep','rep','sales rep','territory rep','owner rep'],
   assignedRep: ['assigned rep','new rep','territory','route','assigned territory'],
-  overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue'],
+  overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue','vol sept feb','dollar vol sept feb'],
   rank: ['rank','class','priority rank'],
   cadence4w: [
     'cadence 4w','cadence_4w','cadence4w','4w','planned 4w','planned_4w','planned4w',
@@ -742,10 +742,14 @@ function normalizeRows(rows) {
 function buildHeaderMap(rows) {
   const firstRow = rows[0] || {};
   const map = {};
-  const cleanedHeaders = Object.keys(firstRow).map(h => ({ original: h, cleaned: cleanHeader(h) }));
+  const cleanedHeaders = Object.keys(firstRow).map(h => ({
+    original: h,
+    cleaned: cleanHeader(h)
+  }));
 
   Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
-    const match = cleanedHeaders.find(h => aliases.includes(h.cleaned));
+    const cleanedAliases = aliases.map(a => cleanHeader(a));
+    const match = cleanedHeaders.find(h => cleanedAliases.includes(h.cleaned));
     map[key] = match ? match.original : null;
   });
 
@@ -825,58 +829,79 @@ function renderMap() {
 }
 
 function buildPopupHtml(account) {
+  const title = account.customerName || account.customerId;
+  const line2 = [
+    account.address,
+    [account.city, account.zip].filter(Boolean).join(' ')
+  ].filter(Boolean).join(' • ');
+
   return `
-    <div class="popup-title">${escapeHtml(account.customerName)}</div>
-    <div class="popup-grid">
-      <div><span class="popup-label">Customer ID</span><span class="popup-value">${escapeHtml(account.customerId)}</span></div>
-      <div><span class="popup-label">Revenue</span><span class="popup-value">${formatCurrency(account.overallSales)}</span></div>
-      <div><span class="popup-label">Address</span><span class="popup-value">${escapeHtml([account.city, account.address, account.zip].filter(Boolean).join(' - '))}</span></div>
-      <div><span class="popup-label">Rank</span><span class="popup-value">${escapeHtml(account.rank)}</span></div>
-      <div><span class="popup-label">Current Rep</span><span class="popup-value">${escapeHtml(account.currentRep)}</span></div>
-      <div><span class="popup-label">Assigned Rep</span><span class="popup-value">${escapeHtml(account.assignedRep)}</span></div>
+    <div style="min-width:240px;max-width:280px;">
+      <div style="font-size:15px;font-weight:800;line-height:1.2;margin-bottom:4px;">
+        ${escapeHtml(title)}
+      </div>
+
+      <div style="font-size:12px;color:#5d7286;line-height:1.35;margin-bottom:8px;">
+        ${escapeHtml(line2)}
+      </div>
+
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:12px;line-height:1.3;">
+        <div><strong>ID</strong></div><div>${escapeHtml(account.customerId)}</div>
+        <div><strong>Rep</strong></div><div>${escapeHtml(account.assignedRep)}</div>
+        <div><strong>Current</strong></div><div>${escapeHtml(account.currentRep)}</div>
+        <div><strong>Revenue</strong></div><div>${formatCurrency(account.overallSales)}</div>
+        <div><strong>Rank</strong></div><div>${escapeHtml(account.rank)}</div>
+        <div><strong>Protected</strong></div><div>${account.protected ? 'Yes' : 'No'}</div>
+      </div>
     </div>
   `;
 }
 
-function renderDetail(account) {
+function renderDetail() {
   if (!els.detailPanel) return;
 
-  if (!account) {
+  const selectedIds = [...state.selection];
+  if (!selectedIds.length) {
     els.detailPanel.innerHTML = '<div class="empty">No account selected.</div>';
     return;
   }
 
-  els.detailPanel.innerHTML = `
-    <div class="detail-title">${escapeHtml(account.customerName)}</div>
-    <div class="detail-grid">
-      <div><span class="detail-label">Customer ID</span><div class="detail-value">${escapeHtml(account.customerId)}</div></div>
-      <div><span class="detail-label">Revenue</span><div class="detail-value">${formatCurrency(account.overallSales)}</div></div>
-      <div><span class="detail-label">Address</span><div class="detail-value">${escapeHtml(account.address)}</div></div>
-      <div><span class="detail-label">City</span><div class="detail-value">${escapeHtml(account.city)}</div></div>
-      <div><span class="detail-label">ZIP</span><div class="detail-value">${escapeHtml(account.zip)}</div></div>
-      <div><span class="detail-label">Chain</span><div class="detail-value">${escapeHtml(account.chain)}</div></div>
-      <div><span class="detail-label">Segment</span><div class="detail-value">${escapeHtml(account.segment)}</div></div>
-      <div><span class="detail-label">Premise</span><div class="detail-value">${escapeHtml(account.premise)}</div></div>
-      <div><span class="detail-label">Current Rep</span><div class="detail-value">${escapeHtml(account.currentRep)}</div></div>
-      <div><span class="detail-label">Assigned Rep</span><div class="detail-value">${escapeHtml(account.assignedRep)}</div></div>
-      <div><span class="detail-label">Rank</span><div class="detail-value">${escapeHtml(account.rank)}</div></div>
-      <div><span class="detail-label">Protected</span><div class="detail-value">${account.protected ? 'Yes' : 'No'}</div></div>
+  const selectedAccounts = selectedIds
+    .map(id => state.accountById.get(id))
+    .filter(Boolean)
+    .slice(0, 10);
+
+  els.detailPanel.innerHTML = selectedAccounts.map(account => `
+    <div class="selected-item" style="margin-bottom:10px;">
+      <div class="selected-item-title">${escapeHtml(account.customerName || account.customerId)}</div>
+      <div style="font-size:12px;color:#5d7286;margin-bottom:6px;">
+        ${escapeHtml([account.address, [account.city, account.zip].filter(Boolean).join(' ')].filter(Boolean).join(' • '))}
+      </div>
+      <div class="transfer-line">
+        <span class="metric-chip">${escapeHtml(account.customerId)}</span>
+        <span class="metric-chip">${formatCurrency(account.overallSales)}</span>
+        <span class="metric-chip">Rank ${escapeHtml(account.rank)}</span>
+        <span class="rep-chip">${escapeHtml(account.assignedRep)}</span>
+        ${account.protected ? '<span class="metric-chip">Protected</span>' : ''}
+      </div>
     </div>
-  `;
+  `).join('');
 }
 
-function refreshUI(refreshMapOnly = true) {
+function refreshUI(rebuildMap = false) {
+  syncControlState();
+  renderRepControls();
+  renderUploadStatus();
+  if (rebuildMap) rebuildMarkers();
+  refreshMarkerStyles();
   renderRepTable();
   renderSelectionPreview();
+  renderSummary();
   renderMovedReview();
-  updateGlobalStats();
-  renderUploadStatus();
-  syncControlState();
-
-  if (refreshMapOnly !== false) {
-    refreshMarkers();
-    refreshTerritories();
-  }
+  renderDetail();
+  refreshTerritories();
+  if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
+}
 
   if (state.selection.size === 1) {
     const account = state.accountById.get([...state.selection][0]);
@@ -1029,13 +1054,71 @@ function toggleRepLock(rep, shouldLock) {
 }
 
 function renderRepTable() {
-  const rows = summarizeByRep();
-  const tbody = els.repTableBody;
+  let rows = summarizeByRep();
+  rows = sortRepRows(rows);
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="15" class="empty">Upload a file to begin.</td></tr>';
+    els.repTableBody.innerHTML = '<tr><td colspan="15" class="empty">Upload a file to begin.</td></tr>';
     return;
   }
+
+  syncSortHeaderIndicators();
+
+  els.repTableBody.innerHTML = rows.map(row => `
+    <tr
+      data-rep-row="${encodeURIComponent(row.rep)}"
+      class="${state.repFocus === row.rep ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}"
+    >
+      <td>
+        <div class="rep-cell">
+          <span class="color-dot" style="background:${getRepColor(row.rep)}"></span>
+          <span>${escapeHtml(row.rep)}</span>
+        </div>
+      </td>
+      <td class="lock-cell">
+        <label class="lock-toggle" title="Lock this territory">
+          <input
+            type="checkbox"
+            class="rep-lock-checkbox"
+            data-lock-rep="${escapeHtmlAttr(row.rep)}"
+            ${isRepLocked(row.rep) ? 'checked' : ''}
+          />
+        </label>
+      </td>
+      <td>${formatNumber(row.stops)}</td>
+      <td>${renderDeltaCount(row.deltaStops)}</td>
+      <td>${formatCurrency(row.revenue)}</td>
+      <td>${renderDeltaMoney(row.deltaRevenue)}</td>
+      <td>${formatNumber(row.A)}</td>
+      <td>${formatNumber(row.B)}</td>
+      <td>${formatNumber(row.C)}</td>
+      <td>${formatNumber(row.D)}</td>
+      <td>${formatNumber(row.planned4W, 2)}</td>
+      <td>${formatNumber(row.avgWeekly, 2)}</td>
+      <td>${formatNumber(row.protected)}</td>
+      <td>${formatNumber(row.movedIn)}</td>
+      <td>${formatNumber(row.movedOut)}</td>
+    </tr>
+  `).join('');
+
+  els.repTableBody.querySelectorAll('tr[data-rep-row]').forEach(tr => {
+    tr.addEventListener('click', e => {
+      if (e.target.closest('.rep-lock-checkbox')) return;
+      const rep = decodeURIComponent(tr.getAttribute('data-rep-row'));
+      state.repFocus = state.repFocus === rep ? null : rep;
+      refreshUI();
+      if (state.repFocus) zoomToRep(state.repFocus);
+    });
+  });
+
+  els.repTableBody.querySelectorAll('.rep-lock-checkbox').forEach(input => {
+    input.addEventListener('click', e => e.stopPropagation());
+    input.addEventListener('change', e => {
+      const rep = e.target.getAttribute('data-lock-rep');
+      toggleRepLock(rep, e.target.checked);
+    });
+  });
+}
 
   sortRepRows(rows);
 
@@ -1094,12 +1177,15 @@ function renderRepTable() {
 
 function summarizeByRep() {
   const map = new Map();
+  const originalMap = new Map();
 
-  state.accounts.forEach(account => {
-    const rep = account.assignedRep || 'Unassigned';
-    if (!map.has(rep)) {
-      map.set(rep, {
-        rep,
+  for (const account of state.accounts) {
+    const assignedRep = account.assignedRep || 'Unassigned';
+    const originalRep = account.originalAssignedRep || 'Unassigned';
+
+    if (!map.has(assignedRep)) {
+      map.set(assignedRep, {
+        rep: assignedRep,
         stops: 0,
         deltaStops: 0,
         revenue: 0,
@@ -1115,6 +1201,45 @@ function summarizeByRep() {
         movedOut: 0
       });
     }
+
+    if (!originalMap.has(originalRep)) {
+      originalMap.set(originalRep, {
+        stops: 0,
+        revenue: 0
+      });
+    }
+
+    const row = map.get(assignedRep);
+    const orig = originalMap.get(originalRep);
+
+    row.stops += 1;
+    row.revenue += Number(account.overallSales || 0);
+    row.planned4W += Number(account.cadence4w || 0);
+    if (row[account.rank] != null) row[account.rank] += 1;
+    if (account.protected) row.protected += 1;
+    if (assignedRep !== originalRep) row.movedIn += 1;
+
+    orig.stops += 1;
+    orig.revenue += Number(account.overallSales || 0);
+  }
+
+  for (const account of state.accounts) {
+    const originalRep = account.originalAssignedRep || 'Unassigned';
+    const assignedRep = account.assignedRep || 'Unassigned';
+    if (originalRep !== assignedRep && map.has(originalRep)) {
+      map.get(originalRep).movedOut += 1;
+    }
+  }
+
+  for (const row of map.values()) {
+    const orig = originalMap.get(row.rep) || { stops: 0, revenue: 0 };
+    row.deltaStops = row.stops - orig.stops;
+    row.deltaRevenue = row.revenue - orig.revenue;
+    row.avgWeekly = row.planned4W / 4;
+  }
+
+  return [...map.values()];
+}
 
     const row = map.get(rep);
     row.stops += 1;
@@ -1263,8 +1388,7 @@ function syncRepFilterSelection(previousAssignedReps = null) {
   state.filters.rep = new Set(reps.filter(rep => prev.has(rep) || !previousAssignedReps));
   if (!state.filters.rep.size) reps.forEach(rep => state.filters.rep.add(rep));
 
-  fillSimpleSelect(els.assignRepSelect, reps, reps[0] || '');
-  renderMultiFilterOptions();
+  fillSimpleSelect(els.assignRepSelect, [], '', v => v, 'Select rep');  renderMultiFilterOptions();
 }
 
 function syncControlState() {
@@ -2127,10 +2251,26 @@ function getAllKnownReps() {
   return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
-function fillSimpleSelect(selectEl, values, selectedValue, labelFn = v => v) {
+function fillSimpleSelect(selectEl, values, selectedValue, labelFn = v => v, placeholder = '') {
   if (!selectEl) return;
-  selectEl.innerHTML = values.map(v => `<option value="${escapeHtmlAttr(v)}">${escapeHtml(labelFn(v))}</option>`).join('');
-  if (selectedValue != null && values.includes(selectedValue)) selectEl.value = selectedValue;
+
+  const options = [];
+
+  if (placeholder) {
+    options.push(`<option value="">${escapeHtml(placeholder)}</option>`);
+  }
+
+  values.forEach(v => {
+    options.push(`<option value="${escapeHtmlAttr(v)}">${escapeHtml(labelFn(v))}</option>`);
+  });
+
+  selectEl.innerHTML = options.join('');
+
+  if (selectedValue != null && values.includes(selectedValue)) {
+    selectEl.value = selectedValue;
+  } else if (placeholder) {
+    selectEl.value = '';
+  }
 }
 
 function updateLastAction(text) {
