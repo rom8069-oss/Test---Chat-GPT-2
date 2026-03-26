@@ -1441,7 +1441,6 @@ function renderSelectionPreview() {
       <div class="selected-item">
         <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
         <div class="transfer-line">
-          <span class="metric-chip">${escapeHtml(a.customerId)}</span>
           <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
           <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
         </div>
