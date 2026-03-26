@@ -122,7 +122,12 @@ tbody tr.rep-row-locked td:first-child{
   box-shadow:inset 4px 0 0 #7b8da6;
 }
 
-.btn,.input,.file-label{
+.btn,
+.input,
+.file-label,
+select,
+input[type="number"],
+input[type="text"]{
   height:34px;
   border:1px solid #c8d4e1;
   border-radius:12px;
@@ -132,6 +137,12 @@ tbody tr.rep-row-locked td:first-child{
   font-size:13px;
   font-weight:700;
   outline:none;
+}
+
+select{
+  appearance:none;
+  -webkit-appearance:none;
+  -moz-appearance:none;
 }
 
 .btn{
