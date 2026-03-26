@@ -995,7 +995,6 @@ function buildPopupHtml(account) {
       </div>
 
       <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:12px;line-height:1.3;">
-        <div><strong>ID</strong></div><div>${escapeHtml(account.customerId)}</div>
         <div><strong>Rep</strong></div><div>${escapeHtml(account.assignedRep)}</div>
         <div><strong>Current</strong></div><div>${escapeHtml(account.currentRep)}</div>
         <div><strong>Revenue</strong></div><div>${formatCurrency(account.overallSales)}</div>
