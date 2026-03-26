@@ -137,6 +137,13 @@ input[type="text"]{
   font-size:13px;
   font-weight:700;
   outline:none;
+  box-shadow:none;
+}
+
+select{
+  appearance:none;
+  -webkit-appearance:none;
+  -moz-appearance:none;
 }
 
 select{
