@@ -5,8 +5,8 @@ const COLOR_PALETTE = [
 ];
 
 const COLUMN_ALIASES = {
-  latitude: ['latitude','lat','geo_lat','customer_latitude'],
-  longitude: ['longitude','lng','lon','geo_longitude','customer_longitude'],
+  latitude: ['latitude','lat','geo_lat','customer_latitude','y','geo_y','customer_y'],
+  longitude: ['longitude','lng','lon','geo_longitude','customer_longitude','x','geo_x','customer_x'],
   customerId: ['cust id','customer id','customerid','id','account id','acct id'],
   customerName: ['company','customer name','name','account name','cust name'],
   address: ['address','street address','addr','full address'],
