@@ -5,8 +5,8 @@ const COLOR_PALETTE = [
 ];
 
 const COLUMN_ALIASES = {
-  latitude: ['latitude','lat','geo_lat','customer_latitude','y','geo_y','customer_y'],
-  longitude: ['longitude','lng','lon','geo_longitude','customer_longitude','x','geo_x','customer_x'],
+  latitude: ['latitude','lat','geo_lat','customer_latitude'],
+  longitude: ['longitude','lng','lon','geo_longitude','customer_longitude'],
   customerId: ['cust id','customer id','customerid','id','account id','acct id'],
   customerName: ['company','customer name','name','account name','cust name'],
   address: ['address','street address','addr','full address'],
@@ -38,6 +38,7 @@ const state = {
   workbook: null,
   workbookSheets: {},
   currentSheetName: '',
+  currentHeaderMap: {},
   accounts: [],
   accountById: new Map(),
   neighborMap: new Map(),
@@ -47,6 +48,7 @@ const state = {
   changeLog: [],
   repColors: new Map(),
   repFocus: null,
+  lockedReps: new Set(),
   theme: 'light',
   loadedFileName: 'territory_export_updated.xlsx',
   lastAction: 'No actions yet',
@@ -117,7 +119,8 @@ function bindElements() {
     'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
     'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
-    'routes-table-wrap','moved-search-input','upload-status-pill','upload-status-icon','upload-status-text','upload-status-panel','upload-status-body'
+    'routes-table-wrap','moved-search-input','upload-status-pill','upload-status-icon','upload-status-text','upload-status-panel','upload-status-body',
+    'detail-panel'
   ].forEach(id => {
     els[toCamel(id)] = document.getElementById(id);
   });
@@ -323,8 +326,32 @@ function positionMultiPanel(key) {
   if (!panel || !trigger || !wrap.classList.contains('open')) return;
 
   const rect = trigger.getBoundingClientRect();
-  panel.style.left = `${Math.max(10, Math.min(window.innerWidth - panel.offsetWidth - 10, rect.left))}px`;
-  panel.style.top = `${rect.bottom + 6}px`;
+  const width = 220;
+  let left = rect.left;
+  if (left + width > window.innerWidth - 12) left = window.innerWidth - width - 12;
+  if (left < 10) left = 10;
+
+  let top = rect.bottom + 6;
+  const availableBelow = window.innerHeight - top - 12;
+  let maxHeight = Math.min(360, Math.max(220, availableBelow));
+
+  if (availableBelow < 220) {
+    const desiredAbove = Math.min(360, Math.max(220, rect.top - 16));
+    top = Math.max(10, rect.top - desiredAbove - 6);
+    maxHeight = desiredAbove;
+  }
+
+  panel.style.width = `${width}px`;
+  panel.style.maxHeight = `${maxHeight}px`;
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+
+  const list = panel.querySelector('.multi-list');
+  if (list) {
+    const searchRow = panel.querySelector('.multi-actions');
+    const searchHeight = searchRow ? searchRow.offsetHeight : 46;
+    list.style.maxHeight = `${Math.max(140, maxHeight - searchHeight - 8)}px`;
+  }
 }
 
 function toggleSelectAllMulti(key) {
@@ -335,6 +362,8 @@ function toggleSelectAllMulti(key) {
 
   if (allVisibleSelected) filtered.forEach(v => selectedSet.delete(v));
   else filtered.forEach(v => selectedSet.add(v));
+
+  if (selectedSet.size === 0) options.forEach(v => selectedSet.add(v));
 
   renderMultiFilterOptions();
   refreshUI();
@@ -361,6 +390,8 @@ function renderMultiFilterOptions() {
   renderMultiOptionList('rank', els.rankFilterOptions, els.rankFilterSummary, getDistinctValues(state.accounts, a => a.rank), 'All ranks');
   renderMultiOptionList('chain', els.chainFilterOptions, els.chainFilterSummary, getDistinctValues(state.accounts, a => a.chain), 'All chains');
   renderMultiOptionList('segment', els.segmentFilterOptions, els.segmentFilterSummary, getDistinctValues(state.accounts, a => a.segment), 'All segments');
+
+  if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
 }
 
 function renderMultiOptionList(key, container, summaryEl, options, allLabel) {
@@ -368,6 +399,8 @@ function renderMultiOptionList(key, container, summaryEl, options, allLabel) {
 
   const selectedSet = state.filters[key];
   const visibleOptions = getVisibleOptionsForKey(key, options);
+
+  if (options.length && selectedSet.size === 0) options.forEach(v => selectedSet.add(v));
 
   container.innerHTML = visibleOptions.length
     ? visibleOptions.map(value => {
@@ -388,23 +421,19 @@ function renderMultiOptionList(key, container, summaryEl, options, allLabel) {
       const value = e.target.value;
       if (e.target.checked) selectedSet.add(value);
       else selectedSet.delete(value);
+      if (selectedSet.size === 0) options.forEach(v => selectedSet.add(v));
       renderMultiFilterOptions();
       refreshUI();
     });
   });
 
-  if (!options.length) {
+  if (!options.length || selectedSet.size === options.length) {
     summaryEl.textContent = allLabel;
-    return;
+  } else if (selectedSet.size === 1) {
+    summaryEl.textContent = [...selectedSet][0];
+  } else {
+    summaryEl.textContent = `${selectedSet.size} selected`;
   }
-
-  if (selectedSet.size === 0 || selectedSet.size === options.length) {
-    options.forEach(v => selectedSet.add(v));
-  }
-
-  summaryEl.textContent = selectedSet.size === options.length
-    ? allLabel
-    : `${selectedSet.size} selected`;
 }
 
 function toggleUploadStatusPanel() {
@@ -414,20 +443,11 @@ function toggleUploadStatusPanel() {
   if (willOpen) {
     els.uploadStatusPanel.hidden = false;
     els.uploadStatusPill.setAttribute('aria-expanded', 'true');
+    renderUploadStatusDetails();
     positionUploadStatusPanel();
   } else {
     closeUploadStatusPanel();
   }
-}
-
-function positionUploadStatusPanel() {
-  if (!els.uploadStatusPanel || els.uploadStatusPanel.hidden || !els.uploadStatusPill) return;
-  const rect = els.uploadStatusPill.getBoundingClientRect();
-  const panel = els.uploadStatusPanel;
-  const width = panel.offsetWidth || 320;
-  const left = Math.max(10, Math.min(window.innerWidth - width - 10, rect.right - width));
-  panel.style.left = `${left}px`;
-  panel.style.top = `${rect.bottom + 8}px`;
 }
 
 function closeUploadStatusPanel() {
@@ -436,98 +456,142 @@ function closeUploadStatusPanel() {
   els.uploadStatusPill.setAttribute('aria-expanded', 'false');
 }
 
+function positionUploadStatusPanel() {
+  if (!els.uploadStatusPanel || els.uploadStatusPanel.hidden || !els.uploadStatusPill) return;
+  const rect = els.uploadStatusPill.getBoundingClientRect();
+  const panel = els.uploadStatusPanel;
+  const width = Math.min(320, window.innerWidth - 20);
+  let left = rect.left;
+  if (left + width > window.innerWidth - 10) left = window.innerWidth - width - 10;
+  if (left < 10) left = 10;
+
+  let top = rect.bottom + 8;
+  const estimatedHeight = Math.min(420, panel.offsetHeight || 220);
+  if (top + estimatedHeight > window.innerHeight - 10) {
+    top = Math.max(10, rect.top - estimatedHeight - 8);
+  }
+
+  panel.style.width = `${width}px`;
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+}
+
+function setUploadStatus(level, text) {
+  state.uploadStatus = { level, text };
+}
+
 function renderUploadStatus() {
   if (!els.uploadStatusPill) return;
 
   const level = state.uploadStatus.level || 'neutral';
+  const text = state.uploadStatus.text || 'No file loaded';
+
   els.uploadStatusPill.className = `upload-status-pill upload-status-${level}`;
-  els.uploadStatusText.textContent = state.uploadStatus.text || 'No file loaded';
-  els.uploadStatusIcon.textContent = level === 'good' ? '✓' : level === 'warning' ? '!' : level === 'bad' ? '×' : '•';
+  els.uploadStatusText.textContent = text;
+  els.uploadStatusIcon.textContent =
+    level === 'good' ? '✓' :
+    level === 'warning' ? '!' :
+    level === 'bad' ? '×' : '•';
 
-  const s = state.importSummary;
-  els.uploadStatusBody.innerHTML = `
-    <div class="upload-diag-summary">${escapeHtml(state.currentSheetName || 'No sheet loaded')}</div>
-
-    <div class="upload-diag-grid">
-      <div class="upload-diag-label">Source rows</div><div class="upload-diag-value">${formatNumber(s.sourceRows)}</div>
-      <div class="upload-diag-label">Loaded rows</div><div class="upload-diag-value">${formatNumber(s.loadedRows)}</div>
-      <div class="upload-diag-label">Skipped no coords</div><div class="upload-diag-value">${formatNumber(s.skippedNoCoords)}</div>
-      <div class="upload-diag-label">Duplicate IDs adjusted</div><div class="upload-diag-value">${formatNumber(s.duplicateCustomerIds)}</div>
-      <div class="upload-diag-label">Missing current rep</div><div class="upload-diag-value">${formatNumber(s.missingCurrentRep)}</div>
-      <div class="upload-diag-label">Missing assigned rep</div><div class="upload-diag-value">${formatNumber(s.missingAssignedRep)}</div>
-    </div>
-
-    <div class="upload-diag-section">
-      <div class="upload-diag-summary">Unmapped fields</div>
-      ${s.unmappedFields.length
-        ? `<ul class="upload-diag-list">${s.unmappedFields.map(v => `<li>${escapeHtml(v)}</li>`).join('')}</ul>`
-        : '<div class="upload-diag-empty">No unmapped fields.</div>'}
-    </div>
-  `;
+  renderUploadStatusDetails();
 }
 
-function syncControlState() {
-  const hasAccounts = state.accounts.length > 0;
-  const hasSelection = state.selection.size > 0;
+function renderUploadStatusDetails() {
+  if (!els.uploadStatusBody) return;
 
-  els.assignBtn.disabled = !hasAccounts || !hasSelection;
-  els.undoBtn.disabled = state.undoStack.length === 0;
-  els.resetBtn.disabled = !hasAccounts;
-  els.optimizeBtn.disabled = !hasAccounts;
-  els.exportBtn.disabled = !hasAccounts;
-  els.clearSelectionBtn.disabled = !hasSelection;
-  els.assignRepSelect.disabled = !hasAccounts;
+  const s = state.importSummary || {};
+  const warnings = [];
+  if (s.skippedNoCoords) warnings.push(`${formatNumber(s.skippedNoCoords)} row(s) skipped for missing latitude/longitude`);
+  if (s.duplicateCustomerIds) warnings.push(`${formatNumber(s.duplicateCustomerIds)} duplicate ID(s) adjusted`);
+  if (s.missingCurrentRep) warnings.push(`${formatNumber(s.missingCurrentRep)} row(s) missing current rep`);
+  if (s.missingAssignedRep) warnings.push(`${formatNumber(s.missingAssignedRep)} blank assigned rep value(s) defaulted from current rep`);
 
-  const reps = getAllAssignedReps();
-  els.repCountInput.value = reps.length || 1;
+  els.uploadStatusBody.innerHTML = `
+    <div class="upload-diag-summary">${escapeHtml(state.currentSheetName || state.uploadStatus.text || '')}</div>
+    <div class="upload-diag-grid">
+      <div class="upload-diag-label">Source rows</div><div class="upload-diag-value">${formatNumber(s.sourceRows || 0)}</div>
+      <div class="upload-diag-label">Loaded rows</div><div class="upload-diag-value">${formatNumber(s.loadedRows || 0)}</div>
+      <div class="upload-diag-label">Skipped rows</div><div class="upload-diag-value">${formatNumber(s.skippedNoCoords || 0)}</div>
+      <div class="upload-diag-label">Duplicate IDs adjusted</div><div class="upload-diag-value">${formatNumber(s.duplicateCustomerIds || 0)}</div>
+      <div class="upload-diag-label">Blank current rep</div><div class="upload-diag-value">${formatNumber(s.missingCurrentRep || 0)}</div>
+      <div class="upload-diag-label">Blank assigned rep</div><div class="upload-diag-value">${formatNumber(s.missingAssignedRep || 0)}</div>
+    </div>
+    <div class="upload-diag-section">
+      <div class="upload-diag-label">Warnings</div>
+      ${warnings.length ? `<ul class="upload-diag-list">${warnings.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : `<div class="upload-diag-empty">No actionable warnings.</div>`}
+    </div>
+  `;
 }
 
 function onFileChosen(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
+  state.loadedFileName = `${file.name.replace(/\.[^.]+$/, '')}_updated.xlsx`;
+  closeUploadStatusPanel();
+  setUploadStatus('neutral', 'Loading file...');
+  renderUploadStatus();
+
   const reader = new FileReader();
-  const fileName = file.name;
 
   reader.onload = e => {
-    const data = e.target.result;
-    const isCsv = fileName.toLowerCase().endsWith('.csv');
+    try {
+      const lower = file.name.toLowerCase();
+      let workbook;
 
-    let workbook;
-    if (isCsv) {
-      workbook = XLSX.read(data, { type: 'binary' });
-    } else {
-      workbook = XLSX.read(data, { type: 'binary' });
+      if (lower.endsWith('.csv')) {
+        workbook = XLSX.read(e.target.result, { type: 'binary' });
+      } else {
+        const arr = new Uint8Array(e.target.result);
+        workbook = XLSX.read(arr, { type: 'array' });
+      }
+
+      loadWorkbook(workbook);
+      setUploadStatus('good', 'Loaded successfully');
+      renderUploadStatus();
+      showToast('Loaded successfully.');
+    } catch (err) {
+      console.error('File read failed:', err);
+      setUploadStatus('bad', 'Load failed');
+      renderUploadStatus();
+      showToast('Could not read that file.');
     }
-
-    state.workbook = workbook;
-    state.workbookSheets = {};
-    workbook.SheetNames.forEach(name => {
-      state.workbookSheets[name] = XLSX.utils.sheet_to_json(workbook.Sheets[name], { defval: '' });
-    });
-
-    state.loadedFileName = `${fileName.replace(/\.[^.]+$/, '')}_updated.xlsx`;
-    fillSimpleSelect(els.sheetSelect, workbook.SheetNames, workbook.SheetNames[0]);
-    els.sheetSelect.disabled = false;
-    els.loadSheetBtn.disabled = false;
-
-   state.uploadStatus = {
-    level: 'good',
-    text: `${fileName} loaded`
-};
-renderUploadStatus();
-
-// Auto-load first sheet
-loadSelectedSheet();
-showToast(`${fileName} loaded.`);
   };
 
-  reader.readAsBinaryString(file);
+  reader.onerror = () => {
+    setUploadStatus('bad', 'Load failed');
+    renderUploadStatus();
+    showToast('Could not read that file.');
+  };
+
+  if (file.name.toLowerCase().endsWith('.csv')) {
+    reader.readAsBinaryString(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function loadWorkbook(workbook) {
+  state.workbook = workbook;
+  state.workbookSheets = {};
+
+  workbook.SheetNames.forEach(name => {
+    state.workbookSheets[name] = XLSX.utils.sheet_to_json(workbook.Sheets[name], { defval: '' });
+  });
+
+  fillSimpleSelect(els.sheetSelect, workbook.SheetNames, workbook.SheetNames[0]);
+  els.sheetSelect.disabled = false;
+  els.loadSheetBtn.disabled = false;
+
+  loadSelectedSheet();
 }
 
 function loadSelectedSheet() {
   const sheetName = els.sheetSelect.value;
-  const rows = state.workbookSheets[sheetName] || [];
+  if (!sheetName || !state.workbookSheets[sheetName]) {
+    showToast('No sheet selected.');
+    return;
+  }
 
   state.currentSheetName = sheetName;
   state.selection.clear();
@@ -538,31 +602,55 @@ function loadSelectedSheet() {
   state.multiSearch.moved = '';
   if (els.movedSearchInput) els.movedSearchInput.value = '';
 
-  const normalized = normalizeRows(rows);
-  state.accounts = normalized.accounts;
-  state.accountById = new Map(normalized.accounts.map(a => [a._id, a]));
-  state.neighborMap = buildNeighborMap(normalized.accounts);
+  const rows = state.workbookSheets[sheetName] || [];
+  const normalizedResult = normalizeRows(rows);
+  const normalized = normalizedResult.accounts;
+
+  state.importSummary = normalizedResult.summary;
+
+  if (!normalized.length) {
+    state.accounts = [];
+    state.accountById = new Map();
+    state.neighborMap = new Map();
+    state.markerById = new Map();
+    state.currentHeaderMap = normalizedResult.headerMap || {};
+
+    setUploadStatus('bad', 'Load failed');
+    renderUploadStatus();
+    renderMap();
+    refreshUI();
+    showToast('No valid rows found.');
+    return;
+  }
+
+  state.accounts = normalized;
+  state.accountById = new Map(normalized.map(a => [a._id, a]));
+  state.neighborMap = buildNeighborMap(normalized);
+  state.currentHeaderMap = normalizedResult.headerMap || {};
 
   buildRepColors();
   syncRepFilterSelection();
-  fillSimpleSelect(els.assignRepSelect, getAllAssignedReps(), getAllAssignedReps()[0] || '');
-  fillSimpleSelect(els.premiseFilter, ['ALL', ...getDistinctValues(state.accounts, a => a.premise)], state.filters.premise || 'ALL', v => v === 'ALL' ? 'All premises' : v);
+  fillSimpleSelect(
+    els.premiseFilter,
+    ['ALL', ...getDistinctValues(state.accounts, a => a.premise)],
+    'ALL',
+    v => v === 'ALL' ? 'All premises' : v
+  );
+
   renderMultiFilterOptions();
   renderMap();
   refreshUI();
   fitMapToAccounts();
 
-  state.uploadStatus = {
-    level: normalized.accounts.length ? 'good' : 'warning',
-    text: normalized.accounts.length
-      ? `${sheetName}: ${normalized.accounts.length} loaded`
-      : `${sheetName}: no usable rows`
-  };
-  state.importSummary = normalized.summary;
+  setUploadStatus(
+    state.importSummary.skippedNoCoords || state.importSummary.duplicateCustomerIds || state.importSummary.missingCurrentRep
+      ? 'warning'
+      : 'good',
+    state.importSummary.skippedNoCoords || state.importSummary.duplicateCustomerIds || state.importSummary.missingCurrentRep
+      ? 'Loaded with warnings'
+      : 'Loaded successfully'
+  );
   renderUploadStatus();
-  closeUploadStatusPanel();
-
-  showToast(`${normalized.accounts.length} accounts loaded from ${sheetName}.`);
 }
 
 function normalizeRows(rows) {
@@ -588,7 +676,6 @@ function normalizeRows(rows) {
 
     let latitude = toNumber(latitudeRaw);
     let longitude = toNumber(longitudeRaw);
-
     ({ latitude, longitude } = normalizeCoordinates(latitude, longitude));
 
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
@@ -612,7 +699,9 @@ function normalizeRows(rows) {
     if (!currentRep) missingCurrentRep += 1;
     if (!safeString(row[headerMap.assignedRep])) missingAssignedRep += 1;
 
-    const account = {
+    const rank = normalizeRank(row[headerMap.rank]);
+
+    accounts.push({
       _id: customerId,
       customerId,
       customerName: safeString(row[headerMap.customerName]) || customerId,
@@ -626,19 +715,18 @@ function normalizeRows(rows) {
       assignedRep: assignedRep || 'Unassigned',
       originalAssignedRep: assignedRep || 'Unassigned',
       overallSales: toNumber(row[headerMap.overallSales]) || 0,
-      rank: normalizeRank(row[headerMap.rank]),
-      cadence4w: normalizeCadence4W(row[headerMap.cadence4w], normalizeRank(row[headerMap.rank])),
+      rank,
+      cadence4w: normalizeCadence4W(row[headerMap.cadence4w], rank),
       protected: toBoolean(row[headerMap.protected]),
       latitude: round6(latitude),
       longitude: round6(longitude),
       sourceRow: row
-    };
-
-    accounts.push(account);
+    });
   });
 
   return {
     accounts,
+    headerMap,
     summary: {
       sourceRows: rows.length,
       loadedRows: accounts.length,
@@ -706,7 +794,7 @@ function renderMap() {
     const color = getRepColor(account.assignedRep);
 
     const marker = L.circleMarker([account.latitude, account.longitude], {
-      radius: 4.5,
+      radius: 2.8,
       color,
       weight: 1,
       opacity: 0.95,
@@ -718,7 +806,7 @@ function renderMap() {
       L.DomEvent.stopPropagation(e);
       toggleSelection(account._id, e.originalEvent?.ctrlKey || e.originalEvent?.metaKey || false);
       renderDetail(account);
-      syncMarkerPopupContent(marker, account._id);
+      marker.setPopupContent(buildPopupHtml(account));
       marker.openPopup();
     });
 
@@ -732,6 +820,7 @@ function renderMap() {
     state.markerById.set(account._id, marker);
   });
 
+  refreshMarkers();
   refreshTerritories();
 }
 
@@ -749,13 +838,9 @@ function buildPopupHtml(account) {
   `;
 }
 
-function syncMarkerPopupContent(marker, id) {
-  const account = state.accountById.get(id);
-  if (!account || !marker) return;
-  marker.setPopupContent(buildPopupHtml(account));
-}
-
 function renderDetail(account) {
+  if (!els.detailPanel) return;
+
   if (!account) {
     els.detailPanel.innerHTML = '<div class="empty">No account selected.</div>';
     return;
@@ -785,6 +870,7 @@ function refreshUI(refreshMapOnly = true) {
   renderSelectionPreview();
   renderMovedReview();
   updateGlobalStats();
+  renderUploadStatus();
   syncControlState();
 
   if (refreshMapOnly !== false) {
@@ -798,6 +884,18 @@ function refreshUI(refreshMapOnly = true) {
   } else if (state.selection.size === 0) {
     renderDetail(null);
   }
+}
+
+function passesFilters(account) {
+  const repOk = !state.filters.rep.size || state.filters.rep.has(account.assignedRep);
+  const rankOk = !state.filters.rank.size || state.filters.rank.has(account.rank);
+  const chainOk = !state.filters.chain.size || state.filters.chain.has(account.chain);
+  const segmentOk = !state.filters.segment.size || state.filters.segment.has(account.segment);
+  const premiseOk = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
+  const protectedOk = state.filters.protected === 'ALL' || (state.filters.protected === 'YES' ? account.protected : !account.protected);
+  const moved = account.assignedRep !== account.originalAssignedRep;
+  const movedOk = state.filters.moved === 'ALL' || (state.filters.moved === 'MOVED' ? moved : !moved);
+  return repOk && rankOk && chainOk && segmentOk && premiseOk && protectedOk && movedOk;
 }
 
 function refreshMarkers() {
@@ -817,15 +915,16 @@ function refreshMarkers() {
       fillColor: color,
       opacity: dimmed ? 0.22 : 0.95,
       fillOpacity: selected ? 1 : dimmed ? 0.18 : 0.88,
-      weight: selected ? 2 : 1,
-      radius: selected ? 6.3 : 4.5
+      weight: selected ? 2 : 1
     });
+
+    marker.setRadius(selected ? 4.2 : (state.repFocus && account.assignedRep === state.repFocus ? 3.6 : 2.8));
 
     if (!passesFilters(account)) {
       marker.setStyle({ opacity: 0, fillOpacity: 0 });
     }
 
-    syncMarkerPopupContent(marker, account._id);
+    marker.setPopupContent(buildPopupHtml(account));
   });
 }
 
@@ -841,12 +940,14 @@ function refreshTerritories() {
     if (members.length < 3) return;
 
     const points = members.map(a => [a.longitude, a.latitude]);
-    let hull;
+    let hull = null;
+
     try {
       hull = turf.convex(turf.featureCollection(points.map(p => turf.point(p))));
     } catch (err) {
       hull = null;
     }
+
     if (!hull) return;
 
     const color = getRepColor(rep);
@@ -869,21 +970,62 @@ function refreshTerritories() {
         html: `<div style="background:${color};color:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;white-space:nowrap;">${escapeHtml(rep)}</div>`
       })
     });
+
     state.territoryLabelLayer.addLayer(label);
   });
 }
 
-function passesFilters(account) {
-  const repOk = !state.filters.rep.size || state.filters.rep.has(account.assignedRep);
-  const rankOk = !state.filters.rank.size || state.filters.rank.has(account.rank);
-  const chainOk = !state.filters.chain.size || state.filters.chain.has(account.chain);
-  const segmentOk = !state.filters.segment.size || state.filters.segment.has(account.segment);
-  const premiseOk = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
-  const protectedOk = state.filters.protected === 'ALL' || (state.filters.protected === 'YES' ? account.protected : !account.protected);
-  const moved = account.assignedRep !== account.originalAssignedRep;
-  const movedOk = state.filters.moved === 'ALL' || (state.filters.moved === 'MOVED' ? moved : !moved);
+function handleDrawCreated(event) {
+  state.drawLayer.clearLayers();
+  const layer = event.layer;
+  state.drawLayer.addLayer(layer);
 
-  return repOk && rankOk && chainOk && segmentOk && premiseOk && protectedOk && movedOk;
+  let polygon = null;
+  if (layer instanceof L.Rectangle || layer instanceof L.Polygon) {
+    polygon = layer.toGeoJSON();
+  }
+  if (!polygon) return;
+
+  state.selection.clear();
+  for (const account of state.accounts) {
+    const point = turf.point([account.longitude, account.latitude]);
+    if (turf.booleanPointInPolygon(point, polygon)) {
+      state.selection.add(account._id);
+    }
+  }
+
+  refreshUI();
+  showToast(`${state.selection.size} account${state.selection.size === 1 ? '' : 's'} selected.`);
+}
+
+function toggleSelection(id, additive = false) {
+  if (!additive) state.selection.clear();
+  if (state.selection.has(id)) state.selection.delete(id);
+  else state.selection.add(id);
+  refreshUI();
+}
+
+function clearSelection() {
+  state.selection.clear();
+  state.drawLayer.clearLayers();
+  refreshUI();
+}
+
+function isRepLocked(rep) {
+  return state.lockedReps.has(rep);
+}
+
+function isAccountLocked(account) {
+  return !!account && isRepLocked(account.assignedRep);
+}
+
+function toggleRepLock(rep, shouldLock) {
+  if (!rep) return;
+  if (shouldLock) state.lockedReps.add(rep);
+  else state.lockedReps.delete(rep);
+  refreshUI();
+  updateLastAction(`${shouldLock ? 'Locked' : 'Unlocked'} territory: ${rep}`);
+  showToast(`${shouldLock ? 'Locked' : 'Unlocked'} ${rep}.`);
 }
 
 function renderRepTable() {
@@ -905,6 +1047,16 @@ function renderRepTable() {
           <span>${escapeHtml(row.rep)}</span>
         </div>
       </td>
+      <td class="lock-cell">
+        <label class="lock-toggle" title="Lock this territory">
+          <input
+            type="checkbox"
+            class="rep-lock-checkbox"
+            data-lock-rep="${escapeHtmlAttr(row.rep)}"
+            ${isRepLocked(row.rep) ? 'checked' : ''}
+          />
+        </label>
+      </td>
       <td>${formatNumber(row.stops)}</td>
       <td>${renderDeltaCount(row.deltaStops)}</td>
       <td>${formatCurrency(row.revenue)}</td>
@@ -918,17 +1070,6 @@ function renderRepTable() {
       <td>${formatNumber(row.protected)}</td>
       <td>${formatNumber(row.movedIn)}</td>
       <td>${formatNumber(row.movedOut)}</td>
-      <td class="lock-cell">
-        <label class="lock-toggle" title="Lock this territory">
-          <input
-            type="checkbox"
-            class="rep-lock-checkbox"
-            data-lock-rep="${escapeHtmlAttr(row.rep)}"
-            ${isRepLocked(row.rep) ? 'checked' : ''}
-          />
-          <span>Lock</span>
-        </label>
-      </td>
     </tr>
   `).join('');
 
@@ -949,37 +1090,6 @@ function renderRepTable() {
       toggleRepLock(rep, e.target.checked);
     });
   });
-}
-
-function sortRepRows(rows) {
-  const { key, dir } = state.tableSort;
-  const factor = dir === 'asc' ? 1 : -1;
-  rows.sort((a, b) => {
-    let av = a[key];
-    let bv = b[key];
-    if (typeof av === 'string' || typeof bv === 'string') {
-      return String(av).localeCompare(String(bv), undefined, { numeric: true }) * factor;
-    }
-    av = Number(av || 0);
-    bv = Number(bv || 0);
-    return (av - bv) * factor;
-  });
-}
-
-function toggleTableSort(key) {
-  if (state.tableSort.key === key) state.tableSort.dir = state.tableSort.dir === 'asc' ? 'desc' : 'asc';
-  else state.tableSort = { key, dir: 'asc' };
-
-  document.querySelectorAll('th[data-sort]').forEach(th => {
-    const active = th.getAttribute('data-sort') === state.tableSort.key;
-    th.classList.toggle('is-active', active);
-    th.classList.toggle('asc', active && state.tableSort.dir === 'asc');
-    th.classList.toggle('desc', active && state.tableSort.dir === 'desc');
-    const indicator = th.querySelector('.sort-indicator');
-    if (indicator) indicator.textContent = active ? (state.tableSort.dir === 'asc' ? '▲' : '▼') : '↕';
-  });
-
-  renderRepTable();
 }
 
 function summarizeByRep() {
@@ -1012,6 +1122,7 @@ function summarizeByRep() {
     row[account.rank] += 1;
     row.planned4W += account.cadence4w || 0;
     if (account.protected) row.protected += 1;
+
     if (account.originalAssignedRep !== account.assignedRep) {
       if (account.assignedRep === rep) row.movedIn += 1;
       if (account.originalAssignedRep === rep) row.movedOut += 1;
@@ -1036,24 +1147,36 @@ function summarizeByRep() {
   return [...map.values()];
 }
 
-function updateGlobalStats() {
-  const visibleAccounts = state.accounts.filter(passesFilters);
-  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
-  const unchangedPct = state.accounts.length
-    ? ((state.accounts.length - movedCount) / state.accounts.length) * 100
-    : 0;
-  const totalRevenue = visibleAccounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
-  const totalProtected = visibleAccounts.filter(a => a.protected).length;
-  const planned4W = visibleAccounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
-  const reps = getAllAssignedReps();
+function sortRepRows(rows) {
+  const { key, dir } = state.tableSort;
+  const factor = dir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    let av = a[key];
+    let bv = b[key];
+    if (typeof av === 'string' || typeof bv === 'string') {
+      return String(av).localeCompare(String(bv), undefined, { numeric: true }) * factor;
+    }
+    av = Number(av || 0);
+    bv = Number(bv || 0);
+    return (av - bv) * factor;
+  });
+}
 
-  els.globalAccounts.textContent = formatNumber(visibleAccounts.length);
-  els.globalRevenue.textContent = formatCurrency(totalRevenue);
-  els.globalProtected.textContent = formatNumber(totalProtected);
-  els.globalMoved.textContent = formatNumber(movedCount);
-  els.globalUnchanged.textContent = `${formatNumber(unchangedPct, 1)}%`;
-  els.globalAvgWeekly.textContent = formatNumber(planned4W / 4, 1);
-  els.globalAvgWeeklyPerRep.textContent = formatNumber((planned4W / 4) / Math.max(1, reps.length), 1);
+function toggleTableSort(key) {
+  if (state.tableSort.key === key) {
+    state.tableSort.dir = state.tableSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.tableSort = { key, dir: 'asc' };
+  }
+
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    const active = th.getAttribute('data-sort') === state.tableSort.key;
+    th.classList.toggle('is-active', active);
+    const indicator = th.querySelector('.sort-indicator');
+    if (indicator) indicator.textContent = active ? (state.tableSort.dir === 'asc' ? '▲' : '▼') : '↕';
+  });
+
+  renderRepTable();
 }
 
 function renderSelectionPreview() {
@@ -1065,7 +1188,7 @@ function renderSelectionPreview() {
     return;
   }
 
-  const cards = ids.slice(0, 50).map(id => {
+  els.selectionPreview.innerHTML = ids.slice(0, 50).map(id => {
     const a = state.accountById.get(id);
     if (!a) return '';
     return `
@@ -1079,8 +1202,6 @@ function renderSelectionPreview() {
       </div>
     `;
   }).join('');
-
-  els.selectionPreview.innerHTML = cards;
 }
 
 function renderMovedReview() {
@@ -1115,6 +1236,26 @@ function renderMovedReview() {
   `).join('');
 }
 
+function updateGlobalStats() {
+  const visibleAccounts = state.accounts.filter(passesFilters);
+  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
+  const unchangedPct = state.accounts.length
+    ? ((state.accounts.length - movedCount) / state.accounts.length) * 100
+    : 0;
+  const totalRevenue = visibleAccounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
+  const totalProtected = visibleAccounts.filter(a => a.protected).length;
+  const planned4W = visibleAccounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
+  const reps = getAllAssignedReps();
+
+  els.globalAccounts.textContent = formatNumber(visibleAccounts.length);
+  els.globalRevenue.textContent = formatCurrency(totalRevenue);
+  els.globalProtected.textContent = formatNumber(totalProtected);
+  els.globalMoved.textContent = formatNumber(movedCount);
+  els.globalUnchanged.textContent = `${formatNumber(unchangedPct, 1)}%`;
+  els.globalAvgWeekly.textContent = formatNumber(planned4W / 4, 1);
+  els.globalAvgWeeklyPerRep.textContent = formatNumber((planned4W / 4) / Math.max(1, reps.length), 1);
+}
+
 function syncRepFilterSelection(previousAssignedReps = null) {
   const reps = getAllAssignedReps();
   const prev = Array.isArray(previousAssignedReps) ? new Set(previousAssignedReps) : state.filters.rep;
@@ -1126,84 +1267,22 @@ function syncRepFilterSelection(previousAssignedReps = null) {
   renderMultiFilterOptions();
 }
 
-function handleDrawCreated(event) {
-  state.drawLayer.clearLayers();
-  const layer = event.layer;
-  state.drawLayer.addLayer(layer);
+function syncControlState() {
+  const hasAccounts = state.accounts.length > 0;
+  const hasSelection = state.selection.size > 0;
 
-  let polygon = null;
-  if (layer instanceof L.Rectangle || layer instanceof L.Polygon) {
-    polygon = layer.toGeoJSON();
+  els.assignBtn.disabled = !hasAccounts || !hasSelection;
+  els.undoBtn.disabled = state.undoStack.length === 0;
+  els.resetBtn.disabled = !hasAccounts;
+  els.optimizeBtn.disabled = !hasAccounts;
+  els.exportBtn.disabled = !hasAccounts;
+  els.clearSelectionBtn.disabled = !hasSelection;
+  els.assignRepSelect.disabled = !hasAccounts;
+
+  const reps = getAllAssignedReps();
+  if (document.activeElement !== els.repCountInput) {
+    els.repCountInput.value = reps.length || 1;
   }
-  if (!polygon) return;
-
-  state.selection.clear();
-
-  for (const account of state.accounts) {
-    const point = turf.point([account.longitude, account.latitude]);
-    if (turf.booleanPointInPolygon(point, polygon)) state.selection.add(account._id);
-  }
-
-  refreshUI();
-  showToast(`${state.selection.size} account${state.selection.size === 1 ? '' : 's'} selected.`);
-}
-
-function toggleSelection(id, additive = false) {
-  if (!additive) state.selection.clear();
-  if (state.selection.has(id)) state.selection.delete(id);
-  else state.selection.add(id);
-  refreshUI();
-}
-
-function clearSelection() {
-  state.selection.clear();
-  state.drawLayer.clearLayers();
-  refreshUI();
-}
-
-function zoomToAccount(id, openPopup = true) {
-  const account = state.accountById.get(id);
-  const marker = state.markerById.get(id);
-  if (!account || !marker) return;
-
-  state.repFocus = account.assignedRep;
-  state.selection.clear();
-  state.selection.add(id);
-  refreshUI(false);
-
-  state.map.setView([account.latitude, account.longitude], 12, { animate: true });
-
-  if (openPopup) {
-    setTimeout(() => {
-      syncMarkerPopupContent(marker, id);
-      marker.openPopup();
-    }, 120);
-  }
-}
-
-function isRepLocked(rep) {
-  return state.lockedReps?.has(rep);
-}
-
-function isAccountLocked(account) {
-  return !!account && isRepLocked(account.assignedRep);
-}
-
-function getLockedRepCount() {
-  return state.lockedReps?.size || 0;
-}
-
-function toggleRepLock(rep, shouldLock) {
-  if (!rep) return;
-
-  if (!state.lockedReps) state.lockedReps = new Set();
-
-  if (shouldLock) state.lockedReps.add(rep);
-  else state.lockedReps.delete(rep);
-
-  refreshUI();
-  updateLastAction(`${shouldLock ? 'Locked' : 'Unlocked'} territory: ${rep}`);
-  showToast(`${shouldLock ? 'Locked' : 'Unlocked'} ${rep}.`);
 }
 
 function assignSelectionToRep() {
@@ -1263,14 +1342,6 @@ function assignSelectionToRep() {
   );
 
   clearSelection();
-
-  const notes = [];
-  if (skippedProtected) notes.push(`${skippedProtected} protected skipped`);
-  if (skippedLocked) notes.push(`${skippedLocked} locked skipped`);
-
-  if (notes.length) {
-    showToast(`${changes.length} reassigned to ${targetRep}. ${notes.join('. ')}.`);
-  }
 }
 
 function applyChanges(changes, label, previousAssignedReps = null) {
@@ -1290,6 +1361,15 @@ function applyChanges(changes, label, previousAssignedReps = null) {
     ensureRepColor(change.to);
     account.assignedRep = change.to;
     appliedChanges.push({ ...change });
+
+    state.changeLog.push({
+      timestamp: new Date().toLocaleString(),
+      customerId: account.customerId,
+      customerName: account.customerName,
+      fromRep: change.from,
+      toRep: change.to,
+      protected: account.protected ? 'Yes' : 'No'
+    });
   });
 
   if (!appliedChanges.length) {
@@ -1339,29 +1419,19 @@ function undoLastAction() {
 }
 
 function resetAssignments() {
-  const changes = [];
-  const repsBefore = getAllAssignedReps();
+  let resetCount = 0;
 
-  for (const account of state.accounts) {
+  state.accounts.forEach(account => {
     if (account.assignedRep !== account.originalAssignedRep) {
-      changes.push({
-        id: account._id,
-        from: account.assignedRep,
-        to: account.originalAssignedRep
-      });
+      account.assignedRep = account.originalAssignedRep;
+      resetCount += 1;
     }
-  }
+  });
 
-  if (!changes.length) {
+  if (!resetCount) {
     showToast('Nothing to reset.');
     return;
   }
-
-  changes.forEach(change => {
-    const account = state.accountById.get(change.id);
-    if (!account) return;
-    account.assignedRep = change.to;
-  });
 
   state.undoStack = [];
   state.changeLog = [];
@@ -1371,7 +1441,7 @@ function resetAssignments() {
   if (els.movedSearchInput) els.movedSearchInput.value = '';
 
   buildRepColors();
-  syncRepFilterSelection(repsBefore);
+  syncRepFilterSelection();
   refreshUI();
   fitMapToAccounts();
   updateLastAction('Reset assignments to imported values');
@@ -1473,10 +1543,7 @@ function optimizeRoutes() {
             ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * geographyWeight
             : 0;
 
-          const continuityPenalty = account.currentRep === rep
-            ? 0
-            : continuityWeight * (account.protected ? 999999 : 1);
-
+          const continuityPenalty = account.currentRep === rep ? 0 : continuityWeight;
           const existingPenalty = account.assignedRep === rep ? -0.15 : 0;
 
           let balancePenalty = 0;
@@ -1566,7 +1633,12 @@ function optimizeRoutes() {
       return;
     }
 
-    applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`, repsBefore);
+    applyChanges(
+      changes,
+      `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`,
+      repsBefore
+    );
+
     state.optimizationSummary = buildOptimizationSummary();
     updateLastActionWithOptimization(`Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
     refreshUI(false);
@@ -1580,7 +1652,6 @@ function buildOptimizationSummary() {
   const rows = summarizeByRep();
   const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
   const protectedHeld = state.accounts.filter(a => a.protected && a.assignedRep === a.originalAssignedRep).length;
-
   const stops = rows.map(r => r.stops);
   const revenue = rows.map(r => r.revenue);
 
@@ -1603,15 +1674,11 @@ function updateLastActionWithOptimization(baseText) {
     return;
   }
 
-  updateLastAction(
-    `${baseText} • Stops range ${s.minStops}-${s.maxStops} • Avg stops ${formatNumber(s.avgStops, 1)}`
-  );
+  updateLastAction(`${baseText} • Stops range ${s.minStops}-${s.maxStops} • Avg stops ${formatNumber(s.avgStops, 1)}`);
 }
 
 function createAssignmentContext(targetRepNames, assignments) {
-  const ctx = {
-    reps: new Map()
-  };
+  const ctx = { reps: new Map() };
 
   targetRepNames.forEach(rep => {
     ctx.reps.set(rep, {
@@ -1730,19 +1797,23 @@ function buildFullRepStats(targetRepNames) {
 function localDominancePenalty(account, rep, assignments, adjacency) {
   const neighbors = adjacency.get(account._id);
   if (!neighbors || !neighbors.size) return 0;
+
   let same = 0;
   let diff = 0;
+
   neighbors.forEach(id => {
     const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
     if (!neighborRep) return;
     if (neighborRep === rep) same += 1;
     else diff += 1;
   });
+
   return diff > same ? 0.3 : 0;
 }
 
 function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx) {
   let guard = 0;
+
   while (guard < 2000) {
     guard += 1;
     const under = targetRepNames.find(rep => ctx.count(rep) < minStops);
@@ -1754,10 +1825,15 @@ function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops
 
     if (!donor) break;
 
+    const underCentroid = averageCentroidForRep(under, ctx);
     const candidate = [...ctx.members(donor)]
       .map(id => state.accountById.get(id))
       .filter(Boolean)
-      .sort((a, b) => squaredDistance(a.latitude, a.longitude, averageCentroidForRep(under, ctx)?.lat || a.latitude, averageCentroidForRep(under, ctx)?.lng || a.longitude) - squaredDistance(b.latitude, b.longitude, averageCentroidForRep(under, ctx)?.lat || b.latitude, averageCentroidForRep(under, ctx)?.lng || b.longitude))[0];
+      .sort((a, b) => {
+        const ad = underCentroid ? squaredDistance(a.latitude, a.longitude, underCentroid.lat, underCentroid.lng) : 0;
+        const bd = underCentroid ? squaredDistance(b.latitude, b.longitude, underCentroid.lat, underCentroid.lng) : 0;
+        return ad - bd;
+      })[0];
 
     if (!candidate) break;
 
@@ -1769,6 +1845,7 @@ function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops
 
 function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx) {
   let guard = 0;
+
   while (guard < 2000) {
     guard += 1;
     const over = targetRepNames.find(rep => ctx.count(rep) > maxStops);
@@ -1780,10 +1857,15 @@ function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops
 
     if (!receiver) break;
 
+    const receiverCentroid = averageCentroidForRep(receiver, ctx);
     const candidate = [...ctx.members(over)]
       .map(id => state.accountById.get(id))
       .filter(Boolean)
-      .sort((a, b) => squaredDistance(a.latitude, a.longitude, averageCentroidForRep(receiver, ctx)?.lat || a.latitude, averageCentroidForRep(receiver, ctx)?.lng || a.longitude) - squaredDistance(b.latitude, b.longitude, averageCentroidForRep(receiver, ctx)?.lat || b.latitude, averageCentroidForRep(receiver, ctx)?.lng || b.longitude))[0];
+      .sort((a, b) => {
+        const ad = receiverCentroid ? squaredDistance(a.latitude, a.longitude, receiverCentroid.lat, receiverCentroid.lng) : 0;
+        const bd = receiverCentroid ? squaredDistance(b.latitude, b.longitude, receiverCentroid.lat, receiverCentroid.lng) : 0;
+        return ad - bd;
+      })[0];
 
     if (!candidate) break;
 
@@ -1800,7 +1882,8 @@ function rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxSt
 
 function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, ctx) {
   for (const account of state.accounts) {
-    if (account.protected) continue;
+    if (account.protected || isAccountLocked(account)) continue;
+
     const currentRep = assignments.get(account._id) || account.assignedRep;
     const neighbors = adjacency.get(account._id);
     if (!neighbors || !neighbors.size) continue;
@@ -1815,6 +1898,7 @@ function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, min
     const bestNeighborRep = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
     if (!bestNeighborRep || bestNeighborRep === currentRep) continue;
     if (ctx.count(currentRep) <= minStops) continue;
+    if (isRepLocked(bestNeighborRep)) continue;
 
     ctx.removeFromRep(currentRep, account);
     ctx.addToRep(bestNeighborRep, account);
@@ -1831,78 +1915,80 @@ function runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacen
 }
 
 async function exportWorkbook() {
-  const wb = new ExcelJS.Workbook();
+  if (!state.accounts.length) {
+    showToast('Nothing to export.');
+    return;
+  }
 
-  const exportRows = state.accounts.map(a => {
-    const row = { ...a.sourceRow };
-    const headerMap = buildHeaderMap([a.sourceRow]);
-    const assignedHeader = headerMap.assignedRep || 'new rep';
-    row[assignedHeader] = a.assignedRep;
+  const workbook = new ExcelJS.Workbook();
+
+  const mainSheet = workbook.addWorksheet(state.currentSheetName || 'Sheet1');
+  const exportRows = state.accounts.map(account => {
+    const row = { ...(account.sourceRow || {}) };
+    const assignedHeader = state.currentHeaderMap.assignedRep || 'New Rep';
+    row[assignedHeader] = account.assignedRep;
     return row;
   });
 
-  const sheet = wb.addWorksheet(state.currentSheetName || 'Territory Export');
   if (exportRows.length) {
-    const columns = Object.keys(exportRows[0]).map(key => ({ key, header: prettifyHeader(key), width: guessColumnWidth(key, exportRows) }));
-    sheet.columns = columns;
-    exportRows.forEach(row => sheet.addRow(row));
-    styleHeaderRow(sheet.getRow(1));
-    styleDataRows(sheet, 2, sheet.rowCount);
+    const keys = Object.keys(exportRows[0]);
+    mainSheet.columns = keys.map(key => ({
+      header: key,
+      key,
+      width: guessColumnWidth(key, exportRows)
+    }));
+    exportRows.forEach(row => mainSheet.addRow(row));
+    styleHeaderRow(mainSheet.getRow(1));
+    styleDataRows(mainSheet, 2, mainSheet.rowCount);
   }
 
-  const movesSheet = wb.addWorksheet('Moved Accounts');
+  const movedSheet = workbook.addWorksheet('Moved Accounts');
   const movedRows = state.accounts
     .filter(a => a.assignedRep !== a.originalAssignedRep)
     .map(a => ({
-      customerId: a.customerId,
-      customerName: a.customerName,
-      fromRep: a.originalAssignedRep,
-      toRep: a.assignedRep,
-      revenue: a.overallSales,
-      protected: a.protected ? 'Yes' : 'No'
+      Customer_ID: a.customerId,
+      Customer_Name: a.customerName,
+      Original_Assigned_Rep: a.originalAssignedRep,
+      Assigned_Rep: a.assignedRep,
+      Current_Rep: a.currentRep,
+      Revenue: round2(a.overallSales),
+      Rank: a.rank,
+      Protected: a.protected ? 'Yes' : 'No'
     }));
 
+  movedSheet.columns = [
+    { header: 'Customer ID', key: 'Customer_ID', width: 16 },
+    { header: 'Customer Name', key: 'Customer_Name', width: 28 },
+    { header: 'Original Assigned Rep', key: 'Original_Assigned_Rep', width: 20 },
+    { header: 'Assigned Rep', key: 'Assigned_Rep', width: 16 },
+    { header: 'Current Rep', key: 'Current_Rep', width: 16 },
+    { header: 'Revenue', key: 'Revenue', width: 14 },
+    { header: 'Rank', key: 'Rank', width: 10 },
+    { header: 'Protected', key: 'Protected', width: 12 }
+  ];
+
   if (movedRows.length) {
-    movesSheet.columns = Object.keys(movedRows[0]).map(key => ({ key, header: prettifyHeader(key), width: guessColumnWidth(key, movedRows) }));
-    movedRows.forEach(row => movesSheet.addRow(row));
-    styleHeaderRow(movesSheet.getRow(1));
-    styleDataRows(movesSheet, 2, movesSheet.rowCount);
-    applyColumnFormats(movesSheet, { currencyColumns: ['revenue'] });
+    movedRows.forEach(row => movedSheet.addRow(row));
+    styleHeaderRow(movedSheet.getRow(1));
+    styleDataRows(movedSheet, 2, movedSheet.rowCount);
+    movedSheet.getColumn('Revenue').numFmt = '$#,##0.00';
   }
 
-  const summarySheet = wb.addWorksheet('Summary');
-  const summaryRows = summarizeByRep();
-  if (summaryRows.length) {
-    summarySheet.columns = Object.keys(summaryRows[0]).map(key => ({ key, header: prettifyHeader(key), width: guessColumnWidth(key, summaryRows) }));
-    summaryRows.forEach(row => summarySheet.addRow(row));
-    styleHeaderRow(summarySheet.getRow(1));
-    styleDataRows(summarySheet, 2, summarySheet.rowCount);
-    applyColumnFormats(summarySheet, { currencyColumns: ['revenue','deltaRevenue'], decimalColumns: ['planned4W','avgWeekly'], integerColumns: ['stops','deltaStops','A','B','C','D','protected','movedIn','movedOut'] });
-  }
-
-  const settingsSheet = wb.addWorksheet('Settings');
-  const settingsRows = [
-    { Setting: 'Exported At', Value: new Date().toLocaleString() },
-    { Setting: 'Source File', Value: state.loadedFileName },
-    { Setting: 'Sheet', Value: state.currentSheetName },
-    { Setting: 'Locked Reps', Value: [...(state.lockedReps || new Set())].join(', ') || 'None' },
-    { Setting: 'Rep Count', Value: els.repCountInput.value },
-    { Setting: 'Min Stops', Value: els.minStopsInput.value },
-    { Setting: 'Max Stops', Value: els.maxStopsInput.value },
-    { Setting: 'Balance Mode', Value: els.balanceMode.value },
-    { Setting: 'Disruption', Value: els.disruptionSlider.value }
-  ];
-  settingsSheet.columns = [
-    { key: 'Setting', header: 'Setting', width: 28 },
-    { key: 'Value', header: 'Value', width: 42 }
-  ];
-  settingsRows.forEach(row => settingsSheet.addRow(row));
-  styleHeaderRow(settingsSheet.getRow(1));
-  styleDataRows(settingsSheet, 2, settingsSheet.rowCount);
-
-  const buffer = await wb.xlsx.writeBuffer();
-  downloadArrayBufferAsFile(buffer, state.loadedFileName || `territory_export_${buildTimestampForFileName()}.xlsx`);
+  const buffer = await workbook.xlsx.writeBuffer();
+  downloadArrayBufferAsFile(buffer, state.loadedFileName || 'territory_export_updated.xlsx');
   showToast('Excel export ready.');
+}
+
+function styleHeaderRow(row) {
+  row.eachCell(cell => {
+    cell.font = { name: 'Tw Cen MT', size: 9, bold: true, color: { argb: 'FF20364F' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF2FB' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FFD3DFEB' } },
+      bottom: { style: 'thin', color: { argb: 'FFC3D3E2' } }
+    };
+  });
 }
 
 function styleDataRows(worksheet, fromRow, toRow) {
@@ -1919,100 +2005,14 @@ function styleDataRows(worksheet, fromRow, toRow) {
   }
 }
 
-function styleHeaderRow(row) {
-  row.eachCell(cell => {
-    cell.font = {
-      name: 'Tw Cen MT',
-      size: 9,
-      bold: true,
-      color: { argb: 'FF20364F' }
-    };
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFEAF2FB' }
-    };
-    cell.alignment = {
-      vertical: 'middle',
-      horizontal: 'left'
-    };
-    cell.border = {
-      top: { style: 'thin', color: { argb: 'FFD3DFEB' } },
-      bottom: { style: 'thin', color: { argb: 'FFC3D3E2' } }
-    };
-  });
-}
-
-function applyColumnFormats(worksheet, formatConfig) {
-  const {
-    currencyColumns = [],
-    decimalColumns = [],
-    integerColumns = []
-  } = formatConfig;
-
-  worksheet.columns.forEach(column => {
-    if (!column || !column.key) return;
-
-    if (currencyColumns.includes(column.key)) {
-      column.numFmt = '$#,##0;[Red]($#,##0)';
-    } else if (decimalColumns.includes(column.key)) {
-      column.numFmt = '0.00';
-    } else if (integerColumns.includes(column.key)) {
-      column.numFmt = '0';
-    }
-  });
-}
-
 function guessColumnWidth(key, rows) {
-  const pretty = prettifyHeader(key);
-  let maxLen = pretty.length;
-
+  let maxLen = String(key || '').length;
   rows.slice(0, 250).forEach(row => {
     const value = row[key];
     const len = String(value == null ? '' : value).length;
     if (len > maxLen) maxLen = len;
   });
-
-  const widthOverrides = {
-    Customer_ID: 16,
-    Customer_Name: 28,
-    Address: 30,
-    ZIP: 12,
-    Chain: 18,
-    Segment: 16,
-    Premise: 14,
-    Current_Rep: 16,
-    Assigned_Rep: 16,
-    Original_Assigned_Rep: 20,
-    Protected: 11,
-    Moved: 10,
-    Rank: 8,
-    Latitude: 12,
-    Longitude: 12,
-    Overall_Sales: 14,
-    Cadence_4W: 12,
-    Revenue: 14,
-    Delta_Revenue: 14,
-    Planned_4W: 12,
-    Avg_Weekly: 12,
-    timestamp: 24,
-    customerId: 16,
-    customerName: 28,
-    fromRep: 16,
-    toRep: 16,
-    protected: 11,
-    Setting: 28,
-    Value: 42
-  };
-
-  if (widthOverrides[key]) return widthOverrides[key];
   return Math.max(10, Math.min(maxLen + 2, 42));
-}
-
-function prettifyHeader(key) {
-  return String(key || '')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, m => m.toUpperCase());
 }
 
 function downloadArrayBufferAsFile(buffer, filename) {
@@ -2029,22 +2029,6 @@ function downloadArrayBufferAsFile(buffer, filename) {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function buildTimestampForFileName() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  return `${yyyy}${mm}${dd}_${hh}${mi}`;
-}
-
-function fitMapToAccounts() {
-  if (!state.accounts.length) return;
-  const latlngs = state.accounts.map(a => [a.latitude, a.longitude]);
-  state.map.fitBounds(latlngs, { padding: [25, 25] });
 }
 
 function zoomToRep(rep) {
@@ -2067,10 +2051,13 @@ function zoomToRep(rep) {
     return;
   }
 
-  state.map.fitBounds(bounds, {
-    padding: [35, 35],
-    maxZoom: 11
-  });
+  state.map.fitBounds(bounds, { padding: [35, 35], maxZoom: 11 });
+}
+
+function fitMapToAccounts() {
+  if (!state.accounts.length) return;
+  const latlngs = state.accounts.map(a => [a.latitude, a.longitude]);
+  state.map.fitBounds(latlngs, { padding: [25, 25] });
 }
 
 function toggleTheme() {
@@ -2102,7 +2089,6 @@ function buildRepColors() {
 
   reps.forEach(rep => {
     if (state.repColors.has(rep)) return;
-
     const nextColor = COLOR_PALETTE.find(c => !usedColors.has(c)) || COLOR_PALETTE[state.repColors.size % COLOR_PALETTE.length];
     state.repColors.set(rep, nextColor);
     usedColors.add(nextColor);
@@ -2128,7 +2114,7 @@ function getAllAssignedReps() {
   state.accounts.forEach(a => {
     if (a.assignedRep) set.add(a.assignedRep);
   });
-  return [...set].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
+  return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
 function getAllKnownReps() {
@@ -2138,10 +2124,11 @@ function getAllKnownReps() {
     if (a.currentRep) set.add(a.currentRep);
     if (a.originalAssignedRep) set.add(a.originalAssignedRep);
   });
-  return [...set].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
+  return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
 function fillSimpleSelect(selectEl, values, selectedValue, labelFn = v => v) {
+  if (!selectEl) return;
   selectEl.innerHTML = values.map(v => `<option value="${escapeHtmlAttr(v)}">${escapeHtml(labelFn(v))}</option>`).join('');
   if (selectedValue != null && values.includes(selectedValue)) selectEl.value = selectedValue;
 }
@@ -2152,6 +2139,7 @@ function updateLastAction(text) {
 }
 
 function showToast(message) {
+  if (!els.toast) return;
   els.toast.textContent = message;
   els.toast.classList.add('show');
   clearTimeout(toastTimer);
@@ -2164,7 +2152,7 @@ function getDistinctValues(arr, fn) {
     const v = fn(item);
     if (safeString(v)) set.add(v);
   });
-  return [...set].sort((a,b) => String(a).localeCompare(String(b), undefined, { numeric:true }));
+  return [...set].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
 }
 
 function renderDeltaCount(value) {
@@ -2193,11 +2181,6 @@ function normalizeCadence4W(value, rank) {
   const n = toNumber(raw);
   if (Number.isFinite(n) && n >= 0) return n;
 
-  if (normalized === 'weekly' || normalized === 'wkly' || normalized === 'week') return 4;
-  if (normalized === 'biweekly' || normalized === 'every other week' || normalized === 'eow' || normalized === 'bi-weekly') return 2;
-  if (normalized === 'monthly' || normalized === 'month') return 1;
-  if (normalized === 'quarterly' || normalized === 'qtr' || normalized === 'quarter') return 0.33;
-
   if (normalized.includes('weekly')) return 4;
   if (normalized.includes('biweekly') || normalized.includes('every other')) return 2;
   if (normalized.includes('monthly')) return 1;
@@ -2210,7 +2193,7 @@ function normalizeCadence4W(value, rank) {
 }
 
 function rankSortValue(rank) {
-  return { A:0, B:1, C:2, D:3 }[rank] ?? 9;
+  return { A: 0, B: 1, C: 2, D: 3 }[rank] ?? 9;
 }
 
 function toCamel(id) {
@@ -2235,19 +2218,19 @@ function toNumber(value) {
 
 function toBoolean(value) {
   const v = safeString(value).toLowerCase();
-  return ['true','yes','y','1','protected','locked'].includes(v);
+  return ['true', 'yes', 'y', '1', 'protected', 'locked'].includes(v);
 }
 
 function normalizeRank(value) {
   const raw = safeString(value).toUpperCase();
-  return ['A','B','C','D'].includes(raw) ? raw : 'C';
+  return ['A', 'B', 'C', 'D'].includes(raw) ? raw : 'C';
 }
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-US', {
-    style:'currency',
-    currency:'USD',
-    maximumFractionDigits:0
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
   }).format(value || 0);
 }
 
@@ -2274,11 +2257,11 @@ function squaredDistance(lat1, lng1, lat2, lng2) {
 
 function escapeHtml(text) {
   return String(text ?? '').replace(/[&<>"']/g, m => ({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;',
-    "'":'&#39;'
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
   }[m]));
 }
 
