@@ -47,7 +47,6 @@ const state = {
   changeLog: [],
   repColors: new Map(),
   repFocus: null,
-  lockedReps: new Set(),
   theme: 'light',
   loadedFileName: 'territory_export_updated.xlsx',
   lastAction: 'No actions yet',
@@ -107,29 +106,6 @@ function init() {
   requestAnimationFrame(() => {
     if (state.map) state.map.invalidateSize();
   });
-}
-
-function isRepLocked(rep) {
-  return state.lockedReps.has(rep);
-}
-
-function isAccountLocked(account) {
-  return !!account && isRepLocked(account.assignedRep);
-}
-
-function getLockedRepCount() {
-  return state.lockedReps.size;
-}
-
-function toggleRepLock(rep, shouldLock) {
-  if (!rep) return;
-
-  if (shouldLock) state.lockedReps.add(rep);
-  else state.lockedReps.delete(rep);
-
-  refreshUI();
-  updateLastAction(`${shouldLock ? 'Locked' : 'Unlocked'} territory: ${rep}`);
-  showToast(`${shouldLock ? 'Locked' : 'Unlocked'} ${rep}.`);
 }
 
 function bindElements() {
@@ -341,55 +317,117 @@ function closeAllMultiPanels() {
 
 function positionMultiPanel(key) {
   const wrap = document.getElementById(`${key}-filter-wrap`);
-  const trigger = wrap?.querySelector('.multi-trigger');
-  const panel = wrap?.querySelector('.multi-panel');
-  if (!wrap || !trigger || !panel || !wrap.classList.contains('open')) return;
+  if (!wrap) return;
+  const panel = wrap.querySelector('.multi-panel');
+  const trigger = wrap.querySelector('.multi-trigger');
+  if (!panel || !trigger || !wrap.classList.contains('open')) return;
 
   const rect = trigger.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
+  panel.style.left = `${Math.max(10, Math.min(window.innerWidth - panel.offsetWidth - 10, rect.left))}px`;
+  panel.style.top = `${rect.bottom + 6}px`;
+}
 
-  const width = 220;
-  let left = rect.left;
-  if (left + width > viewportWidth - 12) left = viewportWidth - width - 12;
-  if (left < 10) left = 10;
+function toggleSelectAllMulti(key) {
+  const options = getFilterOptionsForKey(key);
+  const filtered = getVisibleOptionsForKey(key, options);
+  const selectedSet = state.filters[key];
+  const allVisibleSelected = filtered.every(v => selectedSet.has(v));
 
-  let top = rect.bottom + 6;
-  const availableBelow = viewportHeight - top - 12;
-  let maxHeight = Math.min(360, Math.max(220, availableBelow));
+  if (allVisibleSelected) filtered.forEach(v => selectedSet.delete(v));
+  else filtered.forEach(v => selectedSet.add(v));
 
-  if (availableBelow < 220) {
-    const desiredAbove = Math.min(360, Math.max(220, rect.top - 16));
-    top = Math.max(10, rect.top - desiredAbove - 6);
-    maxHeight = desiredAbove;
+  renderMultiFilterOptions();
+  refreshUI();
+}
+
+function getFilterOptionsForKey(key) {
+  switch (key) {
+    case 'rep': return getAllAssignedReps();
+    case 'rank': return getDistinctValues(state.accounts, a => a.rank);
+    case 'chain': return getDistinctValues(state.accounts, a => a.chain);
+    case 'segment': return getDistinctValues(state.accounts, a => a.segment);
+    default: return [];
+  }
+}
+
+function getVisibleOptionsForKey(key, options) {
+  const term = (state.multiSearch[key] || '').trim().toLowerCase();
+  if (!term) return options;
+  return options.filter(v => String(v).toLowerCase().includes(term));
+}
+
+function renderMultiFilterOptions() {
+  renderMultiOptionList('rep', els.repFilterOptions, els.repFilterSummary, getAllAssignedReps(), 'All reps');
+  renderMultiOptionList('rank', els.rankFilterOptions, els.rankFilterSummary, getDistinctValues(state.accounts, a => a.rank), 'All ranks');
+  renderMultiOptionList('chain', els.chainFilterOptions, els.chainFilterSummary, getDistinctValues(state.accounts, a => a.chain), 'All chains');
+  renderMultiOptionList('segment', els.segmentFilterOptions, els.segmentFilterSummary, getDistinctValues(state.accounts, a => a.segment), 'All segments');
+}
+
+function renderMultiOptionList(key, container, summaryEl, options, allLabel) {
+  if (!container || !summaryEl) return;
+
+  const selectedSet = state.filters[key];
+  const visibleOptions = getVisibleOptionsForKey(key, options);
+
+  container.innerHTML = visibleOptions.length
+    ? visibleOptions.map(value => {
+        const checked = selectedSet.has(value) ? 'checked' : '';
+        return `
+          <div class="multi-option">
+            <label>
+              <input type="checkbox" data-multi-check="${escapeHtmlAttr(key)}" value="${escapeHtmlAttr(value)}" ${checked} />
+              <span>${escapeHtml(value)}</span>
+            </label>
+          </div>
+        `;
+      }).join('')
+    : '<div class="empty">No matches.</div>';
+
+  container.querySelectorAll('input[data-multi-check]').forEach(input => {
+    input.addEventListener('change', e => {
+      const value = e.target.value;
+      if (e.target.checked) selectedSet.add(value);
+      else selectedSet.delete(value);
+      renderMultiFilterOptions();
+      refreshUI();
+    });
+  });
+
+  if (!options.length) {
+    summaryEl.textContent = allLabel;
+    return;
   }
 
-  panel.style.width = `${width}px`;
-  panel.style.maxHeight = `${maxHeight}px`;
-  panel.style.left = `${left}px`;
-  panel.style.top = `${top}px`;
-
-  const list = panel.querySelector('.multi-list');
-  if (list) {
-    const searchRow = panel.querySelector('.multi-actions');
-    const searchHeight = searchRow ? searchRow.offsetHeight : 46;
-    list.style.maxHeight = `${Math.max(140, maxHeight - searchHeight - 8)}px`;
+  if (selectedSet.size === 0 || selectedSet.size === options.length) {
+    options.forEach(v => selectedSet.add(v));
   }
+
+  summaryEl.textContent = selectedSet.size === options.length
+    ? allLabel
+    : `${selectedSet.size} selected`;
 }
 
 function toggleUploadStatusPanel() {
   if (!els.uploadStatusPanel) return;
 
-  const isOpen = !els.uploadStatusPanel.hidden;
-  if (isOpen) {
+  const willOpen = els.uploadStatusPanel.hidden;
+  if (willOpen) {
+    els.uploadStatusPanel.hidden = false;
+    els.uploadStatusPill.setAttribute('aria-expanded', 'true');
+    positionUploadStatusPanel();
+  } else {
     closeUploadStatusPanel();
-    return;
   }
+}
 
-  els.uploadStatusBody.innerHTML = buildUploadStatusDetailsHtml();
-  els.uploadStatusPanel.hidden = false;
-  els.uploadStatusPill.setAttribute('aria-expanded', 'true');
-  positionUploadStatusPanel();
+function positionUploadStatusPanel() {
+  if (!els.uploadStatusPanel || els.uploadStatusPanel.hidden || !els.uploadStatusPill) return;
+  const rect = els.uploadStatusPill.getBoundingClientRect();
+  const panel = els.uploadStatusPanel;
+  const width = panel.offsetWidth || 320;
+  const left = Math.max(10, Math.min(window.innerWidth - width - 10, rect.right - width));
+  panel.style.left = `${left}px`;
+  panel.style.top = `${rect.bottom + 8}px`;
 }
 
 function closeUploadStatusPanel() {
@@ -398,404 +436,209 @@ function closeUploadStatusPanel() {
   els.uploadStatusPill.setAttribute('aria-expanded', 'false');
 }
 
-function positionUploadStatusPanel() {
-  if (!els.uploadStatusPanel || els.uploadStatusPanel.hidden || !els.uploadStatusPill) return;
+function renderUploadStatus() {
+  if (!els.uploadStatusPill) return;
 
-  const rect = els.uploadStatusPill.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const width = Math.min(320, viewportWidth - 20);
+  const level = state.uploadStatus.level || 'neutral';
+  els.uploadStatusPill.className = `upload-status-pill upload-status-${level}`;
+  els.uploadStatusText.textContent = state.uploadStatus.text || 'No file loaded';
+  els.uploadStatusIcon.textContent = level === 'good' ? '✓' : level === 'warning' ? '!' : level === 'bad' ? '×' : '•';
 
-  let left = rect.left;
-  if (left + width > viewportWidth - 10) left = viewportWidth - width - 10;
-  if (left < 10) left = 10;
-
-  let top = rect.bottom + 8;
-  const estimatedHeight = Math.min(420, els.uploadStatusPanel.offsetHeight || 220);
-
-  if (top + estimatedHeight > viewportHeight - 10) {
-    top = Math.max(10, rect.top - estimatedHeight - 8);
-  }
-
-  els.uploadStatusPanel.style.width = `${width}px`;
-  els.uploadStatusPanel.style.left = `${left}px`;
-  els.uploadStatusPanel.style.top = `${top}px`;
-}
-
-function buildUploadStatusDetailsHtml() {
-  const status = state.uploadStatus || { level: 'neutral', text: 'No file loaded' };
-  const s = state.importSummary || {};
-  const warningFields = (s.unmappedFields || []).filter(key => isWarningField(key));
-  const infoFields = (s.unmappedFields || []).filter(key => !isWarningField(key));
-
-  if (status.level === 'neutral') {
-    return `
-      <div class="upload-diag-summary">No file loaded yet.</div>
-      <div class="upload-diag-empty">Upload an Excel or CSV file to view import diagnostics.</div>
-    `;
-  }
-
-  if (status.level === 'bad' && !s.loadedRows) {
-    return `
-      <div class="upload-diag-summary">${escapeHtml(status.text || 'Import failed.')}</div>
-      <div class="upload-diag-empty">No valid account rows were loaded.</div>
-    `;
-  }
-
-  const warnings = [];
-  if (s.skippedNoCoords) warnings.push(`${s.skippedNoCoords.toLocaleString()} row(s) skipped for missing latitude/longitude`);
-  if (s.duplicateCustomerIds) warnings.push(`${s.duplicateCustomerIds.toLocaleString()} duplicate customer ID(s) adjusted`);
-  if (s.missingCurrentRep) warnings.push(`${s.missingCurrentRep.toLocaleString()} row(s) missing current rep`);
-  if (warningFields.length) warnings.push(`Unmapped warning field(s): ${warningFields.map(prettyFieldName).join(', ')}`);
-
-  const info = [];
-  if (s.missingAssignedRep) info.push(`${s.missingAssignedRep.toLocaleString()} row(s) had blank assigned rep and defaulted from current rep`);
-  if (infoFields.length) info.push(`Optional unmapped field(s): ${infoFields.map(prettyFieldName).join(', ')}`);
-  if (!headerMapped('cadence4w')) info.push('Cadence 4W not mapped; cadence defaults from rank');
-
-  return `
-    <div class="upload-diag-summary">${escapeHtml(status.text || '')}</div>
+  const s = state.importSummary;
+  els.uploadStatusBody.innerHTML = `
+    <div class="upload-diag-summary">${escapeHtml(state.currentSheetName || 'No sheet loaded')}</div>
 
     <div class="upload-diag-grid">
-      <div class="upload-diag-label">Source rows</div>
-      <div class="upload-diag-value">${Number(s.sourceRows || 0).toLocaleString()}</div>
-
-      <div class="upload-diag-label">Loaded rows</div>
-      <div class="upload-diag-value">${Number(s.loadedRows || 0).toLocaleString()}</div>
-
-      <div class="upload-diag-label">Skipped rows</div>
-      <div class="upload-diag-value">${Number(s.skippedNoCoords || 0).toLocaleString()}</div>
-
-      <div class="upload-diag-label">Duplicate IDs adjusted</div>
-      <div class="upload-diag-value">${Number(s.duplicateCustomerIds || 0).toLocaleString()}</div>
-
-      <div class="upload-diag-label">Blank current rep</div>
-      <div class="upload-diag-value">${Number(s.missingCurrentRep || 0).toLocaleString()}</div>
-
-      <div class="upload-diag-label">Blank assigned rep</div>
-      <div class="upload-diag-value">${Number(s.missingAssignedRep || 0).toLocaleString()}</div>
+      <div class="upload-diag-label">Source rows</div><div class="upload-diag-value">${formatNumber(s.sourceRows)}</div>
+      <div class="upload-diag-label">Loaded rows</div><div class="upload-diag-value">${formatNumber(s.loadedRows)}</div>
+      <div class="upload-diag-label">Skipped no coords</div><div class="upload-diag-value">${formatNumber(s.skippedNoCoords)}</div>
+      <div class="upload-diag-label">Duplicate IDs adjusted</div><div class="upload-diag-value">${formatNumber(s.duplicateCustomerIds)}</div>
+      <div class="upload-diag-label">Missing current rep</div><div class="upload-diag-value">${formatNumber(s.missingCurrentRep)}</div>
+      <div class="upload-diag-label">Missing assigned rep</div><div class="upload-diag-value">${formatNumber(s.missingAssignedRep)}</div>
     </div>
 
     <div class="upload-diag-section">
-      <div class="upload-diag-label">Warnings</div>
-      ${
-        warnings.length
-          ? `<ul class="upload-diag-list">${warnings.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`
-          : `<div class="upload-diag-empty">No actionable warnings.</div>`
-      }
-    </div>
-
-    <div class="upload-diag-section">
-      <div class="upload-diag-label">Info</div>
-      ${
-        info.length
-          ? `<ul class="upload-diag-list">${info.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`
-          : `<div class="upload-diag-empty">No additional notes.</div>`
-      }
+      <div class="upload-diag-summary">Unmapped fields</div>
+      ${s.unmappedFields.length
+        ? `<ul class="upload-diag-list">${s.unmappedFields.map(v => `<li>${escapeHtml(v)}</li>`).join('')}</ul>`
+        : '<div class="upload-diag-empty">No unmapped fields.</div>'}
     </div>
   `;
 }
 
-function isWarningField(key) {
-  return ['latitude','longitude','customerId','customerName','currentRep','overallSales','rank','protected'].includes(key);
-}
+function syncControlState() {
+  const hasAccounts = state.accounts.length > 0;
+  const hasSelection = state.selection.size > 0;
 
-function prettyFieldName(key) {
-  const map = {
-    latitude: 'Latitude',
-    longitude: 'Longitude',
-    customerId: 'Customer ID',
-    customerName: 'Customer Name',
-    currentRep: 'Current Rep',
-    assignedRep: 'Assigned Rep',
-    overallSales: 'Overall Sales',
-    rank: 'Rank',
-    cadence4w: 'Cadence 4W',
-    protected: 'Protected'
-  };
-  return map[key] || key;
-}
+  els.assignBtn.disabled = !hasAccounts || !hasSelection;
+  els.undoBtn.disabled = state.undoStack.length === 0;
+  els.resetBtn.disabled = !hasAccounts;
+  els.optimizeBtn.disabled = !hasAccounts;
+  els.exportBtn.disabled = !hasAccounts;
+  els.clearSelectionBtn.disabled = !hasSelection;
+  els.assignRepSelect.disabled = !hasAccounts;
 
-function headerMapped(key) {
-  const fields = state.importSummary?.unmappedFields || [];
-  return !fields.includes(key);
+  const reps = getAllAssignedReps();
+  els.repCountInput.value = reps.length || 1;
 }
 
 function onFileChosen(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
-  state.loadedFileName = file.name.replace(/\.[^.]+$/, '') + '_updated.xlsx';
-  closeUploadStatusPanel();
-  setUploadStatus('neutral', `Reading ${file.name}...`);
-  renderUploadStatus();
-
   const reader = new FileReader();
+  const fileName = file.name;
 
   reader.onload = e => {
     const data = e.target.result;
+    const isCsv = fileName.toLowerCase().endsWith('.csv');
 
-    try {
-      if (file.name.toLowerCase().endsWith('.csv')) {
-        const workbook = XLSX.read(data, { type: 'binary' });
-        loadWorkbook(workbook);
-      } else {
-        const arr = new Uint8Array(data);
-        const workbook = XLSX.read(arr, { type: 'array' });
-        loadWorkbook(workbook);
-      }
-    } catch (err) {
-      console.error(err);
-      setUploadStatus('bad', 'File could not be read');
-      renderUploadStatus();
-      showToast('File could not be read. Check the format and try again.');
+    let workbook;
+    if (isCsv) {
+      workbook = XLSX.read(data, { type: 'binary' });
+    } else {
+      workbook = XLSX.read(data, { type: 'binary' });
     }
-  };
 
-  reader.onerror = () => {
-    setUploadStatus('bad', 'File could not be read');
+    state.workbook = workbook;
+    state.workbookSheets = {};
+    workbook.SheetNames.forEach(name => {
+      state.workbookSheets[name] = XLSX.utils.sheet_to_json(workbook.Sheets[name], { defval: '' });
+    });
+
+    state.loadedFileName = `${fileName.replace(/\.[^.]+$/, '')}_updated.xlsx`;
+    fillSimpleSelect(els.sheetSelect, workbook.SheetNames, workbook.SheetNames[0]);
+    els.sheetSelect.disabled = false;
+    els.loadSheetBtn.disabled = false;
+
+    state.uploadStatus = {
+      level: 'good',
+      text: `${fileName} loaded`
+    };
     renderUploadStatus();
-    showToast('File could not be read. Check the format and try again.');
+    showToast(`${fileName} ready. Choose a sheet and load.`);
   };
 
-  if (file.name.toLowerCase().endsWith('.csv')) {
-    reader.readAsBinaryString(file);
-  } else {
-    reader.readAsArrayBuffer(file);
-  }
-}
-
-function loadWorkbook(workbook) {
-  state.workbook = workbook;
-  state.workbookSheets = {};
-  els.sheetSelect.innerHTML = '';
-
-  workbook.SheetNames.forEach((sheetName, idx) => {
-    state.workbookSheets[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
-
-    const option = document.createElement('option');
-    option.value = sheetName;
-    option.textContent = sheetName;
-    if (idx === 0) option.selected = true;
-    els.sheetSelect.appendChild(option);
-  });
-
-  els.sheetSelect.disabled = false;
-  els.loadSheetBtn.disabled = false;
-  loadSelectedSheet();
+  reader.readAsBinaryString(file);
 }
 
 function loadSelectedSheet() {
   const sheetName = els.sheetSelect.value;
-
-  if (!sheetName || !state.workbookSheets[sheetName]) {
-    showToast('No sheet selected.');
-    return;
-  }
+  const rows = state.workbookSheets[sheetName] || [];
 
   state.currentSheetName = sheetName;
-
-  const rows = state.workbookSheets[sheetName];
-  const normalizedResult = normalizeRows(rows);
-  const normalized = normalizedResult.mapped;
-
-  state.importSummary = normalizedResult.summary;
-  state.optimizationSummary = null;
-  closeUploadStatusPanel();
-
-  if (!normalized.length) {
-    state.accounts = [];
-    state.accountById = new Map();
-    state.neighborMap = new Map();
-    state.selection.clear();
-    state.undoStack = [];
-    state.changeLog = [];
-    state.repFocus = null;
-    state.multiSearch.moved = '';
-    if (els.movedSearchInput) els.movedSearchInput.value = '';
-
-    setUploadStatus('bad', 'No valid rows found');
-    refreshUI(true);
-    showToast('No valid rows found in that sheet.');
-    return;
-  }
-
-  state.accounts = normalized;
-  state.accountById = new Map(state.accounts.map(a => [a._id, a]));
-  state.neighborMap = buildNeighborMap(state.accounts);
   state.selection.clear();
   state.undoStack = [];
   state.changeLog = [];
   state.repFocus = null;
-  state.lockedReps = new Set();
+  state.optimizationSummary = null;
   state.multiSearch.moved = '';
   if (els.movedSearchInput) els.movedSearchInput.value = '';
 
+  const normalized = normalizeRows(rows);
+  state.accounts = normalized.accounts;
+  state.accountById = new Map(normalized.accounts.map(a => [a._id, a]));
+  state.neighborMap = buildNeighborMap(normalized.accounts);
+
   buildRepColors();
-  seedFiltersFromData();
-  updateUploadStatusFromSummary();
-  refreshUI(true);
+  syncRepFilterSelection();
+  fillSimpleSelect(els.assignRepSelect, getAllAssignedReps(), getAllAssignedReps()[0] || '');
+  fillSimpleSelect(els.premiseFilter, ['ALL', ...getDistinctValues(state.accounts, a => a.premise)], state.filters.premise || 'ALL', v => v === 'ALL' ? 'All premises' : v);
+  renderMultiFilterOptions();
+  renderMap();
+  refreshUI();
   fitMapToAccounts();
 
-  if (!els.repCountInput.dataset.userTouched) {
-    els.repCountInput.value = getAllAssignedReps().length || 1;
-  }
+  state.uploadStatus = {
+    level: normalized.accounts.length ? 'good' : 'warning',
+    text: normalized.accounts.length
+      ? `${sheetName}: ${normalized.accounts.length} loaded`
+      : `${sheetName}: no usable rows`
+  };
+  state.importSummary = normalized.summary;
+  renderUploadStatus();
+  closeUploadStatusPanel();
 
-  requestAnimationFrame(() => {
-    if (state.map) state.map.invalidateSize();
-  });
-
-  showToast(`Loaded ${state.accounts.length} accounts from ${sheetName}.`);
-  updateLastAction(`Loaded ${state.accounts.length} accounts from ${sheetName}`);
+  showToast(`${normalized.accounts.length} accounts loaded from ${sheetName}.`);
 }
 
 function normalizeRows(rows) {
-  if (!rows?.length) {
-    return {
-      mapped: [],
-      summary: {
-        sourceRows: 0,
-        loadedRows: 0,
-        skippedNoCoords: 0,
-        duplicateCustomerIds: 0,
-        missingCurrentRep: 0,
-        missingAssignedRep: 0,
-        unmappedFields: []
-      }
-    };
-  }
-  
-  const mapped = [];
-  const headers = Object.keys(rows[0] || {});
-  const headerMap = {};
-  const cleanedHeaderLookup = new Map(headers.map(h => [cleanHeader(h), h]));
-  const idCounts = new Map();
-
-  Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
-    let match = null;
-    const exactAliases = new Set(aliases.map(cleanHeader));
-
-    for (const alias of aliases) {
-      const cleaned = cleanHeader(alias);
-
-      if (cleanedHeaderLookup.has(cleaned)) {
-        match = cleanedHeaderLookup.get(cleaned);
-        break;
-      }
-    }
-
-    if (!match) {
-      for (const alias of aliases) {
-        const cleaned = cleanHeader(alias);
-
-        for (const original of headers) {
-          const c = cleanHeader(original);
-          if (c === cleaned) {
-            match = original;
-            break;
-          }
-        }
-
-        if (match) break;
-      }
-    }
-
-    if (!match) {
-      for (const alias of aliases) {
-        const cleaned = cleanHeader(alias);
-
-        for (const original of headers) {
-          const c = cleanHeader(original);
-          if (!exactAliases.has(c) && (c.includes(cleaned) || cleaned.includes(c))) {
-            match = original;
-            break;
-          }
-        }
-
-        if (match) break;
-      }
-    }
-
-    headerMap[key] = match;
-  });
-
-  let generatedId = 1;
+  const headerMap = buildHeaderMap(rows);
+  const accounts = [];
+  const usedIds = new Set();
   let skippedNoCoords = 0;
   let duplicateCustomerIds = 0;
   let missingCurrentRep = 0;
   let missingAssignedRep = 0;
+  const unmappedFields = [];
 
-  const recommendedFields = [
-    'latitude','longitude','customerId','customerName','currentRep','overallSales','rank','protected'
-  ];
+  const allHeaders = rows.length ? Object.keys(rows[0]) : [];
+  allHeaders.forEach(h => {
+    const cleaned = cleanHeader(h);
+    const matched = Object.values(COLUMN_ALIASES).some(list => list.includes(cleaned));
+    if (!matched) unmappedFields.push(h);
+  });
 
-  const unmappedFields = recommendedFields.filter(key => !headerMap[key]);
+  rows.forEach((row, index) => {
+    const latitudeRaw = row[headerMap.latitude];
+    const longitudeRaw = row[headerMap.longitude];
 
-  for (const row of rows) {
-    const coords = normalizeCoordinates(
-      toNumber(row[headerMap.latitude]),
-      toNumber(row[headerMap.longitude])
-    );
+    let latitude = toNumber(latitudeRaw);
+    let longitude = toNumber(longitudeRaw);
 
-    if (!coords) {
+    ({ latitude, longitude } = normalizeCoordinates(latitude, longitude));
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
       skippedNoCoords += 1;
-      continue;
+      return;
     }
 
-    const rawCustomerId = safeString(row[headerMap.customerId]) || `AUTO_${generatedId++}`;
-    const seen = idCounts.get(rawCustomerId) || 0;
-    idCounts.set(rawCustomerId, seen + 1);
-
-    let uniqueCustomerId = rawCustomerId;
-    if (seen > 0) {
+    const customerIdBase = safeString(row[headerMap.customerId]) || `ROW-${index + 1}`;
+    let customerId = customerIdBase;
+    if (usedIds.has(customerId)) {
       duplicateCustomerIds += 1;
-      uniqueCustomerId = `${rawCustomerId}__${seen + 1}`;
+      let n = 2;
+      while (usedIds.has(`${customerIdBase}-${n}`)) n += 1;
+      customerId = `${customerIdBase}-${n}`;
     }
+    usedIds.add(customerId);
 
-    const customerName = safeString(row[headerMap.customerName]) || rawCustomerId;
+    const currentRep = safeString(row[headerMap.currentRep]);
+    const assignedRep = safeString(row[headerMap.assignedRep]) || currentRep;
 
-    const rawCurrentRep = safeString(row[headerMap.currentRep]);
-    const rawAssignedRep = safeString(row[headerMap.assignedRep]);
+    if (!currentRep) missingCurrentRep += 1;
+    if (!safeString(row[headerMap.assignedRep])) missingAssignedRep += 1;
 
-    if (!rawCurrentRep) missingCurrentRep += 1;
-    if (headerMap.assignedRep && !rawAssignedRep) missingAssignedRep += 1;
-
-    const currentRep = rawCurrentRep || 'Unassigned';
-    const assignedRep = rawAssignedRep || currentRep || 'Unassigned';
-
-    const rank = normalizeRank(row[headerMap.rank]);
-    const premise = safeString(row[headerMap.premise]) || 'Unknown';
-    const cadence4w = normalizeCadence4W(row[headerMap.cadence4w], rank);
-    const overallSales = toNumber(row[headerMap.overallSales]);
-
-    mapped.push({
-      _id: uniqueCustomerId,
-      latitude: coords.latitude,
-      longitude: coords.longitude,
-      customerId: rawCustomerId,
-      customerName,
+    const account = {
+      _id: customerId,
+      customerId,
+      customerName: safeString(row[headerMap.customerName]) || customerId,
       address: safeString(row[headerMap.address]),
       city: safeString(row[headerMap.city]),
       zip: safeString(row[headerMap.zip]),
-      chain: safeString(row[headerMap.chain]) || 'Independent',
-      segment: safeString(row[headerMap.segment]) || 'Unknown',
-      premise,
-      currentRep,
-      assignedRep,
-      originalAssignedRep: assignedRep,
-      overallSales: Number.isFinite(overallSales) ? overallSales : 0,
-      rank,
-      cadence4w,
+      chain: safeString(row[headerMap.chain]),
+      segment: safeString(row[headerMap.segment]),
+      premise: safeString(row[headerMap.premise]),
+      currentRep: currentRep || 'Unassigned',
+      assignedRep: assignedRep || 'Unassigned',
+      originalAssignedRep: assignedRep || 'Unassigned',
+      overallSales: toNumber(row[headerMap.overallSales]) || 0,
+      rank: normalizeRank(row[headerMap.rank]),
+      cadence4w: normalizeCadence4W(row[headerMap.cadence4w], normalizeRank(row[headerMap.rank])),
       protected: toBoolean(row[headerMap.protected]),
-      raw: row
-    });
-  }
+      latitude: round6(latitude),
+      longitude: round6(longitude),
+      sourceRow: row
+    };
+
+    accounts.push(account);
+  });
 
   return {
-    mapped,
+    accounts,
     summary: {
       sourceRows: rows.length,
-      loadedRows: mapped.length,
+      loadedRows: accounts.length,
       skippedNoCoords,
       duplicateCustomerIds,
       missingCurrentRep,
@@ -805,452 +648,273 @@ function normalizeRows(rows) {
   };
 }
 
-function normalizeCoordinates(lat, lng) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+function buildHeaderMap(rows) {
+  const firstRow = rows[0] || {};
+  const map = {};
+  const cleanedHeaders = Object.keys(firstRow).map(h => ({ original: h, cleaned: cleanHeader(h) }));
 
-  const latLooksValid = lat >= -90 && lat <= 90;
-  const lngLooksValid = lng >= -180 && lng <= 180;
-
-  if (latLooksValid && lngLooksValid) {
-    return { latitude: lat, longitude: lng };
-  }
-
-  const swappedLatLooksValid = lng >= -90 && lng <= 90;
-  const swappedLngLooksValid = lat >= -180 && lat <= 180;
-
-  if (swappedLatLooksValid && swappedLngLooksValid) {
-    return { latitude: lng, longitude: lat };
-  }
-
-  return null;
-}
-
-function seedFiltersFromData() {
-  state.filters.rep = new Set(getAllAssignedReps());
-  state.filters.rank = new Set(getDistinctValues(state.accounts, a => a.rank));
-  state.filters.chain = new Set(getDistinctValues(state.accounts, a => a.chain));
-  state.filters.segment = new Set(getDistinctValues(state.accounts, a => a.segment));
-  state.filters.premise = 'ALL';
-  state.filters.protected = 'ALL';
-  state.filters.moved = 'ALL';
-
-  fillSimpleSelect(
-    els.premiseFilter,
-    ['ALL', ...getDistinctValues(state.accounts, a => a.premise)],
-    'ALL',
-    v => v === 'ALL' ? 'All premises' : v
-  );
-
-  renderMultiFilterOptions();
-}
-
-function syncRepFilterSelection(previousAssignedReps = []) {
-  const currentReps = getAllAssignedReps();
-  const selected = state.filters.rep instanceof Set ? state.filters.rep : new Set();
-  const prevSet = new Set(previousAssignedReps);
-
-  for (const rep of [...selected]) {
-    if (!currentReps.includes(rep)) selected.delete(rep);
-  }
-
-  for (const rep of currentReps) {
-    if (!prevSet.has(rep)) selected.add(rep);
-  }
-
-  if (selected.size === 0) {
-    currentReps.forEach(rep => selected.add(rep));
-  }
-
-  state.filters.rep = selected;
-}
-
-function renderMultiFilterOptions() {
-  renderSingleMultiFilter('rep', getAllAssignedReps(), els.repFilterOptions, els.repFilterSummary, 'All reps');
-  renderSingleMultiFilter('rank', getDistinctValues(state.accounts, a => a.rank), els.rankFilterOptions, els.rankFilterSummary, 'All ranks');
-  renderSingleMultiFilter('chain', getDistinctValues(state.accounts, a => a.chain), els.chainFilterOptions, els.chainFilterSummary, 'All chains');
-  renderSingleMultiFilter('segment', getDistinctValues(state.accounts, a => a.segment), els.segmentFilterOptions, els.segmentFilterSummary, 'All segments');
-
-  if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
-}
-
-function renderSingleMultiFilter(key, values, container, summaryEl, allLabel) {
-  const selected = state.filters[key];
-  const search = (state.multiSearch[key] || '').toLowerCase().trim();
-  const visibleValues = values.filter(v => String(v).toLowerCase().includes(search));
-
-  container.innerHTML = visibleValues.length
-    ? visibleValues.map(value => {
-        const checked = selected.has(value) ? 'checked' : '';
-        return `
-          <label class="multi-item">
-            <input type="checkbox" data-multi-key="${key}" value="${escapeHtmlAttr(value)}" ${checked}/>
-            <span title="${escapeHtmlAttr(value)}">${escapeHtml(value)}</span>
-          </label>
-        `;
-      }).join('')
-    : `<div class="empty">No matches.</div>`;
-
-  container.querySelectorAll(`input[data-multi-key="${key}"]`).forEach(input => {
-    input.addEventListener('change', e => {
-      const val = e.target.value;
-
-      if (e.target.checked) selected.add(val);
-      else selected.delete(val);
-
-      if (selected.size === 0) {
-        values.forEach(v => selected.add(v));
-      }
-
-      updateMultiFilterSummary(key, values, summaryEl, allLabel);
-      refreshUI();
-      renderSingleMultiFilter(key, values, container, summaryEl, allLabel);
-      positionMultiPanel(key);
-    });
+  Object.entries(COLUMN_ALIASES).forEach(([key, aliases]) => {
+    const match = cleanedHeaders.find(h => aliases.includes(h.cleaned));
+    map[key] = match ? match.original : null;
   });
 
-  updateMultiFilterSummary(key, values, summaryEl, allLabel);
+  return map;
 }
 
-function updateMultiFilterSummary(key, values, summaryEl, allLabel) {
-  const selected = state.filters[key];
-  const total = values.length;
-  const count = selected.size;
+function normalizeCoordinates(latitude, longitude) {
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    if (Math.abs(latitude) > 90 && Math.abs(longitude) <= 90) {
+      return { latitude: longitude, longitude: latitude };
+    }
+  }
+  return { latitude, longitude };
+}
 
-  if (!total || count === total) {
-    summaryEl.textContent = allLabel;
-    return;
+function buildNeighborMap(accounts) {
+  const map = new Map();
+  accounts.forEach(a => map.set(a._id, new Set()));
+
+  for (let i = 0; i < accounts.length; i += 1) {
+    const a = accounts[i];
+    const distances = [];
+    for (let j = 0; j < accounts.length; j += 1) {
+      if (i === j) continue;
+      const b = accounts[j];
+      distances.push({
+        id: b._id,
+        d: squaredDistance(a.latitude, a.longitude, b.latitude, b.longitude)
+      });
+    }
+    distances.sort((x, y) => x.d - y.d);
+    distances.slice(0, 10).forEach(item => {
+      map.get(a._id).add(item.id);
+      map.get(item.id).add(a._id);
+    });
   }
 
-  if (count === 1) {
-    summaryEl.textContent = [...selected][0];
-    return;
-  }
-
-  summaryEl.textContent = `${count} selected`;
+  return map;
 }
 
-function toggleSelectAllMulti(key) {
-  const values = getMultiValuesForKey(key);
-  const selected = state.filters[key];
-  const isAllSelected = selected.size === values.length && values.every(v => selected.has(v));
-
-  selected.clear();
-  if (!isAllSelected) values.forEach(v => selected.add(v));
-
-  renderMultiFilterOptions();
-  refreshUI();
-}
-
-function getMultiValuesForKey(key) {
-  if (key === 'rep') return getAllAssignedReps();
-  if (key === 'rank') return getDistinctValues(state.accounts, a => a.rank);
-  if (key === 'chain') return getDistinctValues(state.accounts, a => a.chain);
-  if (key === 'segment') return getDistinctValues(state.accounts, a => a.segment);
-  return [];
-}
-
-function refreshUI(rebuildMap = false) {
-  syncControlState();
-  renderRepControls();
-  renderUploadStatus();
-  if (rebuildMap) rebuildMarkers();
-  refreshMarkerStyles();
-  renderRepTable();
-  renderSelectionPreview();
-  renderSummary();
-  renderMovedReview();
-  refreshTerritories();
-  if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
-}
-
-function syncControlState() {
-  const hasData = state.accounts.length > 0;
-  els.assignBtn.disabled = !hasData || state.selection.size === 0;
-  els.undoBtn.disabled = !hasData || state.undoStack.length === 0;
-  els.resetBtn.disabled = !hasData;
-  els.optimizeBtn.disabled = !hasData;
-  els.exportBtn.disabled = !hasData;
-  els.clearSelectionBtn.disabled = !hasData || state.selection.size === 0;
-  els.assignRepSelect.disabled = !hasData;
-  els.repCountInput.disabled = !hasData;
-  els.minStopsInput.disabled = !hasData;
-  els.maxStopsInput.disabled = !hasData;
-  els.balanceMode.disabled = !hasData;
-  els.disruptionSlider.disabled = !hasData;
-  els.premiseFilter.disabled = !hasData;
-  els.protectedFilter.disabled = !hasData;
-  els.movedFilter.disabled = !hasData;
-  els.dimOthersCheckbox.disabled = !hasData;
-  els.showTerritoryCheckbox.disabled = !hasData;
-  if (els.movedSearchInput) els.movedSearchInput.disabled = !hasData;
-}
-
-function renderRepControls() {
-  const reps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
-  fillSimpleSelect(els.assignRepSelect, reps, reps[0] || '');
-
-  if (!els.repCountInput.dataset.userTouched) {
-    els.repCountInput.value = Math.max(1, reps.length || 1);
-  }
-
-  els.repCountInput.oninput = () => {
-    els.repCountInput.dataset.userTouched = '1';
-  };
-}
-
-function setUploadStatus(level, text) {
-  state.uploadStatus = { level, text };
-}
-
-function updateUploadStatusFromSummary() {
-  const s = state.importSummary || {};
-  const issueCount =
-    (s.skippedNoCoords || 0) +
-    (s.duplicateCustomerIds || 0) +
-    (s.missingCurrentRep || 0) +
-    ((s.unmappedFields || []).filter(key => isWarningField(key)).length ? 1 : 0);
-
-  if ((s.loadedRows || 0) === 0) {
-    setUploadStatus('bad', 'No valid rows found');
-    return;
-  }
-
-  if (issueCount === 0) {
-    setUploadStatus('good', `${(s.loadedRows || 0).toLocaleString()} loaded clean`);
-    return;
-  }
-
-  const parts = [];
-  if (s.skippedNoCoords) parts.push(`${s.skippedNoCoords} skipped`);
-  if (s.duplicateCustomerIds) parts.push(`${s.duplicateCustomerIds} duplicate ID${s.duplicateCustomerIds === 1 ? '' : 's'}`);
-  if (s.missingCurrentRep) parts.push(`${s.missingCurrentRep} blank current rep`);
-  if ((s.unmappedFields || []).filter(key => isWarningField(key)).length) parts.push('unmapped fields');
-
-  setUploadStatus('warning', `${(s.loadedRows || 0).toLocaleString()} loaded • ${parts.join(' • ')}`);
-}
-
-function renderUploadStatus() {
-  const status = state.uploadStatus || { level: 'neutral', text: 'No file loaded' };
-
-  els.uploadStatusPill.classList.remove(
-    'upload-status-neutral',
-    'upload-status-good',
-    'upload-status-warning',
-    'upload-status-bad'
-  );
-
-  if (status.level === 'good') {
-    els.uploadStatusPill.classList.add('upload-status-good');
-    els.uploadStatusIcon.textContent = '✓';
-    els.uploadStatusText.textContent = status.text;
-  } else if (status.level === 'warning') {
-    els.uploadStatusPill.classList.add('upload-status-warning');
-    els.uploadStatusIcon.textContent = '!';
-    els.uploadStatusText.textContent = status.text;
-  } else if (status.level === 'bad') {
-    els.uploadStatusPill.classList.add('upload-status-bad');
-    els.uploadStatusIcon.textContent = '✕';
-    els.uploadStatusText.textContent = status.text;
-  } else {
-    els.uploadStatusPill.classList.add('upload-status-neutral');
-    els.uploadStatusIcon.textContent = '•';
-    els.uploadStatusText.textContent = status.text || 'No file loaded';
-  }
-
-  if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden) {
-    els.uploadStatusBody.innerHTML = buildUploadStatusDetailsHtml();
-    positionUploadStatusPanel();
-  }
-}
-
-function rebuildMarkers() {
+function renderMap() {
   state.markerLayer.clearLayers();
   state.markerById.clear();
 
-  for (const account of state.accounts) {
-    const marker = L.circleMarker(
-      [account.latitude, account.longitude],
-      markerStyleForAccount(account)
-    );
+  state.accounts.forEach(account => {
+    const color = getRepColor(account.assignedRep);
 
-    marker.__accountId = account._id;
-    syncMarkerPopupContent(marker, account._id);
-
-    marker.on('click', () => {
-      const id = marker.__accountId;
-      syncMarkerPopupContent(marker, id);
-      toggleSelection(id, true);
+    const marker = L.circleMarker([account.latitude, account.longitude], {
+      radius: 4.5,
+      color,
+      weight: 1,
+      opacity: 0.95,
+      fillColor: color,
+      fillOpacity: 0.88
     });
 
-    marker.on('popupopen', () => {
-      syncMarkerPopupContent(marker, marker.__accountId);
+    marker.on('click', e => {
+      L.DomEvent.stopPropagation(e);
+      toggleSelection(account._id, e.originalEvent?.ctrlKey || e.originalEvent?.metaKey || false);
+      renderDetail(account);
+      syncMarkerPopupContent(marker, account._id);
+      marker.openPopup();
+    });
+
+    marker.bindPopup(buildPopupHtml(account), {
+      autoPan: true,
+      closeButton: true,
+      offset: [0, -6]
     });
 
     state.markerLayer.addLayer(marker);
     state.markerById.set(account._id, marker);
-  }
+  });
 
-  syncMarkerZOrder();
-}
-
-function refreshMarkerStyles() {
-  for (const account of state.accounts) {
-    const marker = state.markerById.get(account._id);
-    if (!marker) continue;
-
-    marker.setStyle(markerStyleForAccount(account));
-    marker.setRadius(state.selection.has(account._id) ? 5 : (state.repFocus && account.assignedRep === state.repFocus ? 4.5 : 3.5));
-    syncMarkerPopupContent(marker, account._id);
-  }
-
-  syncMarkerZOrder();
-}
-
-function syncMarkerPopupContent(marker, accountId) {
-  const account = state.accountById.get(accountId);
-  if (!marker || !account) return;
-
-  const popup = marker.getPopup();
-  const html = buildPopupHtml(account);
-
-  if (popup) {
-    popup.setContent(html);
-  } else {
-    marker.bindPopup(html);
-  }
-}
-
-function syncMarkerZOrder() {
-  if (!state.markerById.size) return;
-
-  for (const account of state.accounts) {
-    const marker = state.markerById.get(account._id);
-    if (!marker || typeof marker.bringToBack !== 'function') continue;
-
-    if (!state.selection.has(account._id) && !(state.repFocus && account.assignedRep === state.repFocus)) {
-      marker.bringToBack();
-    }
-  }
-
-  for (const account of state.accounts) {
-    const marker = state.markerById.get(account._id);
-    if (!marker || typeof marker.bringToFront !== 'function') continue;
-
-    if (state.repFocus && account.assignedRep === state.repFocus && !state.selection.has(account._id)) {
-      marker.bringToFront();
-    }
-  }
-
-  for (const id of state.selection) {
-    const marker = state.markerById.get(id);
-    if (marker && typeof marker.bringToFront === 'function') {
-      marker.bringToFront();
-    }
-  }
-}
-
-function markerStyleForAccount(account) {
-  const matches = passesFilters(account);
-  const dimOthers = els.dimOthersCheckbox.checked;
-  const isSelected = state.selection.has(account._id);
-  const isRepFocused = !!state.repFocus;
-  const isFocusedRep = isRepFocused && account.assignedRep === state.repFocus;
-  const color = getRepColor(account.assignedRep);
-
-  let opacity = matches ? 0.96 : (dimOthers ? 0.025 : 0.12);
-  let fillOpacity = dimOthers && !matches ? 0.015 : (account.protected ? 0.88 : 0.74);
-
-  if (isRepFocused) {
-    if (isFocusedRep) {
-      opacity = matches ? 1 : 0.4;
-      fillOpacity = account.protected ? 0.95 : 0.88;
-    } else {
-      opacity = 0.045;
-      fillOpacity = 0.02;
-    }
-  }
-
-  return {
-    radius: isSelected ? 5 : (isFocusedRep ? 4.5 : 3.5),
-    color: isSelected ? '#1e293b' : color,
-    weight: isSelected ? 2 : (isFocusedRep ? 1.5 : 0.8),
-    opacity,
-    fillColor: color,
-    fillOpacity
-  };
-}
-
-function passesFilters(account) {
-  const repPass = state.filters.rep.size === 0 || state.filters.rep.has(account.assignedRep);
-  const rankPass = state.filters.rank.size === 0 || state.filters.rank.has(account.rank);
-  const chainPass = state.filters.chain.size === 0 || state.filters.chain.has(account.chain);
-  const segmentPass = state.filters.segment.size === 0 || state.filters.segment.has(account.segment);
-  const premisePass = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
-
-  const protectedPass =
-    state.filters.protected === 'ALL' ||
-    (state.filters.protected === 'YES' && account.protected) ||
-    (state.filters.protected === 'NO' && !account.protected);
-
-  const movedPass =
-    state.filters.moved === 'ALL' ||
-    (state.filters.moved === 'MOVED' && account.assignedRep !== account.originalAssignedRep) ||
-    (state.filters.moved === 'UNCHANGED' && account.assignedRep === account.originalAssignedRep);
-
-  return repPass && rankPass && chainPass && segmentPass && premisePass && protectedPass && movedPass;
+  refreshTerritories();
 }
 
 function buildPopupHtml(account) {
-  const addressLine = [
-    account.city,
-    [account.address, account.zip].filter(Boolean).join(' ')
-  ].filter(Boolean).join(' - ');
-
   return `
-    <div style="min-width:250px;">
-      <div style="font-size:15px;font-weight:800;">
-        ${escapeHtml(account.customerName || account.customerId)}
-      </div>
-
-      <div style="margin-top:5px;color:#5d7286;font-size:12px;">
-        ${escapeHtml(addressLine)}
-      </div>
-
-      <div style="margin-top:8px;"><strong>Premise:</strong> ${escapeHtml(account.premise)}</div>
-      <div><strong>Segment:</strong> ${escapeHtml(account.segment)}</div>
-      <div><strong>Chain:</strong> ${escapeHtml(account.chain)}</div>
-      <div><strong>Assigned Rep:</strong> ${escapeHtml(account.assignedRep)}</div>
-      <div><strong>Current Rep:</strong> ${escapeHtml(account.currentRep)}</div>
-      <div><strong>Revenue:</strong> ${formatCurrency(account.overallSales)}</div>
-      <div><strong>Rank:</strong> ${escapeHtml(account.rank)}</div>
-      <div><strong>Cadence 4W:</strong> ${formatNumber(account.cadence4w, 2)}</div>
-      <div><strong>Protected:</strong> ${account.protected ? 'Yes' : 'No'}</div>
+    <div class="popup-title">${escapeHtml(account.customerName)}</div>
+    <div class="popup-grid">
+      <div><span class="popup-label">Customer ID</span><span class="popup-value">${escapeHtml(account.customerId)}</span></div>
+      <div><span class="popup-label">Revenue</span><span class="popup-value">${formatCurrency(account.overallSales)}</span></div>
+      <div><span class="popup-label">Address</span><span class="popup-value">${escapeHtml([account.city, account.address, account.zip].filter(Boolean).join(' - '))}</span></div>
+      <div><span class="popup-label">Rank</span><span class="popup-value">${escapeHtml(account.rank)}</span></div>
+      <div><span class="popup-label">Current Rep</span><span class="popup-value">${escapeHtml(account.currentRep)}</span></div>
+      <div><span class="popup-label">Assigned Rep</span><span class="popup-value">${escapeHtml(account.assignedRep)}</span></div>
     </div>
   `;
 }
 
-function renderRepTable() {
-  let rows = summarizeByRep();
-  rows = sortRepRows(rows);
+function syncMarkerPopupContent(marker, id) {
+  const account = state.accountById.get(id);
+  if (!account || !marker) return;
+  marker.setPopupContent(buildPopupHtml(account));
+}
 
-  if (!rows.length) {
-    els.repTableBody.innerHTML = '<tr><td colspan="14" class="empty">Upload a file to begin.</td></tr>';
+function renderDetail(account) {
+  if (!account) {
+    els.detailPanel.innerHTML = '<div class="empty">No account selected.</div>';
     return;
   }
 
-  syncSortHeaderIndicators();
+  els.detailPanel.innerHTML = `
+    <div class="detail-title">${escapeHtml(account.customerName)}</div>
+    <div class="detail-grid">
+      <div><span class="detail-label">Customer ID</span><div class="detail-value">${escapeHtml(account.customerId)}</div></div>
+      <div><span class="detail-label">Revenue</span><div class="detail-value">${formatCurrency(account.overallSales)}</div></div>
+      <div><span class="detail-label">Address</span><div class="detail-value">${escapeHtml(account.address)}</div></div>
+      <div><span class="detail-label">City</span><div class="detail-value">${escapeHtml(account.city)}</div></div>
+      <div><span class="detail-label">ZIP</span><div class="detail-value">${escapeHtml(account.zip)}</div></div>
+      <div><span class="detail-label">Chain</span><div class="detail-value">${escapeHtml(account.chain)}</div></div>
+      <div><span class="detail-label">Segment</span><div class="detail-value">${escapeHtml(account.segment)}</div></div>
+      <div><span class="detail-label">Premise</span><div class="detail-value">${escapeHtml(account.premise)}</div></div>
+      <div><span class="detail-label">Current Rep</span><div class="detail-value">${escapeHtml(account.currentRep)}</div></div>
+      <div><span class="detail-label">Assigned Rep</span><div class="detail-value">${escapeHtml(account.assignedRep)}</div></div>
+      <div><span class="detail-label">Rank</span><div class="detail-value">${escapeHtml(account.rank)}</div></div>
+      <div><span class="detail-label">Protected</span><div class="detail-value">${account.protected ? 'Yes' : 'No'}</div></div>
+    </div>
+  `;
+}
 
-  els.repTableBody.innerHTML = rows.map(row => `
-    <tr
-      data-rep-row="${encodeURIComponent(row.rep)}"
-      class="${state.repFocus === row.rep ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}"
-    >
+function refreshUI(refreshMapOnly = true) {
+  renderRepTable();
+  renderSelectionPreview();
+  renderMovedReview();
+  updateGlobalStats();
+  syncControlState();
+
+  if (refreshMapOnly !== false) {
+    refreshMarkers();
+    refreshTerritories();
+  }
+
+  if (state.selection.size === 1) {
+    const account = state.accountById.get([...state.selection][0]);
+    renderDetail(account);
+  } else if (state.selection.size === 0) {
+    renderDetail(null);
+  }
+}
+
+function refreshMarkers() {
+  const dimOthers = !!els.dimOthersCheckbox.checked;
+
+  state.accounts.forEach(account => {
+    const marker = state.markerById.get(account._id);
+    if (!marker) return;
+
+    const color = getRepColor(account.assignedRep);
+    const selected = state.selection.has(account._id);
+    const focusedOut = state.repFocus && account.assignedRep !== state.repFocus;
+    const dimmed = dimOthers && focusedOut && !selected;
+
+    marker.setStyle({
+      color,
+      fillColor: color,
+      opacity: dimmed ? 0.22 : 0.95,
+      fillOpacity: selected ? 1 : dimmed ? 0.18 : 0.88,
+      weight: selected ? 2 : 1,
+      radius: selected ? 6.3 : 4.5
+    });
+
+    if (!passesFilters(account)) {
+      marker.setStyle({ opacity: 0, fillOpacity: 0 });
+    }
+
+    syncMarkerPopupContent(marker, account._id);
+  });
+}
+
+function refreshTerritories() {
+  state.territoryLayer.clearLayers();
+  state.territoryLabelLayer.clearLayers();
+
+  if (!els.showTerritoryCheckbox.checked) return;
+
+  const reps = getAllAssignedReps();
+  reps.forEach(rep => {
+    const members = state.accounts.filter(a => a.assignedRep === rep && passesFilters(a));
+    if (members.length < 3) return;
+
+    const points = members.map(a => [a.longitude, a.latitude]);
+    let hull;
+    try {
+      hull = turf.convex(turf.featureCollection(points.map(p => turf.point(p))));
+    } catch (err) {
+      hull = null;
+    }
+    if (!hull) return;
+
+    const color = getRepColor(rep);
+    const polygon = L.geoJSON(hull, {
+      style: {
+        color,
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 0.08
+      }
+    });
+
+    state.territoryLayer.addLayer(polygon);
+
+    const center = turf.center(hull).geometry.coordinates;
+    const label = L.marker([center[1], center[0]], {
+      interactive: false,
+      icon: L.divIcon({
+        className: 'territory-label',
+        html: `<div style="background:${color};color:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;white-space:nowrap;">${escapeHtml(rep)}</div>`
+      })
+    });
+    state.territoryLabelLayer.addLayer(label);
+  });
+}
+
+function passesFilters(account) {
+  const repOk = !state.filters.rep.size || state.filters.rep.has(account.assignedRep);
+  const rankOk = !state.filters.rank.size || state.filters.rank.has(account.rank);
+  const chainOk = !state.filters.chain.size || state.filters.chain.has(account.chain);
+  const segmentOk = !state.filters.segment.size || state.filters.segment.has(account.segment);
+  const premiseOk = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
+  const protectedOk = state.filters.protected === 'ALL' || (state.filters.protected === 'YES' ? account.protected : !account.protected);
+  const moved = account.assignedRep !== account.originalAssignedRep;
+  const movedOk = state.filters.moved === 'ALL' || (state.filters.moved === 'MOVED' ? moved : !moved);
+
+  return repOk && rankOk && chainOk && segmentOk && premiseOk && protectedOk && movedOk;
+}
+
+function renderRepTable() {
+  const rows = summarizeByRep();
+  const tbody = els.repTableBody;
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="15" class="empty">Upload a file to begin.</td></tr>';
+    return;
+  }
+
+  sortRepRows(rows);
+
+  tbody.innerHTML = rows.map(row => `
+    <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}">
       <td>
         <div class="rep-cell">
-          <span class="color-dot" style="background:${escapeHtmlAttr(row.color)}"></span>
+          <span class="color-dot" style="background:${getRepColor(row.rep)}"></span>
           <span>${escapeHtml(row.rep)}</span>
         </div>
       </td>
+      <td>${formatNumber(row.stops)}</td>
+      <td>${renderDeltaCount(row.deltaStops)}</td>
+      <td>${formatCurrency(row.revenue)}</td>
+      <td>${renderDeltaMoney(row.deltaRevenue)}</td>
+      <td>${formatNumber(row.A)}</td>
+      <td>${formatNumber(row.B)}</td>
+      <td>${formatNumber(row.C)}</td>
+      <td>${formatNumber(row.D)}</td>
+      <td>${formatNumber(row.planned4W, 2)}</td>
+      <td>${formatNumber(row.avgWeekly, 2)}</td>
+      <td>${formatNumber(row.protected)}</td>
+      <td>${formatNumber(row.movedIn)}</td>
+      <td>${formatNumber(row.movedOut)}</td>
       <td class="lock-cell">
         <label class="lock-toggle" title="Lock this territory">
           <input
@@ -1258,153 +922,184 @@ function renderRepTable() {
             class="rep-lock-checkbox"
             data-lock-rep="${escapeHtmlAttr(row.rep)}"
             ${isRepLocked(row.rep) ? 'checked' : ''}
-            />
-            <span>Lock</span>
+          />
+          <span>Lock</span>
         </label>
       </td>
-      <td>${row.stops}</td>
-      <td>${renderDeltaCount(row.deltaStops)}</td>
-      <td>${formatCurrency(row.revenue)}</td>
-      <td>${renderDeltaMoney(row.deltaRevenue)}</td>
-      <td>${row.A}</td>
-      <td>${row.B}</td>
-      <td>${row.C}</td>
-      <td>${row.D}</td>
-      <td>${formatNumber(row.planned4W, 2)}</td>
-      <td>${formatNumber(row.avgWeekly, 2)}</td>
-      <td>${row.protected}</td>
-      <td>${row.movedIn}</td>
-      <td>${row.movedOut}</td>
     </tr>
   `).join('');
 
-  els.repTableBody.querySelectorAll('.rep-lock-checkbox').forEach(input => {
-    input.addEventListener('click', e => {
-      e.stopPropagation();
+  tbody.querySelectorAll('tr[data-rep-row]').forEach(tr => {
+    tr.addEventListener('click', e => {
+      if (e.target.closest('.rep-lock-checkbox')) return;
+      const rep = decodeURIComponent(tr.getAttribute('data-rep-row'));
+      state.repFocus = state.repFocus === rep ? null : rep;
+      refreshUI();
+      if (state.repFocus) zoomToRep(rep);
     });
+  });
 
+  tbody.querySelectorAll('.rep-lock-checkbox').forEach(input => {
+    input.addEventListener('click', e => e.stopPropagation());
     input.addEventListener('change', e => {
       const rep = e.target.getAttribute('data-lock-rep');
       toggleRepLock(rep, e.target.checked);
     });
   });
+}
 
-  [...els.repTableBody.querySelectorAll('tr[data-rep-row]')].forEach(tr => {
-    tr.addEventListener('click', () => {
-      const rep = decodeURIComponent(tr.getAttribute('data-rep-row') || '');
-
-      if (!rep) return;
-
-      if (state.repFocus === rep) {
-        state.repFocus = null;
-        refreshUI(false);
-        if (state.accounts.length) fitMapToAccounts();
-      } else {
-        state.repFocus = rep;
-        refreshUI(false);
-        zoomToRep(rep);
-      }
-    });
+function sortRepRows(rows) {
+  const { key, dir } = state.tableSort;
+  const factor = dir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    let av = a[key];
+    let bv = b[key];
+    if (typeof av === 'string' || typeof bv === 'string') {
+      return String(av).localeCompare(String(bv), undefined, { numeric: true }) * factor;
+    }
+    av = Number(av || 0);
+    bv = Number(bv || 0);
+    return (av - bv) * factor;
   });
 }
 
 function toggleTableSort(key) {
-  if (!key) return;
+  if (state.tableSort.key === key) state.tableSort.dir = state.tableSort.dir === 'asc' ? 'desc' : 'asc';
+  else state.tableSort = { key, dir: 'asc' };
 
-  if (state.tableSort.key === key) {
-    state.tableSort.dir = state.tableSort.dir === 'asc' ? 'desc' : 'asc';
-  } else {
-    state.tableSort.key = key;
-    state.tableSort.dir = key === 'rep' ? 'asc' : 'desc';
-  }
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    const active = th.getAttribute('data-sort') === state.tableSort.key;
+    th.classList.toggle('is-active', active);
+    th.classList.toggle('asc', active && state.tableSort.dir === 'asc');
+    th.classList.toggle('desc', active && state.tableSort.dir === 'desc');
+    const indicator = th.querySelector('.sort-indicator');
+    if (indicator) indicator.textContent = active ? (state.tableSort.dir === 'asc' ? '▲' : '▼') : '↕';
+  });
 
   renderRepTable();
 }
 
-function sortRepRows(rows) {
-  const key = state.tableSort.key;
-  const dir = state.tableSort.dir === 'asc' ? 1 : -1;
+function summarizeByRep() {
+  const map = new Map();
 
-  return [...rows].sort((a, b) => {
-    const av = a[key];
-    const bv = b[key];
-
-    if (typeof av === 'string' || typeof bv === 'string') {
-      return String(av).localeCompare(String(bv), undefined, { numeric: true }) * dir;
+  state.accounts.forEach(account => {
+    const rep = account.assignedRep || 'Unassigned';
+    if (!map.has(rep)) {
+      map.set(rep, {
+        rep,
+        stops: 0,
+        deltaStops: 0,
+        revenue: 0,
+        deltaRevenue: 0,
+        A: 0,
+        B: 0,
+        C: 0,
+        D: 0,
+        planned4W: 0,
+        avgWeekly: 0,
+        protected: 0,
+        movedIn: 0,
+        movedOut: 0
+      });
     }
 
-    return ((av || 0) - (bv || 0)) * dir;
+    const row = map.get(rep);
+    row.stops += 1;
+    row.revenue += account.overallSales || 0;
+    row[account.rank] += 1;
+    row.planned4W += account.cadence4w || 0;
+    if (account.protected) row.protected += 1;
+    if (account.originalAssignedRep !== account.assignedRep) {
+      if (account.assignedRep === rep) row.movedIn += 1;
+      if (account.originalAssignedRep === rep) row.movedOut += 1;
+    }
   });
+
+  const originalStats = new Map();
+  state.accounts.forEach(account => {
+    const rep = account.originalAssignedRep || 'Unassigned';
+    if (!originalStats.has(rep)) originalStats.set(rep, { stops: 0, revenue: 0 });
+    originalStats.get(rep).stops += 1;
+    originalStats.get(rep).revenue += account.overallSales || 0;
+  });
+
+  map.forEach(row => {
+    const orig = originalStats.get(row.rep) || { stops: 0, revenue: 0 };
+    row.deltaStops = row.stops - orig.stops;
+    row.deltaRevenue = row.revenue - orig.revenue;
+    row.avgWeekly = row.planned4W / 4;
+  });
+
+  return [...map.values()];
 }
 
-function syncSortHeaderIndicators() {
-  document.querySelectorAll('th[data-sort]').forEach(th => {
-    const key = th.getAttribute('data-sort');
-    const indicator = th.querySelector('.sort-indicator');
-    th.classList.remove('is-active', 'asc', 'desc');
+function updateGlobalStats() {
+  const visibleAccounts = state.accounts.filter(passesFilters);
+  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
+  const unchangedPct = state.accounts.length
+    ? ((state.accounts.length - movedCount) / state.accounts.length) * 100
+    : 0;
+  const totalRevenue = visibleAccounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
+  const totalProtected = visibleAccounts.filter(a => a.protected).length;
+  const planned4W = visibleAccounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
+  const reps = getAllAssignedReps();
 
-    if (key === state.tableSort.key) {
-      th.classList.add('is-active', state.tableSort.dir);
-      if (indicator) indicator.textContent = state.tableSort.dir === 'asc' ? '▲' : '▼';
-    } else if (indicator) {
-      indicator.textContent = '↕';
-    }
-  });
+  els.globalAccounts.textContent = formatNumber(visibleAccounts.length);
+  els.globalRevenue.textContent = formatCurrency(totalRevenue);
+  els.globalProtected.textContent = formatNumber(totalProtected);
+  els.globalMoved.textContent = formatNumber(movedCount);
+  els.globalUnchanged.textContent = `${formatNumber(unchangedPct, 1)}%`;
+  els.globalAvgWeekly.textContent = formatNumber(planned4W / 4, 1);
+  els.globalAvgWeeklyPerRep.textContent = formatNumber((planned4W / 4) / Math.max(1, reps.length), 1);
 }
 
 function renderSelectionPreview() {
-  const selected = state.accounts.filter(a => state.selection.has(a._id)).slice(0, 250);
-  els.selectionCount.textContent = String(state.selection.size);
+  const ids = [...state.selection];
+  els.selectionCount.textContent = ids.length;
 
-  if (!selected.length) {
+  if (!ids.length) {
     els.selectionPreview.innerHTML = '<div class="empty">No accounts selected.</div>';
     return;
   }
 
-  els.selectionPreview.innerHTML = selected.map(a => `
-    <div class="selected-item">
-      <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
-      <div class="transfer-line">
-        <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
-        <span class="metric-chip">${escapeHtml(a.premise)}</span>
-        <span class="metric-chip">${escapeHtml(a.segment)}</span>
-        <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
-        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
-        <span class="metric-chip">4W ${formatNumber(a.cadence4w, 2)}</span>
-        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
+  const cards = ids.slice(0, 50).map(id => {
+    const a = state.accountById.get(id);
+    if (!a) return '';
+    return `
+      <div class="selected-item">
+        <div class="selected-item-title">${escapeHtml(a.customerName)}</div>
+        <div class="transfer-line">
+          <span class="metric-chip">${escapeHtml(a.customerId)}</span>
+          <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
+          <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
+
+  els.selectionPreview.innerHTML = cards;
 }
 
 function renderMovedReview() {
-  const search = (state.multiSearch.moved || '').toLowerCase().trim();
-
+  const term = (state.multiSearch.moved || '').trim().toLowerCase();
   let moved = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep);
 
-  if (search) {
-    moved = moved.filter(a => {
-      const haystack = [
-        a.customerName,
-        a.customerId,
-        a.originalAssignedRep,
-        a.assignedRep
-      ].map(v => String(v || '').toLowerCase()).join(' | ');
-
-      return haystack.includes(search);
-    });
+  if (term) {
+    moved = moved.filter(a =>
+      [a.customerName, a.customerId, a.originalAssignedRep, a.assignedRep]
+        .some(v => String(v || '').toLowerCase().includes(term))
+    );
   }
 
-  const limited = moved.slice(0, 100);
-  els.movedReviewCount.textContent = String(state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length);
+  els.movedReviewCount.textContent = moved.length;
 
-  if (!limited.length) {
-    els.movedReviewList.innerHTML = `<div class="empty">${search ? 'No moved accounts match your search.' : 'No moved accounts yet.'}</div>`;
+  if (!moved.length) {
+    els.movedReviewList.innerHTML = '<div class="empty">No moved accounts yet.</div>';
     return;
   }
 
-  els.movedReviewList.innerHTML = limited.map(a => `
-    <div class="moved-item" data-account-id="${escapeHtmlAttr(a._id)}" title="Zoom to account on map">
+  els.movedReviewList.innerHTML = moved.slice(0, 250).map(a => `
+    <div class="moved-item">
       <div class="moved-item-title">${escapeHtml(a.customerName)}</div>
       <div class="transfer-line">
         <span class="metric-chip">${escapeHtml(a.customerId)}</span>
@@ -1412,38 +1107,20 @@ function renderMovedReview() {
         <span class="rep-arrow">→</span>
         <span class="rep-chip">${escapeHtml(a.assignedRep)}</span>
         <span class="metric-chip">${formatCurrency(a.overallSales)}</span>
-        <span class="metric-chip">Rank ${escapeHtml(a.rank)}</span>
-        ${a.protected ? '<span class="metric-chip">Protected</span>' : ''}
       </div>
     </div>
   `).join('');
-
-  els.movedReviewList.querySelectorAll('.moved-item[data-account-id]').forEach(item => {
-    item.addEventListener('click', () => {
-      const id = item.getAttribute('data-account-id');
-      if (id) zoomToAccount(id, true);
-    });
-  });
 }
 
-function renderSummary() {
-  const totalAccounts = state.accounts.length;
-  const totalRevenue = state.accounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
-  const protectedCount = state.accounts.filter(a => a.protected).length;
-  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
-  const unchangedPct = totalAccounts ? ((totalAccounts - movedCount) / totalAccounts) * 100 : 0;
-  const totalPlanned4W = state.accounts.reduce((sum, a) => sum + (a.cadence4w || 0), 0);
-  const avgWeekly = totalPlanned4W / 4;
-  const repCount = Math.max(1, getAllAssignedReps().length);
-  const avgWeeklyPerRep = avgWeekly / repCount;
+function syncRepFilterSelection(previousAssignedReps = null) {
+  const reps = getAllAssignedReps();
+  const prev = Array.isArray(previousAssignedReps) ? new Set(previousAssignedReps) : state.filters.rep;
 
-  els.globalAccounts.textContent = totalAccounts.toLocaleString();
-  els.globalRevenue.textContent = formatCurrency(totalRevenue);
-  els.globalProtected.textContent = protectedCount.toLocaleString();
-  els.globalMoved.textContent = movedCount.toLocaleString();
-  els.globalUnchanged.textContent = `${unchangedPct.toFixed(1)}%`;
-  els.globalAvgWeekly.textContent = formatNumber(avgWeekly, 1);
-  els.globalAvgWeeklyPerRep.textContent = formatNumber(avgWeeklyPerRep, 1);
+  state.filters.rep = new Set(reps.filter(rep => prev.has(rep) || !previousAssignedReps));
+  if (!state.filters.rep.size) reps.forEach(rep => state.filters.rep.add(rep));
+
+  fillSimpleSelect(els.assignRepSelect, reps, reps[0] || '');
+  renderMultiFilterOptions();
 }
 
 function handleDrawCreated(event) {
@@ -1499,6 +1176,31 @@ function zoomToAccount(id, openPopup = true) {
       marker.openPopup();
     }, 120);
   }
+}
+
+function isRepLocked(rep) {
+  return state.lockedReps?.has(rep);
+}
+
+function isAccountLocked(account) {
+  return !!account && isRepLocked(account.assignedRep);
+}
+
+function getLockedRepCount() {
+  return state.lockedReps?.size || 0;
+}
+
+function toggleRepLock(rep, shouldLock) {
+  if (!rep) return;
+
+  if (!state.lockedReps) state.lockedReps = new Set();
+
+  if (shouldLock) state.lockedReps.add(rep);
+  else state.lockedReps.delete(rep);
+
+  refreshUI();
+  updateLastAction(`${shouldLock ? 'Locked' : 'Unlocked'} territory: ${rep}`);
+  showToast(`${shouldLock ? 'Locked' : 'Unlocked'} ${rep}.`);
 }
 
 function assignSelectionToRep() {
@@ -1570,21 +1272,30 @@ function assignSelectionToRep() {
 
 function applyChanges(changes, label, previousAssignedReps = null) {
   const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAllAssignedReps();
+  const appliedChanges = [];
 
   changes.forEach(change => {
-  const account = state.accountById.get(change.id);
-  if (!account) return;
+    const account = state.accountById.get(change.id);
+    if (!account) return;
 
-  if (isRepLocked(change.from) || isRepLocked(change.to) || isAccountLocked(account)) {
+    if (isRepLocked(change.from) || isRepLocked(change.to) || isAccountLocked(account)) {
+      return;
+    }
+
+    if (account.assignedRep === change.to) return;
+
+    ensureRepColor(change.to);
+    account.assignedRep = change.to;
+    appliedChanges.push({ ...change });
+  });
+
+  if (!appliedChanges.length) {
+    showToast('No eligible changes could be applied.');
     return;
   }
 
-  ensureRepColor(change.to);
-  account.assignedRep = change.to;
-});
-
   state.undoStack.push({
-    changes: changes.map(c => ({ ...c })),
+    changes: appliedChanges,
     label
   });
 
@@ -1668,14 +1379,6 @@ function optimizeRoutes() {
   if (!state.accounts.length) return;
 
   try {
-    const lockedAccounts = state.accounts.filter(a => isAccountLocked(a));
-    const movableAccounts = state.accounts.filter(a => !isAccountLocked(a));
-    const unlockedReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
-    if (!unlockedReps.length || !movableAccounts.length) {
-      showToast('All territories are locked. Nothing to optimize.');
-      return;
-    }
-    
     const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
     const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
     const maxStopsRaw = parseInt(els.maxStopsInput.value || '999999', 10);
@@ -1684,8 +1387,9 @@ function optimizeRoutes() {
     const minStops = Math.max(1, minStopsRaw || 1);
     const maxStops = Math.max(minStops, maxStopsRaw || minStops);
     const totalAccounts = state.accounts.length;
-    const protectedCount = state.accounts.filter(a => a.protected).length;
-    const movableCount = totalAccounts - protectedCount;
+
+    const fixedCount = state.accounts.filter(a => a.protected || isAccountLocked(a)).length;
+    const movableCount = totalAccounts - fixedCount;
 
     if (!Number.isFinite(targetCount) || !Number.isFinite(minStops) || !Number.isFinite(maxStops)) {
       showToast('Optimizer inputs are invalid. Check rep count and stop limits.');
@@ -1708,7 +1412,7 @@ function optimizeRoutes() {
     }
 
     if (movableCount === 0) {
-      showToast('All accounts are protected. Nothing can be optimized.');
+      showToast('All remaining accounts are locked or protected. Nothing can be optimized.');
       return;
     }
 
@@ -1716,16 +1420,22 @@ function optimizeRoutes() {
     const geographyWeight = 1 - continuityWeight;
     const balanceMode = els.balanceMode.value;
 
-    const protectedAccounts = state.accounts.filter(a => a.protected);
-    const movableAccounts = state.accounts.filter(a => !a.protected);
-    const currentReps = getAllAssignedReps();
+    const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
+    const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+
+    const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
     const adjacency = state.neighborMap;
+
+    if (!targetRepNames.length) {
+      showToast('No unlocked reps are available for optimization.');
+      return;
+    }
 
     targetRepNames.forEach(rep => ensureRepColor(rep));
 
     const assignments = new Map();
-    protectedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
+    fixedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
 
     const assignmentCtx = createAssignmentContext(targetRepNames, assignments);
     const centroids = initializeCentroidsFast(targetRepNames, assignmentCtx);
@@ -1741,9 +1451,13 @@ function optimizeRoutes() {
       resetCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
 
       const repStats = buildFullRepStats(targetRepNames);
+
       for (const rep of targetRepNames) {
-        const repCtx = assignmentCtx.reps.get(rep);
-        repStats.set(rep, { rep, stops: repCtx.count, revenue: repCtx.revenue });
+        repStats.set(rep, {
+          rep,
+          stops: assignmentCtx.count(rep),
+          revenue: assignmentCtx.revenue(rep)
+        });
       }
 
       for (const account of orderedMovable) {
@@ -1751,27 +1465,29 @@ function optimizeRoutes() {
         let bestScore = Infinity;
 
         for (const rep of targetRepNames) {
-          const centroid = centroids.get(rep);
-          const repStat = repStats.get(rep);
+          const centroid = centroids.get(rep) || averageCentroidForRep(rep, assignmentCtx);
+          const compactnessScore = centroid
+            ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * geographyWeight
+            : 0;
 
-          if (repStat.stops >= maxStops) continue;
+          const continuityPenalty = account.currentRep === rep
+            ? 0
+            : continuityWeight * (account.protected ? 999999 : 1);
 
-          const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
-
-          const compactnessScore = dist * (1.08 + geographyWeight * 1.15);
-          const continuityPenalty = account.currentRep === rep ? 0 : (continuityWeight * 0.95);
-          const existingPenalty = account.assignedRep === rep ? 0 : (continuityWeight * 0.28);
+          const existingPenalty = account.assignedRep === rep ? -0.15 : 0;
 
           let balancePenalty = 0;
-          if (balanceMode === 'stops') {
-            balancePenalty = repStat.stops * 0.04;
-          } else if (balanceMode === 'revenue') {
-            balancePenalty = repStat.revenue * 0.0000013;
+          const stat = repStats.get(rep);
+
+          if (balanceMode === 'revenue') {
+            balancePenalty = (stat.revenue || 0) / Math.max(1, totalAccounts);
+          } else if (balanceMode === 'stops') {
+            balancePenalty = (stat.stops || 0) * 0.35;
           } else {
-            balancePenalty = repStat.stops * 0.028 + repStat.revenue * 0.00000065;
+            balancePenalty = ((stat.stops || 0) * 0.2) + (((stat.revenue || 0) / Math.max(1, totalAccounts)) * 0.15);
           }
 
-          const underMinBoost = repStat.stops < minStops ? -2.2 : 0;
+          const underMinBoost = stat.stops < minStops ? -2.2 : 0;
           const localPenalty = localDominancePenalty(account, rep, assignments, adjacency);
 
           const score =
@@ -1919,21 +1635,18 @@ function createAssignmentContext(targetRepNames, assignments) {
     addAccountToContext(ctx, rep, account);
   }
 
-  ctx.addToRep = (rep, account) => addAccountToContext(ctx, rep, account);
-  ctx.removeFromRep = (rep, account) => removeAccountFromContext(ctx, rep, account);
-  ctx.moveAccount = (account, fromRep, toRep) => moveAccountInContext(ctx, account, fromRep, toRep);
   ctx.count = rep => ctx.reps.get(rep)?.count || 0;
   ctx.revenue = rep => ctx.reps.get(rep)?.revenue || 0;
-  ctx.membersArray = rep => Array.from(ctx.reps.get(rep)?.members || []);
-  ctx.centroid = rep => centroidFromContext(ctx, rep);
-
-  ctx.clearMovableAssignments = (movableAccounts, assignmentMap) => {
-    for (const account of movableAccounts) {
-      const rep = assignmentMap.get(account._id);
-      if (!rep) continue;
-      removeAccountFromContext(ctx, rep, account);
+  ctx.members = rep => ctx.reps.get(rep)?.members || new Set();
+  ctx.addToRep = (rep, account) => addAccountToContext(ctx, rep, account);
+  ctx.removeFromRep = (rep, account) => removeAccountFromContext(ctx, rep, account);
+  ctx.clearMovableAssignments = (movable, assignmentMap) => {
+    movable.forEach(account => {
+      const currentRep = assignmentMap.get(account._id);
+      if (!currentRep) return;
+      ctx.removeFromRep(currentRep, account);
       assignmentMap.delete(account._id);
-    }
+    });
   };
 
   return ctx;
@@ -1949,1068 +1662,258 @@ function addAccountToContext(ctx, rep, account) {
       members: new Set()
     });
   }
-
-  const repCtx = ctx.reps.get(rep);
-  if (repCtx.members.has(account._id)) return;
-
-  repCtx.members.add(account._id);
-  repCtx.count += 1;
-  repCtx.revenue += account.overallSales || 0;
-  repCtx.latSum += account.latitude;
-  repCtx.lngSum += account.longitude;
+  const entry = ctx.reps.get(rep);
+  if (entry.members.has(account._id)) return;
+  entry.members.add(account._id);
+  entry.count += 1;
+  entry.revenue += account.overallSales || 0;
+  entry.latSum += account.latitude;
+  entry.lngSum += account.longitude;
 }
 
 function removeAccountFromContext(ctx, rep, account) {
-  const repCtx = ctx.reps.get(rep);
-  if (!repCtx || !repCtx.members.has(account._id)) return;
-
-  repCtx.members.delete(account._id);
-  repCtx.count -= 1;
-  repCtx.revenue -= account.overallSales || 0;
-  repCtx.latSum -= account.latitude;
-  repCtx.lngSum -= account.longitude;
+  const entry = ctx.reps.get(rep);
+  if (!entry || !entry.members.has(account._id)) return;
+  entry.members.delete(account._id);
+  entry.count -= 1;
+  entry.revenue -= account.overallSales || 0;
+  entry.latSum -= account.latitude;
+  entry.lngSum -= account.longitude;
 }
 
-function moveAccountInContext(ctx, account, fromRep, toRep) {
-  if (fromRep === toRep) return;
-  removeAccountFromContext(ctx, fromRep, account);
-  addAccountToContext(ctx, toRep, account);
-}
-
-function centroidFromContext(ctx, rep) {
-  const repCtx = ctx.reps.get(rep);
-  if (repCtx && repCtx.count > 0) {
-    return {
-      lat: repCtx.latSum / repCtx.count,
-      lng: repCtx.lngSum / repCtx.count
-    };
-  }
-
-  const fallback = state.accounts[0];
-  return { lat: fallback?.latitude || 0, lng: fallback?.longitude || 0 };
-}
-
-function initializeCentroidsFast(targetRepNames, assignmentCtx) {
+function initializeCentroidsFast(targetRepNames, ctx) {
   const centroids = new Map();
-
-  targetRepNames.forEach((rep, idx) => {
-    const repCtx = assignmentCtx.reps.get(rep);
-    if (repCtx && repCtx.count > 0) {
-      centroids.set(rep, centroidFromContext(assignmentCtx, rep));
-      return;
-    }
-
-    const fallback = state.accounts[Math.floor(idx * state.accounts.length / Math.max(1, targetRepNames.length))] || state.accounts[0];
-    centroids.set(rep, { lat: fallback.latitude, lng: fallback.longitude });
+  targetRepNames.forEach(rep => {
+    centroids.set(rep, averageCentroidForRep(rep, ctx));
   });
-
   return centroids;
 }
 
-function resetCentroidsFromContext(centroids, targetRepNames, assignmentCtx) {
-  for (const rep of targetRepNames) {
-    const repCtx = assignmentCtx.reps.get(rep);
-    if (repCtx && repCtx.count > 0) {
-      centroids.set(rep, centroidFromContext(assignmentCtx, rep));
-    }
-  }
-}
-
-function refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx) {
-  for (const rep of targetRepNames) {
-    const repCtx = assignmentCtx.reps.get(rep);
-    if (!repCtx || !repCtx.count) continue;
-    centroids.set(rep, {
-      lat: repCtx.latSum / repCtx.count,
-      lng: repCtx.lngSum / repCtx.count
-    });
-  }
-}
-
-function moveAssignmentFast(assignments, assignmentCtx, account, toRep) {
-  const fromRep = assignments.get(account._id);
-  if (fromRep === toRep) return false;
-  assignments.set(account._id, toRep);
-  assignmentCtx.moveAccount(account, fromRep, toRep);
-  return true;
-}
-
-function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, neighborMap, assignmentCtx) {
-  let moved = true;
-  let pass = 0;
-
-  while (moved && pass < 3) {
-    pass += 1;
-    moved = false;
-
-    const borderAccounts = getBorderAccounts(assignments, neighborMap)
-      .filter(a => !a.protected)
-      .map(a => ({ account: a, detail: dominantNeighborRep(a, assignments, neighborMap) }))
-      .filter(x => x.detail && x.detail.borderStrength >= 0.6 && x.detail.rep !== assignments.get(x.account._id))
-      .sort((a, b) => b.detail.borderStrength - a.detail.borderStrength);
-
-    for (const { account, detail } of borderAccounts) {
-      const from = assignments.get(account._id);
-      const to = detail.rep;
-      if (!to || from === to) continue;
-      if (assignmentCtx.count(from) <= Math.max(1, minStops)) continue;
-
-      const currentScore = borderCleanupScoreFast(account, from, assignments, neighborMap, continuityWeight, assignmentCtx);
-      const nextScore = borderCleanupScoreFast(account, to, assignments, neighborMap, continuityWeight, assignmentCtx);
-
-      if (nextScore + 0.18 < currentScore) {
-        if (moveAssignmentFast(assignments, assignmentCtx, account, to)) moved = true;
-      }
-    }
-  }
-}
-
-function runEnclaveCleanupFast(assignments, targetRepNames, minStops, neighborMap, assignmentCtx) {
-  for (const account of getBorderAccounts(assignments, neighborMap).filter(a => !a.protected)) {
-    const own = assignments.get(account._id);
-    const neighbors = neighborMap.get(account._id) || [];
-    if (!neighbors.length) continue;
-
-    const repCounts = new Map();
-    neighbors.forEach(nid => {
-      const rep = assignments.get(nid);
-      if (!rep) return;
-      repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
-    });
-
-    const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
-    const topRep = sorted[0]?.[0];
-    const topCount = sorted[0]?.[1] || 0;
-    const ownCount = repCounts.get(own) || 0;
-
-    if (!topRep || topRep === own) continue;
-    if (topCount < 4 || ownCount > 1) continue;
-    if (assignmentCtx.count(own) <= Math.max(1, minStops)) continue;
-
-    moveAssignmentFast(assignments, assignmentCtx, account, topRep);
-  }
-}
-
-function runMajoritySmoothingFast(assignments, targetRepNames, minStops, neighborMap, assignmentCtx) {
-  const moves = [];
-
-  for (const account of getBorderAccounts(assignments, neighborMap).filter(a => !a.protected)) {
-    const own = assignments.get(account._id);
-    const neighbors = neighborMap.get(account._id) || [];
-    if (neighbors.length < 3) continue;
-    if (assignmentCtx.count(own) <= Math.max(1, minStops)) continue;
-
-    const repCounts = new Map();
-    neighbors.forEach(nid => {
-      const rep = assignments.get(nid);
-      if (!rep) return;
-      repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
-    });
-
-    const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
-    const topRep = sorted[0]?.[0];
-    const topCount = sorted[0]?.[1] || 0;
-    const ownCount = repCounts.get(own) || 0;
-
-    if (topRep && topRep !== own && topCount >= 5 && ownCount <= 1) {
-      moves.push({ account, from: own, to: topRep });
-    }
-  }
-
-  for (const move of moves) {
-    if (assignmentCtx.count(move.from) <= Math.max(1, minStops)) continue;
-    moveAssignmentFast(assignments, assignmentCtx, move.account, move.to);
-  }
-}
-
-function borderCleanupScoreFast(account, rep, assignments, neighborMap, continuityWeight, assignmentCtx) {
-  const neighbors = neighborMap.get(account._id) || [];
-  const centroid = assignmentCtx.centroid(rep);
-  const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
-
-  let same = 0;
-  let other = 0;
-  neighbors.forEach(nid => {
-    if (assignments.get(nid) === rep) same += 1;
-    else other += 1;
+function resetCentroidsFromContext(centroids, targetRepNames, ctx) {
+  targetRepNames.forEach(rep => {
+    centroids.set(rep, averageCentroidForRep(rep, ctx));
   });
-
-  const continuityPenalty = account.currentRep === rep ? 0 : continuityWeight * 0.35;
-  return dist * 1.35 - same * 0.45 + other * 0.12 + continuityPenalty;
 }
 
-function localDominancePenalty(account, rep, assignments, neighborMap) {
-  const neighbors = neighborMap.get(account._id) || [];
-  if (!neighbors.length) return 0;
-
-  let same = 0;
-  let other = 0;
-  const repCounts = new Map();
-
-  neighbors.forEach(nid => {
-    const nrep = assignments.get(nid);
-    if (!nrep) return;
-    repCounts.set(nrep, (repCounts.get(nrep) || 0) + 1);
-    if (nrep === rep) same += 1;
-    else other += 1;
+function refreshCentroidsFromContext(centroids, targetRepNames, ctx) {
+  targetRepNames.forEach(rep => {
+    centroids.set(rep, averageCentroidForRep(rep, ctx));
   });
-
-  const sorted = [...repCounts.entries()].sort((a,b) => b[1] - a[1]);
-  const dominantRep = sorted[0]?.[0];
-  const dominantCount = sorted[0]?.[1] || 0;
-
-  let penalty = 0;
-  if (dominantRep && dominantRep !== rep) penalty += dominantCount * 0.48;
-  if (same === 0) penalty += 2.4;
-  if (same <= 1 && neighbors.length >= 4) penalty += 1.25;
-  if (other > same) penalty += (other - same) * 0.28;
-  return penalty;
 }
 
-function dominantNeighborRep(account, assignments, neighborMap) {
-  const neighbors = neighborMap.get(account._id) || [];
-  if (!neighbors.length) return null;
-
-  const counts = new Map();
-  neighbors.forEach(id => {
-    const rep = assignments.get(id);
-    if (!rep) return;
-    counts.set(rep, (counts.get(rep) || 0) + 1);
-  });
-
-  const sorted = [...counts.entries()].sort((a,b) => b[1] - a[1]);
-  if (!sorted.length) return null;
-
+function averageCentroidForRep(rep, ctx) {
+  const entry = ctx.reps.get(rep);
+  if (!entry || !entry.count) return null;
   return {
-    rep: sorted[0][0],
-    borderStrength: sorted[0][1] / neighbors.length
+    lat: entry.latSum / entry.count,
+    lng: entry.lngSum / entry.count
   };
-}
-
-function getBorderAccounts(assignments, neighborMap) {
-  const out = [];
-
-  for (const account of state.accounts) {
-    const neighbors = neighborMap.get(account._id) || [];
-    if (!neighbors.length) continue;
-
-    const own = assignments.get(account._id);
-    let mixed = false;
-
-    for (const nid of neighbors) {
-      const rep = assignments.get(nid);
-      if (rep && rep !== own) {
-        mixed = true;
-        break;
-      }
-    }
-
-    if (mixed) out.push(account);
-  }
-
-  return out;
-}
-
-function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx) {
-  let pass = 0;
-  const maxPasses = 1000;
-
-  while (pass < maxPasses) {
-    pass += 1;
-
-    const underfilled = targetRepNames
-      .filter(rep => assignmentCtx.count(rep) < minStops)
-      .sort((a,b) => assignmentCtx.count(a) - assignmentCtx.count(b));
-
-    if (!underfilled.length) break;
-
-    let movedThisPass = false;
-
-    for (const needyRep of underfilled) {
-      const needyCentroid = assignmentCtx.centroid(needyRep);
-
-      const donorCandidates = targetRepNames
-        .filter(rep => rep !== needyRep && assignmentCtx.count(rep) > minStops)
-        .sort((a,b) => assignmentCtx.count(b) - assignmentCtx.count(a));
-
-      let bestMove = null;
-
-      for (const donorRep of donorCandidates) {
-        const donorMemberIds = assignmentCtx.membersArray(donorRep);
-
-        for (const accountId of donorMemberIds) {
-          const account = state.accountById.get(accountId);
-          if (!account || account.protected) continue;
-          if (assignmentCtx.count(needyRep) >= maxStops) continue;
-          if (assignmentCtx.count(donorRep) <= minStops) continue;
-
-          const dist = squaredDistance(account.latitude, account.longitude, needyCentroid.lat, needyCentroid.lng);
-          const continuityPenalty = account.currentRep === donorRep ? 0.22 : 0;
-          const score = dist + continuityPenalty;
-
-          if (!bestMove || score < bestMove.score) {
-            bestMove = { account, from: donorRep, to: needyRep, score };
-          }
-        }
-      }
-
-      if (bestMove) {
-        if (moveAssignmentFast(assignments, assignmentCtx, bestMove.account, bestMove.to)) {
-          movedThisPass = true;
-        }
-      }
-    }
-
-    if (!movedThisPass) break;
-  }
-}
-
-function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx) {
-  let pass = 0;
-  const maxPasses = 1000;
-
-  while (pass < maxPasses) {
-    pass += 1;
-
-    const overfilled = targetRepNames
-      .filter(rep => assignmentCtx.count(rep) > maxStops)
-      .sort((a, b) => assignmentCtx.count(b) - assignmentCtx.count(a));
-
-    if (!overfilled.length) break;
-
-    let movedThisPass = false;
-
-    for (const donorRep of overfilled) {
-      const donorCentroid = assignmentCtx.centroid(donorRep);
-      const donorAccounts = assignmentCtx.membersArray(donorRep)
-        .map(id => state.accountById.get(id))
-        .filter(a => a && !a.protected)
-        .sort((a, b) => {
-          const ad = squaredDistance(a.latitude, a.longitude, donorCentroid.lat, donorCentroid.lng);
-          const bd = squaredDistance(b.latitude, b.longitude, donorCentroid.lat, donorCentroid.lng);
-          return bd - ad;
-        });
-
-      let bestMove = null;
-
-      for (const account of donorAccounts) {
-        for (const targetRep of targetRepNames) {
-          if (targetRep === donorRep) continue;
-          if (assignmentCtx.count(targetRep) >= maxStops) continue;
-
-          const targetCentroid = assignmentCtx.centroid(targetRep);
-          const score =
-            squaredDistance(account.latitude, account.longitude, targetCentroid.lat, targetCentroid.lng) +
-            (account.currentRep === targetRep ? 0 : 0.25) +
-            (assignmentCtx.count(targetRep) < minStops ? -1.5 : 0);
-
-          if (!bestMove || score < bestMove.score) {
-            bestMove = {
-              account,
-              from: donorRep,
-              to: targetRep,
-              score
-            };
-          }
-        }
-      }
-
-      if (bestMove) {
-        if (moveAssignmentFast(assignments, assignmentCtx, bestMove.account, bestMove.to)) {
-          movedThisPass = true;
-        }
-      }
-    }
-
-    if (!movedThisPass) break;
-  }
-}
-
-function rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx) {
-  let moved = true;
-  let safety = 0;
-
-  while (moved && safety < 2000) {
-    safety += 1;
-    moved = false;
-
-    const underfilled = targetRepNames
-      .filter(rep => assignmentCtx.count(rep) < minStops)
-      .sort((a, b) => assignmentCtx.count(a) - assignmentCtx.count(b));
-
-    const overfilled = targetRepNames
-      .filter(rep => assignmentCtx.count(rep) > maxStops)
-      .sort((a, b) => assignmentCtx.count(b) - assignmentCtx.count(a));
-
-    if (!underfilled.length && !overfilled.length) break;
-
-    for (const needyRep of underfilled) {
-      let bestMove = null;
-      const needyCentroid = assignmentCtx.centroid(needyRep);
-
-      const donorReps = targetRepNames
-        .filter(rep => rep !== needyRep && assignmentCtx.count(rep) > minStops)
-        .sort((a, b) => assignmentCtx.count(b) - assignmentCtx.count(a));
-
-      for (const donorRep of donorReps) {
-        const donorIds = assignmentCtx.membersArray(donorRep);
-
-        for (const accountId of donorIds) {
-          const account = state.accountById.get(accountId);
-          if (!account || account.protected) continue;
-          if (assignmentCtx.count(donorRep) <= minStops) continue;
-          if (assignmentCtx.count(needyRep) >= maxStops) continue;
-
-          const score =
-            squaredDistance(account.latitude, account.longitude, needyCentroid.lat, needyCentroid.lng) +
-            (account.currentRep === needyRep ? -0.15 : 0) +
-            (account.currentRep === donorRep ? 0.15 : 0);
-
-          if (!bestMove || score < bestMove.score) {
-            bestMove = {
-              account,
-              from: donorRep,
-              to: needyRep,
-              score
-            };
-          }
-        }
-      }
-
-      if (bestMove) {
-        if (moveAssignmentFast(assignments, assignmentCtx, bestMove.account, bestMove.to)) {
-          moved = true;
-        }
-      }
-    }
-
-    for (const donorRep of overfilled) {
-      let bestMove = null;
-
-      const donorIds = assignmentCtx.membersArray(donorRep);
-      for (const accountId of donorIds) {
-        const account = state.accountById.get(accountId);
-        if (!account || account.protected) continue;
-        if (assignmentCtx.count(donorRep) <= maxStops) continue;
-
-        for (const targetRep of targetRepNames) {
-          if (targetRep === donorRep) continue;
-          if (assignmentCtx.count(targetRep) >= maxStops) continue;
-
-          const targetCentroid = assignmentCtx.centroid(targetRep);
-          const score =
-            squaredDistance(account.latitude, account.longitude, targetCentroid.lat, targetCentroid.lng) +
-            (assignmentCtx.count(targetRep) < minStops ? -2.5 : 0) +
-            (account.currentRep === targetRep ? -0.15 : 0);
-
-          if (!bestMove || score < bestMove.score) {
-            bestMove = {
-              account,
-              from: donorRep,
-              to: targetRep,
-              score
-            };
-          }
-        }
-      }
-
-      if (bestMove) {
-        if (moveAssignmentFast(assignments, assignmentCtx, bestMove.account, bestMove.to)) {
-          moved = true;
-        }
-      }
-    }
-  }
-}
-
-function buildNeighborMap(accounts) {
-  const map = new Map();
-
-  for (let i = 0; i < accounts.length; i += 1) {
-    const account = accounts[i];
-    const nearest = [];
-
-    for (let j = 0; j < accounts.length; j += 1) {
-      if (i === j) continue;
-      const other = accounts[j];
-      const d = squaredDistance(account.latitude, account.longitude, other.latitude, other.longitude);
-
-      if (nearest.length < 8) {
-        nearest.push({ id: other._id, d });
-        nearest.sort((a, b) => a.d - b.d);
-      } else if (d < nearest[nearest.length - 1].d) {
-        nearest[nearest.length - 1] = { id: other._id, d };
-        nearest.sort((a, b) => a.d - b.d);
-      }
-    }
-
-    map.set(account._id, nearest.map(x => x.id));
-  }
-
-  return map;
 }
 
 function buildTargetRepNames(targetCount, currentReps) {
   const reps = [...currentReps];
   while (reps.length < targetCount) reps.push(`Rep ${reps.length + 1}`);
-  if (reps.length > targetCount) return reps.slice(0, targetCount);
-  return reps.length ? reps : ['Rep 1'];
+  return reps.slice(0, targetCount);
 }
 
-function buildFullRepStats(reps) {
+function buildFullRepStats(targetRepNames) {
   const map = new Map();
-  reps.forEach(rep => map.set(rep, { rep, stops: 0, revenue: 0 }));
+  targetRepNames.forEach(rep => {
+    map.set(rep, { rep, stops: 0, revenue: 0 });
+  });
   return map;
 }
 
-function refreshTerritories() {
-  if (state.territoryLayer) state.territoryLayer.clearLayers();
-  if (state.territoryLabelLayer) state.territoryLabelLayer.clearLayers();
-  if (!els.showTerritoryCheckbox.checked || !state.accounts.length || !state.map) return;
+function localDominancePenalty(account, rep, assignments, adjacency) {
+  const neighbors = adjacency.get(account._id);
+  if (!neighbors || !neighbors.size) return 0;
+  let same = 0;
+  let diff = 0;
+  neighbors.forEach(id => {
+    const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+    if (!neighborRep) return;
+    if (neighborRep === rep) same += 1;
+    else diff += 1;
+  });
+  return diff > same ? 0.3 : 0;
+}
 
-  const reps = getAllAssignedReps().filter(rep => state.filters.rep.has(rep));
-  const zoom = state.map.getZoom();
-  const allowAllLabels = zoom >= 9;
-  const allowFocusedOnly = !!state.repFocus && zoom >= 7;
+function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx) {
+  let guard = 0;
+  while (guard < 2000) {
+    guard += 1;
+    const under = targetRepNames.find(rep => ctx.count(rep) < minStops);
+    if (!under) break;
 
-  reps.forEach(rep => {
-    const members = state.accounts.filter(a => a.assignedRep === rep);
-    if (members.length < 3) return;
+    const donor = targetRepNames
+      .filter(rep => ctx.count(rep) > minStops)
+      .sort((a, b) => ctx.count(b) - ctx.count(a))[0];
 
-    const territoryFeature = buildTerritoryFeatureForRep(rep, members);
-    if (!territoryFeature) return;
+    if (!donor) break;
 
-    const isFocusedRep = state.repFocus && rep === state.repFocus;
-    addTerritoryFeatureToMap(territoryFeature, rep, isFocusedRep);
+    const candidate = [...ctx.members(donor)]
+      .map(id => state.accountById.get(id))
+      .filter(Boolean)
+      .sort((a, b) => squaredDistance(a.latitude, a.longitude, averageCentroidForRep(under, ctx)?.lat || a.latitude, averageCentroidForRep(under, ctx)?.lng || a.longitude) - squaredDistance(b.latitude, b.longitude, averageCentroidForRep(under, ctx)?.lat || b.latitude, averageCentroidForRep(under, ctx)?.lng || b.longitude))[0];
 
-    const shouldLabel = allowAllLabels || (allowFocusedOnly && isFocusedRep);
-    if (!shouldLabel) return;
+    if (!candidate) break;
 
-    const rings = getFeatureOuterRings(territoryFeature);
-    if (!rings.length) return;
+    ctx.removeFromRep(donor, candidate);
+    ctx.addToRep(under, candidate);
+    assignments.set(candidate._id, under);
+  }
+}
 
-    const labelRing = pickBestLabelRing(rings);
-    if (!labelRing) return;
-    if (!territoryHasEnoughScreenRoom(labelRing, isFocusedRep)) return;
+function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx) {
+  let guard = 0;
+  while (guard < 2000) {
+    guard += 1;
+    const over = targetRepNames.find(rep => ctx.count(rep) > maxStops);
+    if (!over) break;
 
-    const centroid = getHullLabelLatLng(territoryFeature, labelRing);
-    if (!centroid) return;
+    const receiver = targetRepNames
+      .filter(rep => ctx.count(rep) < maxStops)
+      .sort((a, b) => ctx.count(a) - ctx.count(b))[0];
 
-    const labelHtml = `
-      <div class="territory-label-inner ${isFocusedRep ? 'territory-label-focused' : ''}">
-        <div class="territory-label-name">${escapeHtml(rep)}</div>
-      </div>
-    `;
+    if (!receiver) break;
 
-    const marker = L.marker(centroid, {
-      interactive: false,
-      keyboard: false,
-      zIndexOffset: isFocusedRep ? 800 : 500,
-      icon: L.divIcon({
-        className: 'territory-label',
-        html: labelHtml,
-        iconSize: null
-      })
+    const candidate = [...ctx.members(over)]
+      .map(id => state.accountById.get(id))
+      .filter(Boolean)
+      .sort((a, b) => squaredDistance(a.latitude, a.longitude, averageCentroidForRep(receiver, ctx)?.lat || a.latitude, averageCentroidForRep(receiver, ctx)?.lng || a.longitude) - squaredDistance(b.latitude, b.longitude, averageCentroidForRep(receiver, ctx)?.lat || b.latitude, averageCentroidForRep(receiver, ctx)?.lng || b.longitude))[0];
+
+    if (!candidate) break;
+
+    ctx.removeFromRep(over, candidate);
+    ctx.addToRep(receiver, candidate);
+    assignments.set(candidate._id, receiver);
+  }
+}
+
+function rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, ctx) {
+  enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx);
+  enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx);
+}
+
+function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, ctx) {
+  for (const account of state.accounts) {
+    if (account.protected) continue;
+    const currentRep = assignments.get(account._id) || account.assignedRep;
+    const neighbors = adjacency.get(account._id);
+    if (!neighbors || !neighbors.size) continue;
+
+    const counts = new Map();
+    neighbors.forEach(id => {
+      const rep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+      if (!rep) return;
+      counts.set(rep, (counts.get(rep) || 0) + 1);
     });
 
-    marker.addTo(state.territoryLabelLayer);
-  });
-}
+    const bestNeighborRep = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (!bestNeighborRep || bestNeighborRep === currentRep) continue;
+    if (ctx.count(currentRep) <= minStops) continue;
 
-function buildTerritoryFeatureForRep(rep, members) {
-  const trimmedMembers = trimTerritoryOutliers(members);
-  const points = trimmedMembers.map(a => [a.longitude, a.latitude]);
-  if (points.length < 3) return null;
-
-  const featureCollection = turf.featureCollection(points.map(p => turf.point(p)));
-
-  let feature = null;
-
-  try {
-    feature = turf.concave(featureCollection, {
-      maxEdge: getConcaveMaxEdgeKm(trimmedMembers),
-      units: 'kilometers'
-    });
-  } catch (e) {
-    feature = null;
+    ctx.removeFromRep(currentRep, account);
+    ctx.addToRep(bestNeighborRep, account);
+    assignments.set(account._id, bestNeighborRep);
   }
-
-  if (!isUsableTerritoryFeature(feature)) {
-    try {
-      feature = turf.convex(featureCollection);
-    } catch (e) {
-      feature = null;
-    }
-  }
-
-  if (!isUsableTerritoryFeature(feature)) return null;
-  return feature;
 }
 
-function trimTerritoryOutliers(members) {
-  if (!members || members.length <= 6) return members;
-
-  const centroid = members.reduce((acc, a) => {
-    acc.lat += a.latitude;
-    acc.lng += a.longitude;
-    return acc;
-  }, { lat: 0, lng: 0 });
-
-  centroid.lat /= members.length;
-  centroid.lng /= members.length;
-
-  const distances = members.map(account => ({
-    account,
-    d: squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng)
-  })).sort((a, b) => a.d - b.d);
-
-  const maxTrimCount = Math.min(2, Math.floor(members.length * 0.08));
-  if (maxTrimCount <= 0) return members;
-
-  const keepCount = Math.max(4, distances.length - maxTrimCount);
-  const kept = distances.slice(0, keepCount);
-
-  const keptMax = kept[kept.length - 1]?.d || 0;
-  const trimmed = distances.slice(keepCount);
-
-  if (!trimmed.length) return members;
-
-  const shouldTrim = trimmed.every(x => x.d > keptMax * 1.35);
-  return shouldTrim ? kept.map(x => x.account) : members;
+function runEnclaveCleanupFast(assignments, targetRepNames, minStops, adjacency, ctx) {
+  runBorderCleanupFast(assignments, targetRepNames, 0, minStops, adjacency, ctx);
 }
 
-function getConcaveMaxEdgeKm(members) {
-  if (!members || members.length < 2) return 20;
-
-  let minLat = Infinity;
-  let maxLat = -Infinity;
-  let minLng = Infinity;
-  let maxLng = -Infinity;
-
-  members.forEach(a => {
-    if (a.latitude < minLat) minLat = a.latitude;
-    if (a.latitude > maxLat) maxLat = a.latitude;
-    if (a.longitude < minLng) minLng = a.longitude;
-    if (a.longitude > maxLng) maxLng = a.longitude;
-  });
-
-  const latKm = Math.abs(maxLat - minLat) * 111;
-  const avgLatRad = ((minLat + maxLat) / 2) * Math.PI / 180;
-  const lngKm = Math.abs(maxLng - minLng) * 111 * Math.max(0.25, Math.cos(avgLatRad));
-  const spanKm = Math.sqrt((latKm * latKm) + (lngKm * lngKm));
-
-  return Math.max(4, Math.min(28, spanKm * 0.42));
-}
-
-function isUsableTerritoryFeature(feature) {
-  if (!feature || !feature.geometry) return false;
-  return feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon';
-}
-
-function addTerritoryFeatureToMap(feature, rep, isFocusedRep) {
-  const color = getRepColor(rep);
-
-  const style = {
-    color,
-    weight: isFocusedRep ? 3 : 2,
-    fillOpacity: isFocusedRep ? 0.1 : 0.05,
-    opacity: state.repFocus ? (isFocusedRep ? 0.95 : 0.18) : 0.75,
-    interactive: false
-  };
-
-  L.geoJSON(feature, { style }).addTo(state.territoryLayer);
-}
-
-function getFeatureOuterRings(feature) {
-  if (!feature?.geometry) return [];
-
-  if (feature.geometry.type === 'Polygon') {
-    const outer = feature.geometry.coordinates?.[0];
-    return outer ? [outer.map(([lng, lat]) => [lat, lng])] : [];
-  }
-
-  if (feature.geometry.type === 'MultiPolygon') {
-    return feature.geometry.coordinates
-      .map(poly => poly?.[0] ? poly[0].map(([lng, lat]) => [lat, lng]) : null)
-      .filter(Boolean);
-  }
-
-  return [];
-}
-
-function pickBestLabelRing(rings) {
-  if (!rings?.length) return null;
-  return [...rings].sort((a, b) => polygonRingAreaEstimate(b) - polygonRingAreaEstimate(a))[0] || null;
-}
-
-function polygonRingAreaEstimate(coords) {
-  if (!coords || coords.length < 3) return 0;
-
-  let minLat = Infinity;
-  let maxLat = -Infinity;
-  let minLng = Infinity;
-  let maxLng = -Infinity;
-
-  coords.forEach(([lat, lng]) => {
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-    if (lng < minLng) minLng = lng;
-    if (lng > maxLng) maxLng = lng;
-  });
-
-  return Math.abs((maxLat - minLat) * (maxLng - minLng));
-}
-
-function territoryHasEnoughScreenRoom(coords, isFocusedRep) {
-  if (!state.map || !coords?.length) return false;
-
-  const bounds = L.latLngBounds(coords);
-  const nw = state.map.latLngToContainerPoint(bounds.getNorthWest());
-  const se = state.map.latLngToContainerPoint(bounds.getSouthEast());
-
-  const width = Math.abs(se.x - nw.x);
-  const height = Math.abs(se.y - nw.y);
-
-  if (isFocusedRep) return width >= 70 && height >= 26;
-  return width >= 95 && height >= 34;
-}
-
-function getHullLabelLatLng(feature, coords) {
-  try {
-    const centroid = turf.centroid(feature);
-    const [lng, lat] = centroid.geometry.coordinates;
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
-  } catch (e) {}
-
-  try {
-    const bounds = L.latLngBounds(coords);
-    const center = bounds.getCenter();
-    return [center.lat, center.lng];
-  } catch (e) {}
-
-  return null;
-}
-
-function summarizeByRep() {
-  const currentMap = new Map();
-  const baselineMap = new Map();
-  const reps = getAllKnownReps();
-
-  reps.forEach(rep => {
-    currentMap.set(rep, makeEmptyRepSummary(rep));
-    baselineMap.set(rep, makeEmptyRepSummary(rep));
-  });
-
-  for (const account of state.accounts) {
-    if (!currentMap.has(account.assignedRep)) currentMap.set(account.assignedRep, makeEmptyRepSummary(account.assignedRep));
-    if (!baselineMap.has(account.originalAssignedRep)) baselineMap.set(account.originalAssignedRep, makeEmptyRepSummary(account.originalAssignedRep));
-
-    const cur = currentMap.get(account.assignedRep);
-    cur.stops += 1;
-    cur.revenue += account.overallSales;
-    cur[account.rank] += 1;
-    cur.planned4W += Number(account.cadence4w || 0);
-    cur.avgWeekly = cur.planned4W / 4;
-    if (account.protected) cur.protected += 1;
-    if (account.assignedRep !== account.originalAssignedRep) cur.movedIn += 1;
-
-    const base = baselineMap.get(account.originalAssignedRep);
-    base.stops += 1;
-    base.revenue += account.overallSales;
-  }
-
-  for (const account of state.accounts) {
-    if (account.assignedRep !== account.originalAssignedRep) {
-      if (!currentMap.has(account.originalAssignedRep)) currentMap.set(account.originalAssignedRep, makeEmptyRepSummary(account.originalAssignedRep));
-      currentMap.get(account.originalAssignedRep).movedOut += 1;
-    }
-  }
-
-  const rows = [...currentMap.values()].map(row => {
-    const base = baselineMap.get(row.rep) || makeEmptyRepSummary(row.rep);
-    row.avgWeekly = row.planned4W / 4;
-
-    return {
-      ...row,
-      color: getRepColor(row.rep),
-      deltaStops: row.stops - base.stops,
-      deltaRevenue: row.revenue - base.revenue
-    };
-  });
-
-  return rows.sort((a,b) => a.rep.localeCompare(b.rep, undefined, { numeric:true }));
-}
-
-function makeEmptyRepSummary(rep) {
-  return {
-    rep,
-    color: getRepColor(rep),
-    stops: 0,
-    revenue: 0,
-    A: 0,
-    B: 0,
-    C: 0,
-    D: 0,
-    planned4W: 0,
-    avgWeekly: 0,
-    protected: 0,
-    movedIn: 0,
-    movedOut: 0,
-    deltaStops: 0,
-    deltaRevenue: 0
-  };
+function runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacency, ctx) {
+  runBorderCleanupFast(assignments, targetRepNames, 0, minStops, adjacency, ctx);
 }
 
 async function exportWorkbook() {
-  if (!state.accounts.length) return;
+  const wb = new ExcelJS.Workbook();
 
-  if (typeof ExcelJS === 'undefined') {
-    showToast('Export styling library is not available. Refresh and try again.');
-    return;
+  const exportRows = state.accounts.map(a => {
+    const row = { ...a.sourceRow };
+    const headerMap = buildHeaderMap([a.sourceRow]);
+    const assignedHeader = headerMap.assignedRep || 'new rep';
+    row[assignedHeader] = a.assignedRep;
+    return row;
+  });
+
+  const sheet = wb.addWorksheet(state.currentSheetName || 'Territory Export');
+  if (exportRows.length) {
+    const columns = Object.keys(exportRows[0]).map(key => ({ key, header: prettifyHeader(key), width: guessColumnWidth(key, exportRows) }));
+    sheet.columns = columns;
+    exportRows.forEach(row => sheet.addRow(row));
+    styleHeaderRow(sheet.getRow(1));
+    styleDataRows(sheet, 2, sheet.rowCount);
   }
 
-  try {
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'ChatGPT';
-    workbook.created = new Date();
-    workbook.modified = new Date();
-
-    const timestamp = buildTimestampForFileName();
-    const outputName = (state.loadedFileName || 'territory_export_updated.xlsx').replace(/\.xlsx$/i, `_${timestamp}.xlsx`);
-
-    const assignments = buildAssignmentsExportRows();
-    const repSummary = buildRepSummaryExportRows();
-    const movedAccounts = buildMovedAccountsExportRows();
-    const changeLog = buildChangeLogExportRows();
-    const runSettings = buildRunSettingsExportRows();
-
-    addStyledWorksheet(workbook, {
-      name: 'Assignments',
-      rows: assignments,
-      keyOrder: [
-        'Customer_ID','Customer_Name','Address','ZIP','Chain','Segment','Premise',
-        'Current_Rep','Assigned_Rep','Original_Assigned_Rep','Protected','Moved',
-        'Rank','Latitude','Longitude','Overall_Sales','Cadence_4W'
-      ],
-      currencyColumns: ['Overall_Sales'],
-      decimalColumns: ['Latitude','Longitude','Cadence_4W'],
-      freezeTopRow: true,
-      autofilter: true
-    });
-
-    addStyledWorksheet(workbook, {
-      name: 'Rep Summary',
-      rows: repSummary,
-      keyOrder: [
-        'Rep','Stops','Delta_Stops','Revenue','Delta_Revenue','A','B','C','D',
-        'Planned_4W','Avg_Weekly','Protected','Moved_In','Moved_Out'
-      ],
-      currencyColumns: ['Revenue','Delta_Revenue'],
-      integerColumns: ['Stops','Delta_Stops','A','B','C','D','Protected','Moved_In','Moved_Out'],
-      decimalColumns: ['Planned_4W','Avg_Weekly'],
-      freezeTopRow: true,
-      autofilter: true
-    });
-
-    addStyledWorksheet(workbook, {
-      name: 'Moved Accounts',
-      rows: movedAccounts.length ? movedAccounts : [{}],
-      keyOrder: [
-        'Customer_ID','Customer_Name','Original_Assigned_Rep','Assigned_Rep','Current_Rep','Revenue','Rank','Protected'
-      ],
-      currencyColumns: ['Revenue'],
-      freezeTopRow: true,
-      autofilter: true
-    });
-
-    addStyledWorksheet(workbook, {
-      name: 'Run Settings',
-      rows: runSettings,
-      keyOrder: ['Setting','Value'],
-      freezeTopRow: true,
-      autofilter: true
-    });
-
-    addStyledWorksheet(workbook, {
-      name: 'Change Log',
-      rows: changeLog.length ? changeLog : [{}],
-      keyOrder: ['timestamp','customerId','customerName','fromRep','toRep','protected'],
-      freezeTopRow: true,
-      autofilter: true
-    });
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    downloadArrayBufferAsFile(buffer, outputName);
-
-    showToast('Styled Excel export created.');
-    updateLastAction('Exported styled workbook');
-  } catch (err) {
-    console.error('Styled export failed:', err);
-    showToast('Export hit an error. Open the browser console and send the first red line.');
-  }
-}
-
-function buildAssignmentsExportRows() {
-  return state.accounts.map(a => ({
-    Customer_ID: a.customerId,
-    Customer_Name: a.customerName,
-    Address: a.address,
-    ZIP: a.zip,
-    Chain: a.chain,
-    Segment: a.segment,
-    Premise: a.premise,
-    Current_Rep: a.currentRep,
-    Assigned_Rep: a.assignedRep,
-    Original_Assigned_Rep: a.originalAssignedRep,
-    Protected: a.protected ? 'Yes' : 'No',
-    Moved: a.assignedRep !== a.originalAssignedRep ? 'Yes' : 'No',
-    Rank: a.rank,
-    Latitude: round6(a.latitude),
-    Longitude: round6(a.longitude),
-    Overall_Sales: round2(a.overallSales),
-    Cadence_4W: round2(a.cadence4w)
-  }));
-}
-
-function buildRepSummaryExportRows() {
-  return summarizeByRep().map(r => ({
-    Rep: r.rep,
-    Stops: r.stops,
-    Delta_Stops: r.deltaStops,
-    Revenue: round2(r.revenue),
-    Delta_Revenue: round2(r.deltaRevenue),
-    A: r.A,
-    B: r.B,
-    C: r.C,
-    D: r.D,
-    Planned_4W: round2(r.planned4W),
-    Avg_Weekly: round2(r.avgWeekly),
-    Protected: r.protected,
-    Moved_In: r.movedIn,
-    Moved_Out: r.movedOut
-  }));
-}
-
-function buildMovedAccountsExportRows() {
-  return state.accounts
+  const movesSheet = wb.addWorksheet('Moved Accounts');
+  const movedRows = state.accounts
     .filter(a => a.assignedRep !== a.originalAssignedRep)
     .map(a => ({
-      Customer_ID: a.customerId,
-      Customer_Name: a.customerName,
-      Original_Assigned_Rep: a.originalAssignedRep,
-      Assigned_Rep: a.assignedRep,
-      Current_Rep: a.currentRep,
-      Revenue: round2(a.overallSales),
-      Rank: a.rank,
-      Protected: a.protected ? 'Yes' : 'No'
+      customerId: a.customerId,
+      customerName: a.customerName,
+      fromRep: a.originalAssignedRep,
+      toRep: a.assignedRep,
+      revenue: a.overallSales,
+      protected: a.protected ? 'Yes' : 'No'
     }));
-}
 
-function buildRunSettingsExportRows() {
-  const s = state.importSummary || {};
-  const o = state.optimizationSummary || null;
-
-  return [
-    { Setting: 'Export Timestamp', Value: new Date().toLocaleString() },
-    { Setting: 'Loaded File Name', Value: state.loadedFileName || '' },
-    { Setting: 'Sheet Name', Value: state.currentSheetName || '' },
-    { Setting: 'Target Rep Count', Value: els.repCountInput.value || '' },
-    { Setting: 'Minimum Stops / Rep', Value: els.minStopsInput.value || '' },
-    { Setting: 'Maximum Stops / Rep', Value: els.maxStopsInput.value || '' },
-    { Setting: 'Optimize By', Value: els.balanceMode.value || '' },
-    { Setting: 'Customer Disruption', Value: els.disruptionSlider.value || '' },
-    { Setting: 'Source Rows', Value: s.sourceRows || 0 },
-    { Setting: 'Loaded Rows', Value: s.loadedRows || 0 },
-    { Setting: 'Skipped Missing Lat/Long', Value: s.skippedNoCoords || 0 },
-    { Setting: 'Duplicate IDs Adjusted', Value: s.duplicateCustomerIds || 0 },
-    { Setting: 'Missing Current Rep', Value: s.missingCurrentRep || 0 },
-    { Setting: 'Missing Assigned Rep', Value: s.missingAssignedRep || 0 },
-    { Setting: 'Optimization Summary', Value: o ? `${o.repCount} reps / ${o.movedCount} moved / stops ${o.minStops}-${o.maxStops} / avg ${formatNumber(o.avgStops, 1)}` : 'No optimization run' }
-  ];
-}
-
-function buildChangeLogExportRows() {
-  return state.changeLog.length
-    ? state.changeLog.map(x => ({ ...x }))
-    : [{
-        timestamp: '',
-        customerId: '',
-        customerName: '',
-        fromRep: '',
-        toRep: '',
-        protected: ''
-      }];
-}
-
-function addStyledWorksheet(workbook, options) {
-  const {
-    name,
-    rows,
-    keyOrder = [],
-    currencyColumns = [],
-    decimalColumns = [],
-    integerColumns = [],
-    freezeTopRow = true,
-    autofilter = true
-  } = options;
-
-  const worksheet = workbook.addWorksheet(name, {
-    views: freezeTopRow ? [{ state: 'frozen', ySplit: 1 }] : []
-  });
-
-  const normalizedRows = Array.isArray(rows) && rows.length ? rows : [{}];
-  const keys = keyOrder.length ? keyOrder : Object.keys(normalizedRows[0] || {});
-
-  worksheet.columns = keys.map(key => ({
-    header: prettifyHeader(key),
-    key,
-    width: guessColumnWidth(key, normalizedRows)
-  }));
-
-  normalizedRows.forEach(row => {
-    const cleanRow = {};
-    keys.forEach(key => {
-      cleanRow[key] = row[key] ?? '';
-    });
-    worksheet.addRow(cleanRow);
-  });
-
-  styleWorksheetBase(worksheet);
-  styleHeaderRow(worksheet.getRow(1));
-  applyColumnFormats(worksheet, { currencyColumns, decimalColumns, integerColumns });
-
-  if (autofilter && worksheet.rowCount >= 1 && worksheet.columnCount >= 1) {
-    worksheet.autoFilter = {
-      from: { row: 1, column: 1 },
-      to: { row: 1, column: worksheet.columnCount }
-    };
+  if (movedRows.length) {
+    movesSheet.columns = Object.keys(movedRows[0]).map(key => ({ key, header: prettifyHeader(key), width: guessColumnWidth(key, movedRows) }));
+    movedRows.forEach(row => movesSheet.addRow(row));
+    styleHeaderRow(movesSheet.getRow(1));
+    styleDataRows(movesSheet, 2, movesSheet.rowCount);
+    applyColumnFormats(movesSheet, { currencyColumns: ['revenue'] });
   }
 
-  worksheet.eachRow((row, rowNumber) => {
-    row.height = rowNumber === 1 ? 18 : 15;
-  });
+  const summarySheet = wb.addWorksheet('Summary');
+  const summaryRows = summarizeByRep();
+  if (summaryRows.length) {
+    summarySheet.columns = Object.keys(summaryRows[0]).map(key => ({ key, header: prettifyHeader(key), width: guessColumnWidth(key, summaryRows) }));
+    summaryRows.forEach(row => summarySheet.addRow(row));
+    styleHeaderRow(summarySheet.getRow(1));
+    styleDataRows(summarySheet, 2, summarySheet.rowCount);
+    applyColumnFormats(summarySheet, { currencyColumns: ['revenue','deltaRevenue'], decimalColumns: ['planned4W','avgWeekly'], integerColumns: ['stops','deltaStops','A','B','C','D','protected','movedIn','movedOut'] });
+  }
+
+  const settingsSheet = wb.addWorksheet('Settings');
+  const settingsRows = [
+    { Setting: 'Exported At', Value: new Date().toLocaleString() },
+    { Setting: 'Source File', Value: state.loadedFileName },
+    { Setting: 'Sheet', Value: state.currentSheetName },
+    { Setting: 'Locked Reps', Value: [...(state.lockedReps || new Set())].join(', ') || 'None' },
+    { Setting: 'Rep Count', Value: els.repCountInput.value },
+    { Setting: 'Min Stops', Value: els.minStopsInput.value },
+    { Setting: 'Max Stops', Value: els.maxStopsInput.value },
+    { Setting: 'Balance Mode', Value: els.balanceMode.value },
+    { Setting: 'Disruption', Value: els.disruptionSlider.value }
+  ];
+  settingsSheet.columns = [
+    { key: 'Setting', header: 'Setting', width: 28 },
+    { key: 'Value', header: 'Value', width: 42 }
+  ];
+  settingsRows.forEach(row => settingsSheet.addRow(row));
+  styleHeaderRow(settingsSheet.getRow(1));
+  styleDataRows(settingsSheet, 2, settingsSheet.rowCount);
+
+  const buffer = await wb.xlsx.writeBuffer();
+  downloadArrayBufferAsFile(buffer, state.loadedFileName || `territory_export_${buildTimestampForFileName()}.xlsx`);
+  showToast('Excel export ready.');
 }
 
-function styleWorksheetBase(worksheet) {
-  worksheet.eachRow({ includeEmpty: true }, row => {
-    row.eachCell({ includeEmpty: true }, cell => {
-      cell.font = {
-        name: 'Tw Cen MT',
-        size: 9,
-        bold: false,
-        color: { argb: 'FF000000' }
-      };
-
-      cell.alignment = {
-        vertical: 'middle',
-        horizontal: 'left'
-      };
-
+function styleDataRows(worksheet, fromRow, toRow) {
+  for (let r = fromRow; r <= toRow; r += 1) {
+    const row = worksheet.getRow(r);
+    row.height = 18;
+    row.eachCell(cell => {
+      cell.font = { name: 'Tw Cen MT', size: 9, color: { argb: 'FF29415B' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'left' };
       cell.border = {
         bottom: { style: 'thin', color: { argb: 'FFE6EDF5' } }
       };
     });
-  });
+  }
 }
 
 function styleHeaderRow(row) {
