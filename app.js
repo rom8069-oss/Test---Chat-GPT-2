@@ -155,14 +155,10 @@ function ensureOptimizerFeedbackMount() {
 function initOptimizerTuningUI() {
   const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
   if (disruptionField) {
-    disruptionField.classList.add('field-disruption-enhanced');
-    if (!els.optimizerDisruptionHelper) {
-      const helper = document.createElement('div');
-      helper.id = 'optimizer-disruption-helper';
-      helper.className = 'optimizer-helper';
-      disruptionField.appendChild(helper);
-      els.optimizerDisruptionHelper = helper;
-    }
+    disruptionField.classList.add('field-disruption-enhanced', 'field-disruption-compact');
+    const staleHelper = disruptionField.querySelector('#optimizer-disruption-helper');
+    if (staleHelper) staleHelper.remove();
+    els.optimizerDisruptionHelper = null;
   }
 
   const balanceField = els.balanceMode ? els.balanceMode.closest('.field') : null;
@@ -228,9 +224,14 @@ function updateOptimizerUI() {
   if (els.disruptionValue && els.disruptionSlider) {
     const preset = getDisruptionPreset(Number(els.disruptionSlider.value) || 0);
     els.disruptionValue.textContent = `${els.disruptionSlider.value} • ${preset.short}`;
-    if (els.optimizerDisruptionHelper) {
-      els.optimizerDisruptionHelper.textContent = preset.detail;
+    const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
+    if (disruptionField) {
+      setFieldLabelText(disruptionField, `Customer disruption ${els.disruptionSlider.value} • ${preset.short}`);
     }
+    if (els.optimizerDisruptionHelper) {
+      els.optimizerDisruptionHelper.textContent = '';
+    }
+    els.disruptionSlider.title = preset.detail;
   }
 
   if (els.balanceMode) {
@@ -2188,6 +2189,7 @@ function optimizeRoutes() {
           balancePenalty = (stopDeviation * optimizerMix.stopsPriority * 1.55) + (revenueDeviation * optimizerMix.revenuePriority * 1.15);
 
           const underMinBoost = stat.stops < minStops ? -2.2 : 0;
+          const overMaxPenalty = nextStops > maxStops ? ((nextStops - maxStops) * 4.5) : 0;
           const localPenalty = localDominancePenalty(account, rep, assignments, adjacency);
 
           const score =
