@@ -130,7 +130,7 @@ select{
 .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
 
 .btn-primary{
-  background:#7fa4ee;
+  background:#4f79d8;
   color:#fff;
   border-color:transparent;
 }
@@ -356,19 +356,19 @@ input[type="range"]{
 
 .stats{
   display:grid;
-  grid-template-columns:repeat(7, minmax(0,1fr));
+  grid-template-columns:repeat(9, minmax(0,1fr));
   gap:10px;
   overflow:visible;
   flex:0 0 auto;
 }
 
 .stat{
-  padding:12px 14px;
+  padding:10px 13px;
   border:1px solid var(--border);
   border-radius:16px;
   background:var(--tile-grad);
   box-shadow:var(--shadow-soft);
-  min-height:78px;
+  min-height:66px;
 }
 
 .stat:last-child{ border-right:1px solid var(--border); }
@@ -446,6 +446,16 @@ input[type="range"]{
   box-shadow:0 10px 22px rgba(41,65,91,.08);
 }
 
+.map-actions .btn,
+.map-actions .inline-check{
+  min-width:104px;
+  justify-content:center;
+}
+
+.map-actions .btn-green{
+  min-width:112px;
+}
+
 .inline-check{
   display:inline-flex;
   align-items:center;
@@ -466,14 +476,22 @@ input[type="range"]{
 }
 
 .field-disruption-compact{
-  gap:6px;
+  gap:4px;
 }
 
 .field-disruption-compact .range-row,
 .field-disruption-compact .slider-row,
 .field-disruption-compact .field-control{
-  min-height:40px;
+  min-height:34px;
   align-items:center;
+}
+
+.optimizer-disruption-helper{
+  font-size:11px;
+  line-height:1.2;
+  color:var(--muted);
+  font-weight:700;
+  min-height:14px;
 }
 
 .field-optimizer-balance{
@@ -484,7 +502,7 @@ input[type="range"]{
   display:flex;
   flex-direction:column;
   gap:6px;
-  padding:8px 10px 9px;
+  padding:7px 10px 8px;
   border:1px solid var(--border-soft);
   border-radius:14px;
   background:linear-gradient(180deg,#fbfdff 0%,#f4f9ff 100%);
@@ -990,7 +1008,7 @@ tbody tr.rep-row-locked td:first-child{
   body{ overflow:auto; }
   .app{ height:auto; min-height:100%; }
   .controls-grid{ grid-template-columns:repeat(6,minmax(0,1fr)); }
-  .stats{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
   .main{ grid-template-columns:1fr; }
   .side{ grid-template-rows:minmax(440px,1fr) minmax(320px,.8fr); }
 }
@@ -1065,84 +1083,24 @@ tbody tr.rep-row-locked td:first-child{
   display:none !important;
 }
 
-.optimizer-feedback{
-  margin:0 0 10px;
-}
-
-.optimizer-feedback-card{
-  border:1px solid var(--border-soft);
-  border-radius:16px;
-  background:linear-gradient(180deg,#fbfdff 0%,#f6faff 100%);
-  box-shadow:0 8px 18px rgba(29,78,216,.06), inset 0 1px 0 rgba(255,255,255,.85);
-  padding:12px 14px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
-.optimizer-feedback-title-row{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:12px;
-}
-
-.optimizer-feedback-title{
-  font-size:13px;
-  font-weight:900;
-  color:var(--text);
-}
-
-.optimizer-feedback-subtitle,
-.optimizer-feedback-run{
-  font-size:11px;
-  font-weight:700;
-  color:var(--muted);
-}
-
-.optimizer-feedback-grid{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:8px;
-}
-
-.optimizer-feedback-chip{
-  padding:9px 10px;
-  border-radius:12px;
-  border:1px solid var(--border-soft);
-  background:#fff;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-}
-
-.optimizer-feedback-chip .k{
-  font-size:10px;
-  font-weight:800;
-  color:var(--muted);
-  text-transform:uppercase;
-  letter-spacing:.03em;
-}
-
-.optimizer-feedback-chip strong{
-  font-size:14px;
-  color:var(--text);
-}
-
-.optimizer-feedback-metrics{
+.routes-head-insights{
+  margin-left:auto;
   display:flex;
   flex-wrap:wrap;
   gap:8px;
+  align-items:center;
+  justify-content:flex-end;
 }
 
 .optimizer-feedback-metric{
-  padding:7px 10px;
+  padding:6px 10px;
   border-radius:999px;
   font-size:11px;
   font-weight:800;
   border:1px solid var(--border-soft);
   background:#fff;
   color:var(--muted);
+  white-space:nowrap;
 }
 
 .optimizer-feedback-metric.positive{
@@ -1157,5 +1115,8 @@ tbody tr.rep-row-locked td:first-child{
   border-color:#fed7aa;
 }
 
+.optimizer-feedback-metric.neutral{
+  color:var(--muted);
+}
 
-#optimizer-disruption-helper{display:none !important;}
+#optimizer-disruption-helper{display:block !important;}
