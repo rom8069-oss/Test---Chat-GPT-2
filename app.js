@@ -341,8 +341,10 @@ function bindEvents() {
   els.clearSelectionBtn.addEventListener('click', clearSelection);
 
   if (els.detailPanel) {
-    els.detailPanel.addEventListener('click', e => {
-      const clearBtn = e.target.closest('[data-clear-detail-selection]');
+    const detailCard = els.detailPanel.closest('.detail-card');
+    const detailClickTarget = detailCard || els.detailPanel;
+    detailClickTarget.addEventListener('click', e => {
+      const clearBtn = e.target.closest('[data-clear-detail-selection], [data-clear-detail-selection-static]');
       if (clearBtn) {
         e.preventDefault();
         clearSelection();
@@ -1130,8 +1132,37 @@ function buildPopupHtml(account) {
   `;
 }
 
+function ensureDetailClearButton() {
+  if (!els.detailPanel) return null;
+  const detailCard = els.detailPanel.closest('.detail-card');
+  if (!detailCard) return null;
+
+  const head = detailCard.querySelector('.card-head');
+  if (!head) return null;
+
+  head.style.display = 'flex';
+  head.style.alignItems = 'flex-start';
+  head.style.justifyContent = 'space-between';
+  head.style.gap = '12px';
+
+  let button = head.querySelector('[data-clear-detail-selection-static]');
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-subtle';
+    button.setAttribute('data-clear-detail-selection-static', 'true');
+    button.textContent = 'Clear All';
+    head.appendChild(button);
+  }
+
+  button.disabled = state.selection.size === 0;
+  return button;
+}
+
 function renderDetail() {
   if (!els.detailPanel) return;
+
+  ensureDetailClearButton();
 
   const selectedIds = [...state.selection];
   if (!selectedIds.length) {
@@ -1143,13 +1174,6 @@ function renderDetail() {
     .map(id => state.accountById.get(id))
     .filter(Boolean)
     .slice(0, 10);
-
-  const headerHtml = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
-      <div style="font-size:12px;color:#5d7286;font-weight:700;">${selectedIds.length} selected</div>
-      <button type="button" class="btn btn-subtle" data-clear-detail-selection>Clear All</button>
-    </div>
-  `;
 
   const cardsHtml = selectedAccounts.map(account => `
     <div class="selected-item" style="margin-bottom:10px;">
@@ -1166,12 +1190,16 @@ function renderDetail() {
     </div>
   `).join('');
 
+  const metaHtml = `
+    <div style="font-size:12px;color:#5d7286;font-weight:700;margin-bottom:10px;">${selectedIds.length} selected</div>
+  `;
+
   const moreCount = selectedIds.length - selectedAccounts.length;
   const moreHtml = moreCount > 0
     ? `<div class="small muted" style="margin-top:6px;">Showing first ${selectedAccounts.length} selected accounts. ${moreCount} more selected.</div>`
     : '';
 
-  els.detailPanel.innerHTML = `${headerHtml}${cardsHtml}${moreHtml}`;
+  els.detailPanel.innerHTML = `${metaHtml}${cardsHtml}${moreHtml}`;
 }
 
 function refreshUI(rebuildMap = false) {
