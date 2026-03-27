@@ -515,7 +515,7 @@ input[type="range"]{
 }
 
 .optimizer-balance-helper{
-  min-height:30px;
+  min-height:18px;
 }
 
 #map{
@@ -1046,4 +1046,102 @@ tbody tr.rep-row-locked td:first-child{
 
 .leaflet-popup-tip{
   box-shadow:none;
+}
+
+
+.optimizer-mode-hidden,
+.optimizer-mode-hidden-wrap{
+  display:none !important;
+}
+
+.optimizer-feedback{
+  margin:0 0 10px;
+}
+
+.optimizer-feedback-card{
+  border:1px solid var(--border-soft);
+  border-radius:16px;
+  background:linear-gradient(180deg,#fbfdff 0%,#f6faff 100%);
+  box-shadow:0 8px 18px rgba(29,78,216,.06), inset 0 1px 0 rgba(255,255,255,.85);
+  padding:12px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.optimizer-feedback-title-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.optimizer-feedback-title{
+  font-size:13px;
+  font-weight:900;
+  color:var(--text);
+}
+
+.optimizer-feedback-subtitle,
+.optimizer-feedback-run{
+  font-size:11px;
+  font-weight:700;
+  color:var(--muted);
+}
+
+.optimizer-feedback-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+}
+
+.optimizer-feedback-chip{
+  padding:9px 10px;
+  border-radius:12px;
+  border:1px solid var(--border-soft);
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.optimizer-feedback-chip .k{
+  font-size:10px;
+  font-weight:800;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.03em;
+}
+
+.optimizer-feedback-chip strong{
+  font-size:14px;
+  color:var(--text);
+}
+
+.optimizer-feedback-metrics{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.optimizer-feedback-metric{
+  padding:7px 10px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:800;
+  border:1px solid var(--border-soft);
+  background:#fff;
+  color:var(--muted);
+}
+
+.optimizer-feedback-metric.positive{
+  color:#166534;
+  background:#f0fdf4;
+  border-color:#bbf7d0;
+}
+
+.optimizer-feedback-metric.negative{
+  color:#9a3412;
+  background:#fff7ed;
+  border-color:#fed7aa;
 }
