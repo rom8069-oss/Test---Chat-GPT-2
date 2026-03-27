@@ -439,11 +439,11 @@ input[type="range"]{
   gap:6px;
   flex-wrap:wrap;
   justify-content:flex-end;
-  padding:5px 6px;
-  border:1px solid var(--border-soft);
-  background:linear-gradient(180deg,rgba(252,254,255,.98) 0%,rgba(244,249,255,.95) 100%);
-  border-radius:999px;
-  box-shadow:0 10px 22px rgba(41,65,91,.08);
+  padding:0;
+  border:none;
+  background:transparent;
+  border-radius:0;
+  box-shadow:none;
 }
 
 .map-actions .btn,
@@ -476,7 +476,7 @@ input[type="range"]{
 }
 
 .field-disruption-compact{
-  gap:4px;
+  gap:2px;
 }
 
 .field-disruption-compact .range-row,
@@ -487,11 +487,7 @@ input[type="range"]{
 }
 
 .optimizer-disruption-helper{
-  font-size:11px;
-  line-height:1.2;
-  color:var(--muted);
-  font-weight:700;
-  min-height:14px;
+  display:none !important;
 }
 
 .field-optimizer-balance{
@@ -507,6 +503,7 @@ input[type="range"]{
   border-radius:14px;
   background:linear-gradient(180deg,#fbfdff 0%,#f4f9ff 100%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.8);
+  min-width:0;
 }
 
 .optimizer-balance-wrap.is-muted{
@@ -1120,3 +1117,14 @@ tbody tr.rep-row-locked td:first-child{
 }
 
 #optimizer-disruption-helper{display:block !important;}
+
+
+.leaflet-tile{
+  outline:1px solid transparent;
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+}
+
+.leaflet-container{
+  background:#dde6ef;
+}
