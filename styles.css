@@ -462,7 +462,18 @@ input[type="range"]{
 }
 
 .field-disruption-enhanced{
-  padding-bottom:2px;
+  padding-bottom:0;
+}
+
+.field-disruption-compact{
+  gap:6px;
+}
+
+.field-disruption-compact .range-row,
+.field-disruption-compact .slider-row,
+.field-disruption-compact .field-control{
+  min-height:40px;
+  align-items:center;
 }
 
 .field-optimizer-balance{
@@ -511,7 +522,7 @@ input[type="range"]{
   color:var(--muted);
   font-weight:700;
   line-height:1.3;
-  min-height:28px;
+  min-height:0;
 }
 
 .optimizer-balance-helper{
@@ -1145,3 +1156,6 @@ tbody tr.rep-row-locked td:first-child{
   background:#fff7ed;
   border-color:#fed7aa;
 }
+
+
+#optimizer-disruption-helper{display:none !important;}
