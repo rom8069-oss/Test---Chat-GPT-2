@@ -26,6 +26,9 @@ const COLUMN_ALIASES = {
   protected: ['protected','protected account','locked','do not move','never move']
 };
 
+
+const NONE_SELECTED_TOKEN = '__NONE_SELECTED__';
+
 const state = {
   map: null,
   lightLayer: null,
@@ -111,6 +114,7 @@ function init() {
   fillSimpleSelect(els.premiseFilter, ['ALL'], 'ALL', v => 'All premises');
   renderMultiFilterOptions();
   renderUploadStatus();
+  ensureSummaryCardMounts();
   syncControlState();
   initOptimizerTuningUI();
   updateOptimizerUI();
@@ -137,17 +141,37 @@ function setFieldLabelText(field, text) {
   }
 }
 
+function ensureSummaryCardMounts() {
+  const stats = document.querySelector('.stats');
+  if (!stats) return;
+
+  const ensureCard = (id, label) => {
+    let valueEl = document.getElementById(id);
+    if (valueEl) return valueEl;
+    const card = document.createElement('div');
+    card.className = 'stat stat-compact';
+    card.innerHTML = `<div class="k">${escapeHtml(label)}</div><div class="v" id="${id}">0</div>`;
+    stats.appendChild(card);
+    return card.querySelector(`#${id}`);
+  };
+
+  els.globalStopsRange = ensureCard('global-stops-range', 'Stops Range');
+  els.globalAvgTotalStops = ensureCard('global-avg-total-stops', 'Avg Total Stops');
+}
+
 function ensureOptimizerFeedbackMount() {
   if (els.optimizerFeedback) return els.optimizerFeedback;
-  const routesCard = els.repTableBody ? els.repTableBody.closest('.routes-card') : null;
+  const routesCard = els.repTableBody ? els.repTableBody.closest('.card, .routes-card') : null;
   if (!routesCard) return null;
-  const host = routesCard.querySelector('.routes-table-wrap') || els.routesTableWrap || routesCard;
-  if (!host) return null;
-  const box = document.createElement('div');
-  box.id = 'optimizer-feedback';
-  box.className = 'optimizer-feedback';
-  box.hidden = true;
-  host.parentNode.insertBefore(box, host);
+  const head = routesCard.querySelector('.card-head') || routesCard.firstElementChild;
+  if (!head) return null;
+  let box = head.querySelector('.routes-head-insights');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'optimizer-feedback';
+    box.className = 'routes-head-insights';
+    head.appendChild(box);
+  }
   els.optimizerFeedback = box;
   return box;
 }
@@ -156,9 +180,14 @@ function initOptimizerTuningUI() {
   const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
   if (disruptionField) {
     disruptionField.classList.add('field-disruption-enhanced', 'field-disruption-compact');
-    const staleHelper = disruptionField.querySelector('#optimizer-disruption-helper');
-    if (staleHelper) staleHelper.remove();
-    els.optimizerDisruptionHelper = null;
+    let helper = disruptionField.querySelector('#optimizer-disruption-helper');
+    if (!helper) {
+      helper = document.createElement('div');
+      helper.id = 'optimizer-disruption-helper';
+      helper.className = 'optimizer-helper optimizer-disruption-helper';
+      disruptionField.appendChild(helper);
+    }
+    els.optimizerDisruptionHelper = helper;
   }
 
   const balanceField = els.balanceMode ? els.balanceMode.closest('.field') : null;
@@ -201,6 +230,7 @@ function initOptimizerTuningUI() {
     }
   }
 
+  ensureSummaryCardMounts();
   ensureOptimizerFeedbackMount();
 }
 
@@ -223,13 +253,13 @@ function getDisruptionPreset(value = Number(els.disruptionSlider ? els.disruptio
 function updateOptimizerUI() {
   if (els.disruptionValue && els.disruptionSlider) {
     const preset = getDisruptionPreset(Number(els.disruptionSlider.value) || 0);
-    els.disruptionValue.textContent = `${els.disruptionSlider.value} • ${preset.short}`;
+    els.disruptionValue.textContent = `${els.disruptionSlider.value}`;
     const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
     if (disruptionField) {
-      setFieldLabelText(disruptionField, `Customer disruption ${els.disruptionSlider.value} • ${preset.short}`);
+      setFieldLabelText(disruptionField, `Customer disruption ${els.disruptionSlider.value}`);
     }
     if (els.optimizerDisruptionHelper) {
-      els.optimizerDisruptionHelper.textContent = '';
+      els.optimizerDisruptionHelper.textContent = preset.short;
     }
     els.disruptionSlider.title = preset.detail;
   }
@@ -272,25 +302,8 @@ function renderOptimizationFeedback() {
     : (s.revenueRangeDeltaPct < 0 ? `Revenue spread widened ${formatNumber(Math.abs(s.revenueRangeDeltaPct), 1)}%` : 'Revenue spread unchanged');
 
   mount.innerHTML = `
-    <div class="optimizer-feedback-card">
-      <div class="optimizer-feedback-title-row">
-        <div>
-          <div class="optimizer-feedback-title">Optimization feedback</div>
-          <div class="optimizer-feedback-subtitle">Latest run summary</div>
-        </div>
-        <div class="optimizer-feedback-run">${escapeHtml(s.weightLabel)} • ${escapeHtml(s.disruptionLabel)}</div>
-      </div>
-      <div class="optimizer-feedback-grid">
-        <div class="optimizer-feedback-chip"><span class="k">Accounts moved</span><strong>${formatNumber(s.movedCount)}</strong></div>
-        <div class="optimizer-feedback-chip"><span class="k">Protected held</span><strong>${formatNumber(s.protectedHeld)}</strong></div>
-        <div class="optimizer-feedback-chip"><span class="k">Stops range</span><strong>${formatNumber(s.minStops)}-${formatNumber(s.maxStops)}</strong></div>
-        <div class="optimizer-feedback-chip"><span class="k">Avg stops</span><strong>${formatNumber(s.avgStops, 1)}</strong></div>
-      </div>
-      <div class="optimizer-feedback-metrics">
-        <div class="optimizer-feedback-metric ${stopTone}">${escapeHtml(stopLabel)}</div>
-        <div class="optimizer-feedback-metric ${revenueTone}">${escapeHtml(revenueLabel)}</div>
-      </div>
-    </div>
+    <div class="optimizer-feedback-metric ${stopTone}">${escapeHtml(stopLabel)}</div>
+    <div class="optimizer-feedback-metric ${revenueTone}">${escapeHtml(revenueLabel)}</div>
   `;
   mount.hidden = false;
 }
@@ -429,10 +442,10 @@ function updateRepSummaryCacheForReps(reps) {
 }
 
 function computeFilterPass(account) {
-  const repOk = !state.filters.rep.size || state.filters.rep.has(account.assignedRep);
-  const rankOk = !state.filters.rank.size || state.filters.rank.has(account.rank);
-  const chainOk = !state.filters.chain.size || state.filters.chain.has(account.chain);
-  const segmentOk = !state.filters.segment.size || state.filters.segment.has(account.segment);
+  const repOk = state.filters.rep.has(NONE_SELECTED_TOKEN) ? false : (!state.filters.rep.size || state.filters.rep.has(account.assignedRep));
+  const rankOk = state.filters.rank.has(NONE_SELECTED_TOKEN) ? false : (!state.filters.rank.size || state.filters.rank.has(account.rank));
+  const chainOk = state.filters.chain.has(NONE_SELECTED_TOKEN) ? false : (!state.filters.chain.size || state.filters.chain.has(account.chain));
+  const segmentOk = state.filters.segment.has(NONE_SELECTED_TOKEN) ? false : (!state.filters.segment.size || state.filters.segment.has(account.segment));
   const premiseOk = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
   const protectedOk = state.filters.protected === 'ALL' || (state.filters.protected === 'YES' ? account.protected : !account.protected);
   const moved = account.assignedRep !== account.originalAssignedRep;
@@ -495,7 +508,7 @@ function bindElements() {
     'file-input','sheet-select','load-sheet-btn','assign-btn','undo-btn','reset-btn','optimize-btn','export-btn',
     'assign-rep-select','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode',
     'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count',
-    'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly','global-avg-weekly-per-rep',
+    'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly','global-avg-weekly-per-rep','global-stops-range','global-avg-total-stops',
     'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
     'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
@@ -649,6 +662,19 @@ function initMultiFilters() {
     const trigger = document.querySelector(`[data-multi-trigger="${key}"]`);
     const selectAllBtn = document.querySelector(`[data-select-all="${key}"]`);
     const searchInput = document.querySelector(`[data-search="${key}"]`);
+    const actions = trigger ? trigger.closest('.multi')?.querySelector('.multi-actions') : null;
+
+    if (actions && !actions.querySelector(`[data-clear-all="${key}"]`)) {
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'mini-btn';
+      clearBtn.setAttribute('data-clear-all', key);
+      clearBtn.textContent = 'Clear';
+      if (selectAllBtn) selectAllBtn.insertAdjacentElement('afterend', clearBtn);
+      else actions.prepend(clearBtn);
+    }
+
+    const clearAllBtn = document.querySelector(`[data-clear-all="${key}"]`);
 
     if (trigger) {
       trigger.addEventListener('click', e => {
@@ -660,7 +686,15 @@ function initMultiFilters() {
     if (selectAllBtn) {
       selectAllBtn.addEventListener('click', e => {
         e.stopPropagation();
-        toggleSelectAllMulti(key);
+        selectAllMulti(key);
+        positionMultiPanel(key);
+      });
+    }
+
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        clearAllMulti(key);
         positionMultiPanel(key);
       });
     }
@@ -744,17 +778,20 @@ function positionMultiPanel(key) {
   }
 }
 
-function toggleSelectAllMulti(key) {
+function selectAllMulti(key) {
   const options = getFilterOptionsForKey(key);
   const filtered = getVisibleOptionsForKey(key, options);
   const selectedSet = state.filters[key];
-  const allVisibleSelected = filtered.every(v => selectedSet.has(v));
+  selectedSet.delete(NONE_SELECTED_TOKEN);
+  filtered.forEach(v => selectedSet.add(v));
+  renderMultiFilterOptions();
+  refreshUI();
+}
 
-  if (allVisibleSelected) filtered.forEach(v => selectedSet.delete(v));
-  else filtered.forEach(v => selectedSet.add(v));
-
-  if (selectedSet.size === 0) options.forEach(v => selectedSet.add(v));
-
+function clearAllMulti(key) {
+  const selectedSet = state.filters[key];
+  selectedSet.clear();
+  selectedSet.add(NONE_SELECTED_TOKEN);
   renderMultiFilterOptions();
   refreshUI();
 }
@@ -789,12 +826,13 @@ function renderMultiOptionList(key, container, summaryEl, options, allLabel) {
 
   const selectedSet = state.filters[key];
   const visibleOptions = getVisibleOptionsForKey(key, options);
+  const hasNone = selectedSet.has(NONE_SELECTED_TOKEN);
 
   if (options.length && selectedSet.size === 0) options.forEach(v => selectedSet.add(v));
 
   container.innerHTML = visibleOptions.length
     ? visibleOptions.map(value => {
-        const checked = selectedSet.has(value) ? 'checked' : '';
+        const checked = !hasNone && selectedSet.has(value) ? 'checked' : '';
         return `
           <div class="multi-option">
             <label>
@@ -809,16 +847,19 @@ function renderMultiOptionList(key, container, summaryEl, options, allLabel) {
   container.querySelectorAll('input[data-multi-check]').forEach(input => {
     input.addEventListener('change', e => {
       const value = e.target.value;
+      selectedSet.delete(NONE_SELECTED_TOKEN);
       if (e.target.checked) selectedSet.add(value);
       else selectedSet.delete(value);
-      if (selectedSet.size === 0) options.forEach(v => selectedSet.add(v));
+      if (selectedSet.size === 0) selectedSet.add(NONE_SELECTED_TOKEN);
       renderMultiFilterOptions();
       refreshUI();
     });
   });
 
-  if (!options.length || selectedSet.size === options.length) {
+  if (!options.length || (!hasNone && selectedSet.size === options.length)) {
     summaryEl.textContent = allLabel;
+  } else if (hasNone) {
+    summaryEl.textContent = 'None selected';
   } else if (selectedSet.size === 1) {
     summaryEl.textContent = [...selectedSet][0];
   } else {
