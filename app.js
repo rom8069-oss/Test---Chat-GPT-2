@@ -125,6 +125,33 @@ function rebuildMarkers() {
   renderMap();
 }
 
+function setFieldLabelText(field, text) {
+  if (!field) return;
+  const candidates = field.querySelectorAll('label, .field-label, .field-title, .field-head, .control-label');
+  for (const node of candidates) {
+    if (!node) continue;
+    const current = safeString(node.textContent).trim();
+    if (!current) continue;
+    node.textContent = text;
+    return;
+  }
+}
+
+function ensureOptimizerFeedbackMount() {
+  if (els.optimizerFeedback) return els.optimizerFeedback;
+  const routesCard = els.repTableBody ? els.repTableBody.closest('.routes-card') : null;
+  if (!routesCard) return null;
+  const host = routesCard.querySelector('.routes-table-wrap') || els.routesTableWrap || routesCard;
+  if (!host) return null;
+  const box = document.createElement('div');
+  box.id = 'optimizer-feedback';
+  box.className = 'optimizer-feedback';
+  box.hidden = true;
+  host.parentNode.insertBefore(box, host);
+  els.optimizerFeedback = box;
+  return box;
+}
+
 function initOptimizerTuningUI() {
   const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
   if (disruptionField) {
@@ -139,29 +166,46 @@ function initOptimizerTuningUI() {
   }
 
   const balanceField = els.balanceMode ? els.balanceMode.closest('.field') : null;
-  if (balanceField && !balanceField.querySelector('.optimizer-balance-wrap')) {
+  if (balanceField) {
     balanceField.classList.add('field-optimizer-balance');
-    const wrap = document.createElement('div');
-    wrap.className = 'optimizer-balance-wrap';
-    wrap.innerHTML = `
-      <div class="optimizer-mini-head">
-        <span>Stops vs revenue</span>
-        <span id="optimizer-balance-value">50% / 50%</span>
-      </div>
-      <input id="optimizer-balance-slider" type="range" min="0" max="100" value="50" step="5" />
-      <div class="optimizer-mini-scale">
-        <span>Revenue</span>
-        <span>Balanced</span>
-        <span>Stops</span>
-      </div>
-      <div id="optimizer-balance-helper" class="optimizer-balance-helper"></div>
-    `;
-    balanceField.appendChild(wrap);
-    els.optimizerBalanceSlider = wrap.querySelector('#optimizer-balance-slider');
-    els.optimizerBalanceValue = wrap.querySelector('#optimizer-balance-value');
-    els.optimizerBalanceHelper = wrap.querySelector('#optimizer-balance-helper');
-    els.optimizerBalanceSlider.addEventListener('input', updateOptimizerUI);
+    setFieldLabelText(balanceField, 'Optimize weight');
+
+    if (els.balanceMode) {
+      els.balanceMode.value = 'hybrid';
+      els.balanceMode.dataset.lockedMode = 'hybrid';
+      els.balanceMode.disabled = true;
+      els.balanceMode.classList.add('optimizer-mode-hidden');
+      els.balanceMode.setAttribute('aria-hidden', 'true');
+      els.balanceMode.tabIndex = -1;
+      const selectWrap = els.balanceMode.closest('.field-control, .input-wrap, .select-wrap') || els.balanceMode.parentElement;
+      if (selectWrap) selectWrap.classList.add('optimizer-mode-hidden-wrap');
+    }
+
+    if (!balanceField.querySelector('.optimizer-balance-wrap')) {
+      const wrap = document.createElement('div');
+      wrap.className = 'optimizer-balance-wrap';
+      wrap.innerHTML = `
+        <div class="optimizer-mini-head">
+          <span>Optimize weight</span>
+          <span id="optimizer-balance-value">Balanced</span>
+        </div>
+        <input id="optimizer-balance-slider" type="range" min="0" max="100" value="50" step="5" />
+        <div class="optimizer-mini-scale">
+          <span>Revenue</span>
+          <span>Balanced</span>
+          <span>Stops</span>
+        </div>
+        <div id="optimizer-balance-helper" class="optimizer-balance-helper"></div>
+      `;
+      balanceField.appendChild(wrap);
+      els.optimizerBalanceSlider = wrap.querySelector('#optimizer-balance-slider');
+      els.optimizerBalanceValue = wrap.querySelector('#optimizer-balance-value');
+      els.optimizerBalanceHelper = wrap.querySelector('#optimizer-balance-helper');
+      els.optimizerBalanceSlider.addEventListener('input', updateOptimizerUI);
+    }
   }
+
+  ensureOptimizerFeedbackMount();
 }
 
 function getOptimizerMix() {
@@ -189,22 +233,70 @@ function updateOptimizerUI() {
     }
   }
 
+  if (els.balanceMode) {
+    els.balanceMode.value = 'hybrid';
+  }
+
   if (els.optimizerBalanceSlider && els.optimizerBalanceValue) {
     const { stopsPriority, revenuePriority } = getOptimizerMix();
     const stopPct = Math.round(stopsPriority * 100);
     const revenuePct = Math.round(revenuePriority * 100);
-    els.optimizerBalanceValue.textContent = `${stopPct}% / ${revenuePct}%`;
-    const hybrid = !els.balanceMode || els.balanceMode.value === 'hybrid';
+    let label = 'Balanced';
+    if (stopPct >= 65) label = 'Stops first';
+    else if (revenuePct >= 65) label = 'Revenue first';
+    els.optimizerBalanceValue.textContent = label;
     if (els.optimizerBalanceHelper) {
-      els.optimizerBalanceHelper.textContent = hybrid
-        ? `Hybrid mode will balance around ${stopPct}% stops and ${revenuePct}% revenue.`
-        : `${safeString(els.balanceMode.value).charAt(0).toUpperCase()}${safeString(els.balanceMode.value).slice(1)} mode is active. The slider applies when Optimize by is set to Hybrid.`;
+      els.optimizerBalanceHelper.textContent = `Stops ${stopPct}% • Revenue ${revenuePct}%`;
     }
-    const wrap = els.optimizerBalanceSlider.closest('.optimizer-balance-wrap');
-    if (wrap) wrap.classList.toggle('is-muted', !hybrid);
   }
 }
 
+function renderOptimizationFeedback() {
+  const mount = ensureOptimizerFeedbackMount();
+  if (!mount) return;
+  const s = state.optimizationSummary;
+  if (!s) {
+    mount.hidden = true;
+    mount.innerHTML = '';
+    return;
+  }
+
+  const stopTone = s.stopRangeDeltaPct > 0 ? 'positive' : (s.stopRangeDeltaPct < 0 ? 'negative' : 'neutral');
+  const revenueTone = s.revenueRangeDeltaPct > 0 ? 'positive' : (s.revenueRangeDeltaPct < 0 ? 'negative' : 'neutral');
+  const stopLabel = s.stopRangeDeltaPct > 0
+    ? `Stop spread improved ${formatNumber(s.stopRangeDeltaPct, 1)}%`
+    : (s.stopRangeDeltaPct < 0 ? `Stop spread widened ${formatNumber(Math.abs(s.stopRangeDeltaPct), 1)}%` : 'Stop spread unchanged');
+  const revenueLabel = s.revenueRangeDeltaPct > 0
+    ? `Revenue spread improved ${formatNumber(s.revenueRangeDeltaPct, 1)}%`
+    : (s.revenueRangeDeltaPct < 0 ? `Revenue spread widened ${formatNumber(Math.abs(s.revenueRangeDeltaPct), 1)}%` : 'Revenue spread unchanged');
+
+  mount.innerHTML = `
+    <div class="optimizer-feedback-card">
+      <div class="optimizer-feedback-title-row">
+        <div>
+          <div class="optimizer-feedback-title">Optimization feedback</div>
+          <div class="optimizer-feedback-subtitle">Latest run summary</div>
+        </div>
+        <div class="optimizer-feedback-run">${escapeHtml(s.weightLabel)} • ${escapeHtml(s.disruptionLabel)}</div>
+      </div>
+      <div class="optimizer-feedback-grid">
+        <div class="optimizer-feedback-chip"><span class="k">Accounts moved</span><strong>${formatNumber(s.movedCount)}</strong></div>
+        <div class="optimizer-feedback-chip"><span class="k">Protected held</span><strong>${formatNumber(s.protectedHeld)}</strong></div>
+        <div class="optimizer-feedback-chip"><span class="k">Stops range</span><strong>${formatNumber(s.minStops)}-${formatNumber(s.maxStops)}</strong></div>
+        <div class="optimizer-feedback-chip"><span class="k">Avg stops</span><strong>${formatNumber(s.avgStops, 1)}</strong></div>
+      </div>
+      <div class="optimizer-feedback-metrics">
+        <div class="optimizer-feedback-metric ${stopTone}">${escapeHtml(stopLabel)}</div>
+        <div class="optimizer-feedback-metric ${revenueTone}">${escapeHtml(revenueLabel)}</div>
+      </div>
+    </div>
+  `;
+  mount.hidden = false;
+}
+
+function refreshMarkerStyles(accountIds = null) {
+  refreshMarkers(accountIds);
+}
 function refreshMarkerStyles(accountIds = null) {
   refreshMarkers(accountIds);
 }
@@ -386,6 +478,7 @@ function refreshAfterAssignmentBatch(changes, options = {}) {
   renderMovedReview();
   if (updateSelection) renderSelectionPreview();
   renderDetail();
+  renderOptimizationFeedback();
   syncControlState();
   scheduleTerritoryRefresh(territoryForce);
 }
@@ -1297,6 +1390,7 @@ function refreshUI(rebuildMap = false) {
   renderSummary();
   renderMovedReview();
   renderDetail();
+  renderOptimizationFeedback();
 
   if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
   scheduleTerritoryRefresh();
@@ -2023,8 +2117,9 @@ function optimizeRoutes() {
 
     const continuityWeight = Number(els.disruptionSlider.value) / 100;
     const geographyWeight = 1 - continuityWeight;
-    const balanceMode = els.balanceMode.value;
+    const balanceMode = 'hybrid';
     const optimizerMix = getOptimizerMix();
+    const beforeSummary = buildOptimizationSummary();
 
     const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
     const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
@@ -2086,13 +2181,11 @@ function optimizeRoutes() {
           let balancePenalty = 0;
           const stat = repStats.get(rep);
 
-          if (balanceMode === 'revenue') {
-            balancePenalty = (stat.revenue || 0) / Math.max(1, totalAccounts);
-          } else if (balanceMode === 'stops') {
-            balancePenalty = (stat.stops || 0) * 0.35;
-          } else {
-            balancePenalty = ((stat.stops || 0) * 0.2) + (((stat.revenue || 0) / Math.max(1, totalAccounts)) * 0.15);
-          }
+          const nextStops = (stat.stops || 0) + 1;
+          const nextRevenue = (stat.revenue || 0) + (account.overallSales || 0);
+          const stopDeviation = Math.abs(nextStops - targetStopsPerRep) / Math.max(1, targetStopsPerRep);
+          const revenueDeviation = Math.abs(nextRevenue - targetRevenuePerRep) / Math.max(1, targetRevenuePerRep || 1);
+          balancePenalty = (stopDeviation * optimizerMix.stopsPriority * 1.55) + (revenueDeviation * optimizerMix.revenuePriority * 1.15);
 
           const underMinBoost = stat.stops < minStops ? -2.2 : 0;
           const localPenalty = localDominancePenalty(account, rep, assignments, adjacency);
@@ -2179,7 +2272,11 @@ function optimizeRoutes() {
       repsBefore
     );
 
-    state.optimizationSummary = buildOptimizationSummary();
+    state.optimizationSummary = buildOptimizationSummary(beforeSummary, {
+      weightLabel: els.optimizerBalanceValue ? els.optimizerBalanceValue.textContent : 'Balanced',
+      disruptionLabel: disruptionPreset.short
+    });
+    renderOptimizationFeedback();
     updateLastActionWithOptimization(`${optimizeLabel} • ${disruptionPreset.short}`);
 
   } catch (err) {
@@ -2188,14 +2285,16 @@ function optimizeRoutes() {
   }
 }
 
-function buildOptimizationSummary() {
+function buildOptimizationSummary(previousSummary = null, meta = {}) {
   const rows = summarizeByRep();
   const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
   const protectedHeld = state.accounts.filter(a => a.protected && a.assignedRep === a.originalAssignedRep).length;
   const stops = rows.map(r => r.stops);
   const revenue = rows.map(r => r.revenue);
+  const stopRange = Math.max(0, Math.max(...stops) - Math.min(...stops));
+  const revenueRange = Math.max(0, Math.max(...revenue) - Math.min(...revenue));
 
-  return {
+  const summary = {
     repCount: rows.length,
     movedCount,
     protectedHeld,
@@ -2203,8 +2302,25 @@ function buildOptimizationSummary() {
     maxStops: Math.max(...stops),
     minRevenue: Math.min(...revenue),
     maxRevenue: Math.max(...revenue),
-    avgStops: rows.reduce((sum, r) => sum + r.stops, 0) / Math.max(1, rows.length)
+    avgStops: rows.reduce((sum, r) => sum + r.stops, 0) / Math.max(1, rows.length),
+    stopRange,
+    revenueRange,
+    stopRangeDeltaPct: 0,
+    revenueRangeDeltaPct: 0,
+    weightLabel: meta.weightLabel || 'Balanced',
+    disruptionLabel: meta.disruptionLabel || getDisruptionPreset().short
   };
+
+  if (previousSummary) {
+    summary.stopRangeDeltaPct = previousSummary.stopRange > 0
+      ? ((previousSummary.stopRange - summary.stopRange) / previousSummary.stopRange) * 100
+      : 0;
+    summary.revenueRangeDeltaPct = previousSummary.revenueRange > 0
+      ? ((previousSummary.revenueRange - summary.revenueRange) / previousSummary.revenueRange) * 100
+      : 0;
+  }
+
+  return summary;
 }
 
 function updateLastActionWithOptimization(baseText) {
@@ -2214,7 +2330,7 @@ function updateLastActionWithOptimization(baseText) {
     return;
   }
 
-  updateLastAction(`${baseText} • Stops range ${s.minStops}-${s.maxStops} • Avg stops ${formatNumber(s.avgStops, 1)}`);
+  updateLastAction(`${baseText} • ${formatNumber(s.movedCount)} moved • Stops range ${s.minStops}-${s.maxStops} • Avg stops ${formatNumber(s.avgStops, 1)}`);
 }
 
 function createAssignmentContext(targetRepNames, assignments) {
