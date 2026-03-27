@@ -340,6 +340,16 @@ function bindEvents() {
   els.exportBtn.addEventListener('click', exportWorkbook);
   els.clearSelectionBtn.addEventListener('click', clearSelection);
 
+  if (els.detailPanel) {
+    els.detailPanel.addEventListener('click', e => {
+      const clearBtn = e.target.closest('[data-clear-detail-selection]');
+      if (clearBtn) {
+        e.preventDefault();
+        clearSelection();
+      }
+    });
+  }
+
   if (els.uploadStatusPill) {
     els.uploadStatusPill.addEventListener('click', e => {
       e.stopPropagation();
@@ -1134,7 +1144,14 @@ function renderDetail() {
     .filter(Boolean)
     .slice(0, 10);
 
-  els.detailPanel.innerHTML = selectedAccounts.map(account => `
+  const headerHtml = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+      <div style="font-size:12px;color:#5d7286;font-weight:700;">${selectedIds.length} selected</div>
+      <button type="button" class="btn btn-subtle" data-clear-detail-selection>Clear All</button>
+    </div>
+  `;
+
+  const cardsHtml = selectedAccounts.map(account => `
     <div class="selected-item" style="margin-bottom:10px;">
       <div class="selected-item-title">${escapeHtml(account.customerName || account.customerId)}</div>
       <div style="font-size:12px;color:#5d7286;margin-bottom:6px;">
@@ -1148,6 +1165,13 @@ function renderDetail() {
       </div>
     </div>
   `).join('');
+
+  const moreCount = selectedIds.length - selectedAccounts.length;
+  const moreHtml = moreCount > 0
+    ? `<div class="small muted" style="margin-top:6px;">Showing first ${selectedAccounts.length} selected accounts. ${moreCount} more selected.</div>`
+    : '';
+
+  els.detailPanel.innerHTML = `${headerHtml}${cardsHtml}${moreHtml}`;
 }
 
 function refreshUI(rebuildMap = false) {
@@ -1195,10 +1219,14 @@ function refreshMarkers(accountIds = null) {
 
     const nextState = {
       color,
-      radius: selected ? 4.2 : (state.repFocus && account.assignedRep === state.repFocus ? 3.6 : 2.8),
-      opacity: pass ? (dimmed ? 0.22 : 0.95) : 0,
-      fillOpacity: pass ? (selected ? 1 : dimmed ? 0.18 : 0.88) : 0,
-      weight: selected ? 2 : 1,
+      radius: selected
+        ? 4.2
+        : dimmed
+          ? 1.65
+          : (state.repFocus && account.assignedRep === state.repFocus ? 3.8 : 2.8),
+      opacity: pass ? (dimmed ? 0.02 : 0.98) : 0,
+      fillOpacity: pass ? (selected ? 1 : dimmed ? 0.015 : 0.92) : 0,
+      weight: selected ? 2 : (dimmed ? 0.5 : 1),
       hidden: !pass
     };
 
