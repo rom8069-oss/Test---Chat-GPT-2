@@ -180,6 +180,7 @@ function initOptimizerTuningUI() {
   const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
   if (disruptionField) {
     disruptionField.classList.add('field-disruption-enhanced', 'field-disruption-compact');
+    setFieldLabelText(disruptionField, 'Customer consistency');
     let helper = disruptionField.querySelector('#optimizer-disruption-helper');
     if (!helper) {
       helper = document.createElement('div');
@@ -187,10 +188,25 @@ function initOptimizerTuningUI() {
       helper.className = 'optimizer-helper optimizer-disruption-helper';
       disruptionField.appendChild(helper);
     }
+    helper.textContent = '';
+    helper.hidden = true;
     els.optimizerDisruptionHelper = helper;
   }
 
-  const balanceField = els.balanceMode ? els.balanceMode.closest('.field') : null;
+  let balanceField = document.querySelector('[data-optimizer-weight]') || (els.balanceMode ? els.balanceMode.closest('.field') : null);
+  if (!balanceField) {
+    const controlsGrid = document.querySelector('.controls-grid');
+    const anchorField = els.maxStopsInput ? els.maxStopsInput.closest('.field') : null;
+    if (controlsGrid) {
+      balanceField = document.createElement('div');
+      balanceField.className = 'field';
+      balanceField.setAttribute('data-optimizer-weight', 'true');
+      balanceField.innerHTML = '<label>Optimize weight</label>';
+      if (anchorField && anchorField.parentNode === controlsGrid && anchorField.nextSibling) controlsGrid.insertBefore(balanceField, anchorField.nextSibling);
+      else controlsGrid.appendChild(balanceField);
+    }
+  }
+
   if (balanceField) {
     balanceField.classList.add('field-optimizer-balance');
     setFieldLabelText(balanceField, 'Optimize weight');
@@ -206,8 +222,9 @@ function initOptimizerTuningUI() {
       if (selectWrap) selectWrap.classList.add('optimizer-mode-hidden-wrap');
     }
 
-    if (!balanceField.querySelector('.optimizer-balance-wrap')) {
-      const wrap = document.createElement('div');
+    let wrap = balanceField.querySelector('.optimizer-balance-wrap');
+    if (!wrap) {
+      wrap = document.createElement('div');
       wrap.className = 'optimizer-balance-wrap';
       wrap.innerHTML = `
         <div class="optimizer-mini-head">
@@ -223,10 +240,13 @@ function initOptimizerTuningUI() {
         <div id="optimizer-balance-helper" class="optimizer-balance-helper"></div>
       `;
       balanceField.appendChild(wrap);
-      els.optimizerBalanceSlider = wrap.querySelector('#optimizer-balance-slider');
-      els.optimizerBalanceValue = wrap.querySelector('#optimizer-balance-value');
-      els.optimizerBalanceHelper = wrap.querySelector('#optimizer-balance-helper');
+    }
+    els.optimizerBalanceSlider = wrap.querySelector('#optimizer-balance-slider');
+    els.optimizerBalanceValue = wrap.querySelector('#optimizer-balance-value');
+    els.optimizerBalanceHelper = wrap.querySelector('#optimizer-balance-helper');
+    if (els.optimizerBalanceSlider && !els.optimizerBalanceSlider.dataset.bound) {
       els.optimizerBalanceSlider.addEventListener('input', updateOptimizerUI);
+      els.optimizerBalanceSlider.dataset.bound = 'true';
     }
   }
 
@@ -256,10 +276,11 @@ function updateOptimizerUI() {
     els.disruptionValue.textContent = `${els.disruptionSlider.value}`;
     const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
     if (disruptionField) {
-      setFieldLabelText(disruptionField, `Customer disruption ${els.disruptionSlider.value}`);
+      setFieldLabelText(disruptionField, 'Customer consistency');
     }
     if (els.optimizerDisruptionHelper) {
-      els.optimizerDisruptionHelper.textContent = preset.short;
+      els.optimizerDisruptionHelper.textContent = '';
+      els.optimizerDisruptionHelper.hidden = true;
     }
     els.disruptionSlider.title = preset.detail;
   }
@@ -605,7 +626,7 @@ function bindEvents() {
 }
 
 function initMap() {
-  state.map = L.map('map', { preferCanvas: true }).setView([40.1, -89.2], 7);
+  state.map = L.map('map', { preferCanvas: true, renderer: L.canvas({ padding: 0.5 }) }).setView([40.1, -89.2], 7);
 
   state.lightLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
@@ -1917,6 +1938,18 @@ function updateGlobalStats() {
   els.globalUnchanged.textContent = `${formatNumber(stats.unchangedPct, 1)}%`;
   els.globalAvgWeekly.textContent = formatNumber(stats.planned4W / 4, 1);
   els.globalAvgWeeklyPerRep.textContent = formatNumber((stats.planned4W / 4) / Math.max(1, stats.repCount), 1);
+
+  const rows = summarizeByRep();
+  const stopValues = rows.map(row => Number(row.stops || 0)).filter(Number.isFinite);
+  const stopMin = stopValues.length ? Math.min(...stopValues) : 0;
+  const stopMax = stopValues.length ? Math.max(...stopValues) : 0;
+  if (els.globalStopsRange) {
+    els.globalStopsRange.textContent = stopValues.length ? `${formatNumber(stopMin)}-${formatNumber(stopMax)}` : '0-0';
+  }
+  if (els.globalAvgTotalStops) {
+    const avgStops = rows.length ? (stopValues.reduce((sum, value) => sum + value, 0) / rows.length) : 0;
+    els.globalAvgTotalStops.textContent = formatNumber(avgStops, 1);
+  }
 }
 
 function syncRepFilterSelection(previousAssignedReps = null) {
@@ -2320,7 +2353,7 @@ function optimizeRoutes() {
       disruptionLabel: disruptionPreset.short
     });
     renderOptimizationFeedback();
-    updateLastActionWithOptimization(`${optimizeLabel} • ${disruptionPreset.short}`);
+    updateLastActionWithOptimization('');
 
   } catch (err) {
     console.error('Optimize Routes failed:', err);
@@ -2366,14 +2399,12 @@ function buildOptimizationSummary(previousSummary = null, meta = {}) {
   return summary;
 }
 
-function updateLastActionWithOptimization(baseText) {
-  const s = state.optimizationSummary;
-  if (!s) {
-    updateLastAction(baseText);
+function updateLastActionWithOptimization(baseText = '') {
+  if (!baseText) {
+    updateLastAction('');
     return;
   }
-
-  updateLastAction(`${baseText} • ${formatNumber(s.movedCount)} moved • Stops range ${s.minStops}-${s.maxStops} • Avg stops ${formatNumber(s.avgStops, 1)}`);
+  updateLastAction(baseText);
 }
 
 function createAssignmentContext(targetRepNames, assignments) {
