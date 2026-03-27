@@ -340,21 +340,6 @@ function bindEvents() {
   els.exportBtn.addEventListener('click', exportWorkbook);
   els.clearSelectionBtn.addEventListener('click', clearSelection);
 
-  document.addEventListener('click', event => {
-    if (event.target.closest('[data-clear-rep-focus]')) {
-      state.repFocus = null;
-      refreshMarkerStyles();
-      renderRepTable();
-      renderRepFocusBanner();
-      scheduleTerritoryRefresh();
-      return;
-    }
-
-    if (event.target.closest('[data-clear-detail-selection]') || event.target.closest('[data-clear-detail-selection-static]')) {
-      clearSelection();
-    }
-  });
-
   if (els.detailPanel) {
     const detailCard = els.detailPanel.closest('.detail-card');
     const detailClickTarget = detailCard || els.detailPanel;
@@ -1147,71 +1132,6 @@ function buildPopupHtml(account) {
   `;
 }
 
-function ensureRepFocusBanner() {
-  const mapEl = document.getElementById('map');
-  if (!mapEl) return null;
-  const mapCard = mapEl.closest('.card');
-  if (!mapCard) return null;
-
-  let banner = mapCard.querySelector('[data-rep-focus-banner]');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.setAttribute('data-rep-focus-banner', 'true');
-    banner.style.display = 'none';
-    banner.style.alignItems = 'center';
-    banner.style.justifyContent = 'space-between';
-    banner.style.gap = '10px';
-    banner.style.margin = '0 12px 10px';
-    banner.style.padding = '8px 12px';
-    banner.style.border = '1px solid #d7e5f3';
-    banner.style.borderRadius = '12px';
-    banner.style.background = '#f7fbff';
-    banner.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,.7)';
-    banner.innerHTML = `
-      <div data-rep-focus-banner-text style="font-size:12px;font-weight:700;color:#29415b;line-height:1.35;"></div>
-      <button type="button" class="btn btn-subtle" data-clear-rep-focus>Clear Focus</button>
-    `;
-
-    const mapBody = mapEl.parentElement;
-    if (mapBody) mapBody.insertBefore(banner, mapEl);
-    else mapCard.appendChild(banner);
-  }
-
-  return banner;
-}
-
-function renderRepFocusBanner() {
-  const banner = ensureRepFocusBanner();
-  if (!banner) return;
-
-  const textEl = banner.querySelector('[data-rep-focus-banner-text]');
-  const clearBtn = banner.querySelector('[data-clear-rep-focus]');
-
-  if (!state.repFocus) {
-    banner.style.display = 'none';
-    if (clearBtn) clearBtn.disabled = true;
-    if (textEl) textEl.textContent = '';
-    return;
-  }
-
-  const row = getRepSummaryRow(state.repFocus);
-  banner.style.display = 'flex';
-  if (clearBtn) clearBtn.disabled = false;
-  if (textEl) {
-    textEl.innerHTML = `
-      <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span style="display:inline-flex;align-items:center;gap:6px;">
-          <span style="width:10px;height:10px;border-radius:999px;background:${getRepColor(state.repFocus)};display:inline-block;"></span>
-          <strong>Focus: ${escapeHtml(state.repFocus)}</strong>
-        </span>
-        <span>Stops: ${formatNumber(row.stops)}</span>
-        <span>Revenue: ${formatCurrency(row.revenue)}</span>
-        <span>Avg Weekly: ${formatNumber(row.avgWeekly, 2)}</span>
-      </span>
-    `;
-  }
-}
-
 function ensureDetailClearButton() {
   if (!els.detailPanel) return null;
   const detailCard = els.detailPanel.closest('.detail-card');
@@ -1296,7 +1216,6 @@ function refreshUI(rebuildMap = false) {
   renderSummary();
   renderMovedReview();
   renderDetail();
-  renderRepFocusBanner();
 
   if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
   scheduleTerritoryRefresh();
@@ -1404,15 +1323,16 @@ function refreshTerritories() {
     if (!hull) continue;
 
     const color = getRepColor(rep);
-    const focused = !!state.repFocus && rep === state.repFocus;
-    const faded = !!state.repFocus && rep !== state.repFocus;
+    const strokeColor = getTerritoryStrokeColor(rep);
+    const fillColor = getTerritoryFillColor(rep);
     const polygon = L.geoJSON(hull, {
       style: {
-        color,
-        weight: focused ? 4 : (faded ? 1.25 : 2),
-        opacity: focused ? 0.95 : (faded ? 0.3 : 0.7),
-        fillColor: color,
-        fillOpacity: focused ? 0.16 : (faded ? 0.035 : 0.08)
+        color: strokeColor,
+        weight: 2.25,
+        fillColor,
+        fillOpacity: 0.12,
+        opacity: 0.88,
+        dashArray: '2 3'
       }
     });
 
@@ -1423,7 +1343,7 @@ function refreshTerritories() {
       interactive: false,
       icon: L.divIcon({
         className: 'territory-label',
-        html: `<div style="background:${color};color:#fff;border-radius:999px;padding:${focused ? '4px 10px' : '3px 8px'};font-size:${focused ? '12px' : '11px'};font-weight:800;white-space:nowrap;opacity:${faded ? '0.45' : '1'};box-shadow:${focused ? '0 0 0 2px rgba(255,255,255,.85)' : 'none'};">${escapeHtml(rep)}</div>`
+        html: `<div style="background:${getTerritoryLabelColor(rep)};color:#fff;border:1px solid rgba(255,255,255,.55);box-shadow:0 8px 18px rgba(30,54,84,.16);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;white-space:nowrap;letter-spacing:.1px;">${escapeHtml(rep)}</div>`
       })
     });
 
@@ -1566,7 +1486,6 @@ function renderRepTable() {
       state.repFocus = state.repFocus === rep ? null : rep;
       refreshMarkerStyles();
       renderRepTable();
-      renderRepFocusBanner();
       scheduleTerritoryRefresh();
       if (state.repFocus) zoomToRep(state.repFocus);
     });
@@ -2745,6 +2664,54 @@ function rankSortValue(rank) {
 
 function toCamel(id) {
   return id.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+
+function clampByte(value) {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function hexToRgb(hex) {
+  const value = String(hex || '').trim().replace('#', '');
+  const normalized = value.length === 3
+    ? value.split('').map(ch => ch + ch).join('')
+    : value.padEnd(6, '0').slice(0, 6);
+
+  const int = Number.parseInt(normalized, 16);
+  if (Number.isNaN(int)) return { r: 64, g: 99, b: 160 };
+
+  return {
+    r: (int >> 16) & 255,
+    g: (int >> 8) & 255,
+    b: int & 255
+  };
+}
+
+function rgbToHex(r, g, b) {
+  return `#${[r, g, b].map(v => clampByte(v).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function mixHex(colorA, colorB, weight = 0.5) {
+  const a = hexToRgb(colorA);
+  const b = hexToRgb(colorB);
+  const t = Math.max(0, Math.min(1, Number(weight) || 0));
+  return rgbToHex(
+    a.r + (b.r - a.r) * t,
+    a.g + (b.g - a.g) * t,
+    a.b + (b.b - a.b) * t
+  );
+}
+
+function getTerritoryStrokeColor(rep) {
+  return mixHex(getRepColor(rep), '#28415a', 0.32);
+}
+
+function getTerritoryFillColor(rep) {
+  return mixHex(getRepColor(rep), '#ffffff', 0.46);
+}
+
+function getTerritoryLabelColor(rep) {
+  return mixHex(getRepColor(rep), '#22364f', 0.22);
 }
 
 function cleanHeader(value) {
