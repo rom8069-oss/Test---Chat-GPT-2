@@ -112,6 +112,8 @@ function init() {
   renderMultiFilterOptions();
   renderUploadStatus();
   syncControlState();
+  initOptimizerTuningUI();
+  updateOptimizerUI();
 
   requestAnimationFrame(() => {
     if (state.map) state.map.invalidateSize();
@@ -121,6 +123,86 @@ function init() {
 
 function rebuildMarkers() {
   renderMap();
+}
+
+function initOptimizerTuningUI() {
+  const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
+  if (disruptionField) {
+    disruptionField.classList.add('field-disruption-enhanced');
+    if (!els.optimizerDisruptionHelper) {
+      const helper = document.createElement('div');
+      helper.id = 'optimizer-disruption-helper';
+      helper.className = 'optimizer-helper';
+      disruptionField.appendChild(helper);
+      els.optimizerDisruptionHelper = helper;
+    }
+  }
+
+  const balanceField = els.balanceMode ? els.balanceMode.closest('.field') : null;
+  if (balanceField && !balanceField.querySelector('.optimizer-balance-wrap')) {
+    balanceField.classList.add('field-optimizer-balance');
+    const wrap = document.createElement('div');
+    wrap.className = 'optimizer-balance-wrap';
+    wrap.innerHTML = `
+      <div class="optimizer-mini-head">
+        <span>Stops vs revenue</span>
+        <span id="optimizer-balance-value">50% / 50%</span>
+      </div>
+      <input id="optimizer-balance-slider" type="range" min="0" max="100" value="50" step="5" />
+      <div class="optimizer-mini-scale">
+        <span>Revenue</span>
+        <span>Balanced</span>
+        <span>Stops</span>
+      </div>
+      <div id="optimizer-balance-helper" class="optimizer-balance-helper"></div>
+    `;
+    balanceField.appendChild(wrap);
+    els.optimizerBalanceSlider = wrap.querySelector('#optimizer-balance-slider');
+    els.optimizerBalanceValue = wrap.querySelector('#optimizer-balance-value');
+    els.optimizerBalanceHelper = wrap.querySelector('#optimizer-balance-helper');
+    els.optimizerBalanceSlider.addEventListener('input', updateOptimizerUI);
+  }
+}
+
+function getOptimizerMix() {
+  const stopsPriority = Math.max(0, Math.min(100, Number(els.optimizerBalanceSlider ? els.optimizerBalanceSlider.value : 50) || 50)) / 100;
+  return {
+    stopsPriority,
+    revenuePriority: 1 - stopsPriority
+  };
+}
+
+function getDisruptionPreset(value = Number(els.disruptionSlider ? els.disruptionSlider.value : 100) || 100) {
+  if (value >= 85) return { short: 'Minimum change', detail: 'Strongly favors keeping accounts with their current rep.' };
+  if (value >= 65) return { short: 'Continuity first', detail: 'Strongly discourages moving accounts unless geography clearly improves.' };
+  if (value >= 40) return { short: 'Balanced', detail: 'Blends continuity with geographic compactness.' };
+  if (value >= 20) return { short: 'Geography leaning', detail: 'Allows more reassignment to tighten territory shapes.' };
+  return { short: 'Geography first', detail: 'Aggressively prioritizes compact territories over continuity.' };
+}
+
+function updateOptimizerUI() {
+  if (els.disruptionValue && els.disruptionSlider) {
+    const preset = getDisruptionPreset(Number(els.disruptionSlider.value) || 0);
+    els.disruptionValue.textContent = `${els.disruptionSlider.value} • ${preset.short}`;
+    if (els.optimizerDisruptionHelper) {
+      els.optimizerDisruptionHelper.textContent = preset.detail;
+    }
+  }
+
+  if (els.optimizerBalanceSlider && els.optimizerBalanceValue) {
+    const { stopsPriority, revenuePriority } = getOptimizerMix();
+    const stopPct = Math.round(stopsPriority * 100);
+    const revenuePct = Math.round(revenuePriority * 100);
+    els.optimizerBalanceValue.textContent = `${stopPct}% / ${revenuePct}%`;
+    const hybrid = !els.balanceMode || els.balanceMode.value === 'hybrid';
+    if (els.optimizerBalanceHelper) {
+      els.optimizerBalanceHelper.textContent = hybrid
+        ? `Hybrid mode will balance around ${stopPct}% stops and ${revenuePct}% revenue.`
+        : `${safeString(els.balanceMode.value).charAt(0).toUpperCase()}${safeString(els.balanceMode.value).slice(1)} mode is active. The slider applies when Optimize by is set to Hybrid.`;
+    }
+    const wrap = els.optimizerBalanceSlider.closest('.optimizer-balance-wrap');
+    if (wrap) wrap.classList.toggle('is-muted', !hybrid);
+  }
 }
 
 function refreshMarkerStyles(accountIds = null) {
@@ -378,9 +460,7 @@ function bindEvents() {
     refreshUI();
   });
 
-  els.disruptionSlider.addEventListener('input', () => {
-    els.disruptionValue.textContent = els.disruptionSlider.value;
-  });
+  els.disruptionSlider.addEventListener('input', updateOptimizerUI);
 
   if (els.movedSearchInput) {
     els.movedSearchInput.addEventListener('input', e => {
@@ -1206,6 +1286,7 @@ function refreshUI(rebuildMap = false) {
   syncControlState();
   renderRepControls();
   renderUploadStatus();
+  updateOptimizerUI();
 
   if (rebuildMap) rebuildMarkers();
 
@@ -1328,11 +1409,11 @@ function refreshTerritories() {
     const polygon = L.geoJSON(hull, {
       style: {
         color: strokeColor,
-        weight: 2.25,
+        weight: 2.15,
         fillColor,
-        fillOpacity: 0.12,
-        opacity: 0.88,
-        dashArray: '2 3'
+        fillOpacity: 0.09,
+        opacity: 0.8,
+        dashArray: '2 4'
       }
     });
 
@@ -1343,7 +1424,7 @@ function refreshTerritories() {
       interactive: false,
       icon: L.divIcon({
         className: 'territory-label',
-        html: `<div style="background:${getTerritoryLabelColor(rep)};color:#fff;border:1px solid rgba(255,255,255,.55);box-shadow:0 8px 18px rgba(30,54,84,.16);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;white-space:nowrap;letter-spacing:.1px;">${escapeHtml(rep)}</div>`
+        html: `<div style="background:${getTerritoryLabelColor(rep)};color:#fff;border:1px solid rgba(255,255,255,.52);box-shadow:0 6px 14px rgba(30,54,84,.14);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;white-space:nowrap;letter-spacing:.1px;">${escapeHtml(rep)}</div>`
       })
     });
 
@@ -1943,6 +2024,7 @@ function optimizeRoutes() {
     const continuityWeight = Number(els.disruptionSlider.value) / 100;
     const geographyWeight = 1 - continuityWeight;
     const balanceMode = els.balanceMode.value;
+    const optimizerMix = getOptimizerMix();
 
     const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
     const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
@@ -1969,6 +2051,10 @@ function optimizeRoutes() {
       if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
       return a.customerName.localeCompare(b.customerName);
     });
+
+    const targetStopsPerRep = Math.max(minStops, Math.min(maxStops, totalAccounts / Math.max(1, targetRepNames.length)));
+    const totalRevenuePool = state.accounts.reduce((sum, account) => sum + (account.overallSales || 0), 0);
+    const targetRevenuePerRep = totalRevenuePool / Math.max(1, targetRepNames.length);
 
     for (let iter = 0; iter < 6; iter += 1) {
       assignmentCtx.clearMovableAssignments(orderedMovable, assignments);
@@ -2017,7 +2103,8 @@ function optimizeRoutes() {
             existingPenalty +
             balancePenalty +
             localPenalty +
-            underMinBoost;
+            underMinBoost +
+            overMaxPenalty;
 
           if (score < bestScore) {
             bestScore = score;
@@ -2084,14 +2171,17 @@ function optimizeRoutes() {
       return;
     }
 
+    const disruptionPreset = getDisruptionPreset();
+    const optimizeLabel = `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`;
     applyChanges(
       changes,
-      `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`,
+      optimizeLabel,
       repsBefore
     );
 
     state.optimizationSummary = buildOptimizationSummary();
-    updateLastActionWithOptimization(`Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`);
+    updateLastActionWithOptimization(`${optimizeLabel} • ${disruptionPreset.short}`);
+
   } catch (err) {
     console.error('Optimize Routes failed:', err);
     showToast('Optimize Routes hit an error. Send me the first red error line from the browser console.');
@@ -2703,15 +2793,15 @@ function mixHex(colorA, colorB, weight = 0.5) {
 }
 
 function getTerritoryStrokeColor(rep) {
-  return mixHex(getRepColor(rep), '#28415a', 0.32);
+  return mixHex(getRepColor(rep), '#24384f', 0.42);
 }
 
 function getTerritoryFillColor(rep) {
-  return mixHex(getRepColor(rep), '#ffffff', 0.46);
+  return mixHex(getRepColor(rep), '#ffffff', 0.58);
 }
 
 function getTerritoryLabelColor(rep) {
-  return mixHex(getRepColor(rep), '#22364f', 0.22);
+  return mixHex(getRepColor(rep), '#22364f', 0.3);
 }
 
 function cleanHeader(value) {
