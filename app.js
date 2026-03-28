@@ -265,6 +265,15 @@ function getOptimizerWeightLabel() {
   return 'Hybrid';
 }
 
+function buildRepLoadOrder(targetRepNames, ctx) {
+  return [...targetRepNames].sort((a, b) => {
+    const countDiff = ctx.count(a) - ctx.count(b);
+    if (countDiff !== 0) return countDiff;
+    return ctx.revenue(a) - ctx.revenue(b);
+  });
+}
+
+
 function getDisruptionPreset(value = Number(els.disruptionSlider ? els.disruptionSlider.value : 100) || 100) {
   if (value >= 85) return { short: 'Minimum change', detail: 'Strongly favors keeping accounts with their current rep.' };
   if (value >= 65) return { short: 'Continuity first', detail: 'Strongly discourages moving accounts unless geography clearly improves.' };
@@ -1224,7 +1233,21 @@ function buildNeighborMap(accounts) {
   const map = new Map();
   if (!accounts.length) return map;
 
-  const cellSize = 0.18;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+
+  for (const account of accounts) {
+    if (account.latitude < minLat) minLat = account.latitude;
+    if (account.latitude > maxLat) maxLat = account.latitude;
+    if (account.longitude < minLng) minLng = account.longitude;
+    if (account.longitude > maxLng) maxLng = account.longitude;
+  }
+
+  const spread = Math.max(maxLng - minLng, maxLat - minLat);
+  const densityFactor = Math.sqrt(accounts.length) / 100;
+  const cellSize = Math.max(0.05, Math.min(0.5, spread / (40 + densityFactor) || 0.18));
   const grid = new Map();
 
   function cellKey(lat, lng) {
@@ -2192,13 +2215,13 @@ function optimizeRoutes() {
     }
 
     const continuityWeight = Number(els.disruptionSlider.value) / 100;
-    const geographyWeight = 1 - continuityWeight;
     const balanceMode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
     const optimizerMix = getOptimizerMix();
     const beforeSummary = buildOptimizationSummary();
 
     const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
     const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+    const movableForCleanup = movableAccounts;
 
     const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
@@ -2227,9 +2250,16 @@ function optimizeRoutes() {
     const totalRevenuePool = state.accounts.reduce((sum, account) => sum + (account.overallSales || 0), 0);
     const targetRevenuePerRep = totalRevenuePool / Math.max(1, targetRepNames.length);
 
+    let iterationsExecuted = 0;
+
     for (let iter = 0; iter < 6; iter += 1) {
+      iterationsExecuted += 1;
+      let changedThisPass = false;
+      let repLoadOrder = null;
+      let repLoadDirty = true;
+
       assignmentCtx.clearMovableAssignments(orderedMovable, assignments);
-      resetCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
+      refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
 
       const repStats = buildFullRepStats(targetRepNames);
 
@@ -2244,24 +2274,28 @@ function optimizeRoutes() {
       for (const account of orderedMovable) {
         let bestRep = null;
         let bestScore = Infinity;
+        const currentRep = assignments.get(account._id) || account.assignedRep;
 
         for (const rep of targetRepNames) {
           const centroid = centroids.get(rep) || averageCentroidForRep(rep, assignmentCtx);
           const compactnessScore = centroid
-            ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * geographyWeight
+            ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * (1 - continuityWeight)
             : 0;
 
           const continuityPenalty = account.currentRep === rep ? 0 : continuityWeight;
           const existingPenalty = account.assignedRep === rep ? -0.15 : 0;
 
-          let balancePenalty = 0;
           const stat = repStats.get(rep);
-
           const nextStops = (stat.stops || 0) + 1;
           const nextRevenue = (stat.revenue || 0) + (account.overallSales || 0);
           const stopDeviation = Math.abs(nextStops - targetStopsPerRep) / Math.max(1, targetStopsPerRep);
-          const revenueDeviation = Math.abs(nextRevenue - targetRevenuePerRep) / Math.max(1, targetRevenuePerRep || 1);
-          balancePenalty = (stopDeviation * optimizerMix.stopsPriority * 1.55) + (revenueDeviation * optimizerMix.revenuePriority * 1.15);
+          const revenueDeviation = Math.min(
+            Math.abs(nextRevenue - targetRevenuePerRep) / Math.max(1, targetRevenuePerRep || 1),
+            2.0
+          );
+          const balancePenalty =
+            (stopDeviation * optimizerMix.stopsPriority * 1.55) +
+            (revenueDeviation * optimizerMix.revenuePriority * 1.15);
 
           const underMinBoost = stat.stops < minStops ? -2.2 : 0;
           const overMaxPenalty = nextStops > maxStops ? ((nextStops - maxStops) * 4.5) : 0;
@@ -2283,14 +2317,11 @@ function optimizeRoutes() {
         }
 
         if (!bestRep) {
-          bestRep = targetRepNames
-            .slice()
-            .sort((a, b) => {
-              const ac = assignmentCtx.count(a);
-              const bc = assignmentCtx.count(b);
-              if (ac !== bc) return ac - bc;
-              return (assignmentCtx.revenue(a) || 0) - (assignmentCtx.revenue(b) || 0);
-            })[0];
+          if (repLoadDirty || !repLoadOrder) {
+            repLoadOrder = buildRepLoadOrder(targetRepNames, assignmentCtx);
+            repLoadDirty = false;
+          }
+          bestRep = repLoadOrder[0] || currentRep || targetRepNames[0];
         }
 
         assignments.set(account._id, bestRep);
@@ -2298,17 +2329,19 @@ function optimizeRoutes() {
         const stat = repStats.get(bestRep);
         stat.stops += 1;
         stat.revenue += account.overallSales || 0;
+
+        if (bestRep !== currentRep) changedThisPass = true;
+        repLoadDirty = true;
       }
 
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
+      if (!changedThisPass) break;
     }
 
     enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
-    runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx);
-    runEnclaveCleanupFast(assignments, targetRepNames, minStops, adjacency, assignmentCtx);
-    runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacency, assignmentCtx);
+    runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
     enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
@@ -2337,7 +2370,9 @@ function optimizeRoutes() {
     }
 
     if (!changes.length) {
-      showToast('Optimizer did not find a better assignment under the current rules.');
+      showToast(iterationsExecuted < 6
+        ? 'Optimizer converged early and did not find a better assignment under the current rules.'
+        : 'Optimizer did not find a better assignment under the current rules.');
       return;
     }
 
@@ -2483,15 +2518,14 @@ function initializeCentroidsFast(targetRepNames, ctx) {
   return centroids;
 }
 
-function resetCentroidsFromContext(context) {
-  return refreshCentroidsFromContext(context);
-}
-
-
 function refreshCentroidsFromContext(centroids, targetRepNames, ctx) {
   targetRepNames.forEach(rep => {
     centroids.set(rep, averageCentroidForRep(rep, ctx));
   });
+}
+
+function resetCentroidsFromContext(centroids, targetRepNames, ctx) {
+  refreshCentroidsFromContext(centroids, targetRepNames, ctx);
 }
 
 function averageCentroidForRep(rep, ctx) {
@@ -2522,16 +2556,19 @@ function localDominancePenalty(account, rep, assignments, adjacency) {
   if (!neighbors || !neighbors.size) return 0;
 
   let same = 0;
-  let diff = 0;
+  let total = 0;
 
   neighbors.forEach(id => {
     const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
     if (!neighborRep) return;
     if (neighborRep === rep) same += 1;
-    else diff += 1;
+    total += 1;
   });
 
-  return diff > same ? 0.3 : 0;
+  if (!total) return 0;
+
+  const agreementRatio = same / total;
+  return agreementRatio < 0.5 ? (0.5 - agreementRatio) * 0.6 : 0;
 }
 
 function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx) {
@@ -2603,10 +2640,8 @@ function rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxSt
   enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx);
 }
 
-function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, ctx) {
-  for (const account of state.accounts) {
-    if (account.protected || isAccountLocked(account)) continue;
-
+function runBorderPass(accounts, assignments, minStops, adjacency, ctx) {
+  for (const account of accounts) {
     const currentRep = assignments.get(account._id) || account.assignedRep;
     const neighbors = adjacency.get(account._id);
     if (!neighbors || !neighbors.size) continue;
@@ -2629,7 +2664,14 @@ function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, min
   }
 }
 
+function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, ctx, movableAccounts = null) {
+  const accounts = Array.isArray(movableAccounts) && movableAccounts.length
+    ? movableAccounts
+    : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
 
+  runBorderPass(accounts, assignments, minStops, adjacency, ctx);
+  runBorderPass([...accounts].reverse(), assignments, minStops, adjacency, ctx);
+}
 
 async function exportWorkbook() {
   if (!state.accounts.length) {
