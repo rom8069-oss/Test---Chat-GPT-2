@@ -2398,7 +2398,7 @@ function optimizeRoutes() {
       disruptionLabel: disruptionPreset.short
     });
     renderOptimizationFeedback();
-    updateLastAction('');
+    
 
   } catch (err) {
     console.error('Optimize Routes failed:', err);
