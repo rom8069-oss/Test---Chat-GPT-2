@@ -2392,6 +2392,10 @@ function optimizeRoutes() {
       movableForCleanup
     );
 
+    if (tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup)) {
+      tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+    }
+
     runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
     enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
@@ -2620,10 +2624,11 @@ function localDominancePenalty(account, rep, assignments, adjacency) {
 
   const agreementRatio = same / total;
 
-  if (agreementRatio >= 0.75) return -0.08;
-  if (agreementRatio >= 0.6) return 0;
+  if (agreementRatio >= 0.8) return -0.12;
+  if (agreementRatio >= 0.65) return -0.03;
+  if (agreementRatio >= 0.5) return 0;
 
-  return (0.6 - agreementRatio) * 1.6;
+  return (0.5 - agreementRatio) * 2.1;
 }
 
 
@@ -2638,6 +2643,137 @@ function countNeighborRepSupport(account, rep, assignments, adjacency) {
     if (neighborRep === rep) support += 1;
   });
   return support;
+}
+
+
+function fragmentationPenalty(account, rep, assignments, adjacency) {
+  const neighbors = adjacency.get(account._id);
+  if (!neighbors || !neighbors.size) return 0;
+
+  let same = 0;
+  let strongestOtherCount = 0;
+  const otherCounts = new Map();
+
+  neighbors.forEach(id => {
+    const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+    if (!neighborRep) return;
+    if (neighborRep === rep) {
+      same += 1;
+      return;
+    }
+    const next = (otherCounts.get(neighborRep) || 0) + 1;
+    otherCounts.set(neighborRep, next);
+    if (next > strongestOtherCount) strongestOtherCount = next;
+  });
+
+  if (same >= 3) return 0;
+  if (strongestOtherCount >= 3 && same <= 1) return 1.2;
+  if (strongestOtherCount > same) return 0.55;
+  if (same === 0 && strongestOtherCount >= 2) return 0.8;
+  return 0;
+}
+
+function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
+  const candidates = Array.isArray(movableAccounts) && movableAccounts.length
+    ? movableAccounts
+    : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+
+  let improved = false;
+
+  for (const account of candidates) {
+    const currentRep = assignments.get(account._id) || account.assignedRep;
+    if (!currentRep) continue;
+
+    const neighbors = adjacency.get(account._id);
+    if (!neighbors || neighbors.size < 2) continue;
+
+    const currentFragment = fragmentationPenalty(account, currentRep, assignments, adjacency);
+    if (currentFragment <= 0) continue;
+
+    let bestSwap = null;
+    let bestGain = 0;
+
+    neighbors.forEach(id => {
+      const neighbor = state.accountById.get(id);
+      if (!neighbor || neighbor.protected || isAccountLocked(neighbor)) return;
+
+      const neighborRep = assignments.get(id) || neighbor.assignedRep;
+      if (!neighborRep || neighborRep === currentRep) return;
+
+      const currentCount = ctx.count(currentRep);
+      const neighborCount = ctx.count(neighborRep);
+      if (currentCount <= minStops || neighborCount <= minStops) return;
+      if (currentCount > maxStops || neighborCount > maxStops) return;
+
+      const accountOldCentroid = averageCentroidForRep(currentRep, ctx);
+      const neighborOldCentroid = averageCentroidForRep(neighborRep, ctx);
+
+      const accountOldDist = accountOldCentroid
+        ? squaredDistance(account.latitude, account.longitude, accountOldCentroid.lat, accountOldCentroid.lng)
+        : 0;
+      const neighborOldDist = neighborOldCentroid
+        ? squaredDistance(neighbor.latitude, neighbor.longitude, neighborOldCentroid.lat, neighborOldCentroid.lng)
+        : 0;
+
+      const accountNewDist = neighborOldCentroid
+        ? squaredDistance(account.latitude, account.longitude, neighborOldCentroid.lat, neighborOldCentroid.lng)
+        : accountOldDist;
+      const neighborNewDist = accountOldCentroid
+        ? squaredDistance(neighbor.latitude, neighbor.longitude, accountOldCentroid.lat, accountOldCentroid.lng)
+        : neighborOldDist;
+
+      const fragmentBefore =
+        fragmentationPenalty(account, currentRep, assignments, adjacency) +
+        fragmentationPenalty(neighbor, neighborRep, assignments, adjacency);
+
+      const supportBefore =
+        countNeighborRepSupport(account, currentRep, assignments, adjacency) +
+        countNeighborRepSupport(neighbor, neighborRep, assignments, adjacency);
+
+      assignments.set(account._id, neighborRep);
+      assignments.set(neighbor._id, currentRep);
+
+      const fragmentAfter =
+        fragmentationPenalty(account, neighborRep, assignments, adjacency) +
+        fragmentationPenalty(neighbor, currentRep, assignments, adjacency);
+
+      const supportAfter =
+        countNeighborRepSupport(account, neighborRep, assignments, adjacency) +
+        countNeighborRepSupport(neighbor, currentRep, assignments, adjacency);
+
+      assignments.set(account._id, currentRep);
+      assignments.set(neighbor._id, neighborRep);
+
+      const distanceGain = (accountOldDist + neighborOldDist) - (accountNewDist + neighborNewDist);
+      const supportGain = supportAfter - supportBefore;
+      const fragmentGain = fragmentBefore - fragmentAfter;
+
+      const totalGain = (fragmentGain * 2.4) + (supportGain * 1.3) + (distanceGain * 0.85);
+
+      if (totalGain > bestGain && (fragmentGain > 0 || (supportGain >= 2 && distanceGain > 0))) {
+        bestGain = totalGain;
+        bestSwap = { neighbor, neighborRep };
+      }
+    });
+
+    if (bestSwap) {
+      const neighbor = bestSwap.neighbor;
+      const neighborRep = bestSwap.neighborRep;
+
+      ctx.removeFromRep(currentRep, account);
+      ctx.removeFromRep(neighborRep, neighbor);
+
+      ctx.addToRep(neighborRep, account);
+      ctx.addToRep(currentRep, neighbor);
+
+      assignments.set(account._id, neighborRep);
+      assignments.set(neighbor._id, currentRep);
+
+      improved = true;
+    }
+  }
+
+  return improved;
 }
 
 function performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
@@ -2696,9 +2832,14 @@ function performContiguityRefinement(assignments, targetRepNames, minStops, maxS
         const supportDelta = targetSupport - currentSupport;
         const distanceDelta = newDist - oldDist;
 
+        const fragmentationDelta =
+          fragmentationPenalty(account, currentRep, assignments, adjacency) -
+          fragmentationPenalty(account, targetRep, assignments, adjacency);
+
         const moveScore =
-          (supportDelta * 1.35) -
-          (distanceDelta * 0.85) -
+          (supportDelta * 1.55) +
+          (fragmentationDelta * 2.2) -
+          (distanceDelta * 0.95) -
           (ctx.count(targetRep) < minStops ? 0.35 : 0);
 
         if (moveScore > bestDelta && (supportDelta >= 2 || (supportDelta >= 1 && distanceDelta <= 0))) {
