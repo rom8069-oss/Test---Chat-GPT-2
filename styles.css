@@ -145,10 +145,6 @@ select{
   background:#fff;
 }
 
-.is-hidden{
-  display:none !important;
-}
-
 .file-label{
   display:inline-flex;
   align-items:center;
@@ -158,6 +154,10 @@ select{
 }
 
 input[type="file"]{ display:none; }
+
+.is-hidden{
+  display:none !important;
+}
 
 .upload-status-wrap{
   position:relative;
@@ -1023,7 +1023,13 @@ tbody tr.rep-row-locked td:first-child{
   flex-wrap:wrap;
 }
 
-.metric-chip,.rep-chip{
+.metric-chip,.metric-chip{
+  background:#f5f9fd;
+  border:1px solid var(--border-soft);
+  color:var(--muted);
+}
+
+.rep-chip{
   min-height:24px;
   padding:0 9px;
   border-radius:999px;
@@ -1031,15 +1037,6 @@ tbody tr.rep-row-locked td:first-child{
   align-items:center;
   font-size:11px;
   font-weight:800;
-}
-
-.metric-chip{
-  background:#f5f9fd;
-  border:1px solid var(--border-soft);
-  color:var(--muted);
-}
-
-.rep-chip{
   background:#eef5ff;
   border:1px solid #d9e6fb;
   color:var(--primary);
@@ -1054,12 +1051,7 @@ tbody tr.rep-row-locked td:first-child{
   box-shadow:none;
 }
 
-
-.optimizer-mode-hidden,
-.optimizer-mode-hidden-wrap{
-  display:none !important;
-}
-
+n
 .routes-head-insights{
   margin-left:auto;
   display:flex;
@@ -1106,6 +1098,17 @@ tbody tr.rep-row-locked td:first-child{
 .leaflet-container{
   background:#dde6ef;
 }
+
+
+/* Leaflet tile seam fixes */
+
+
+
+
+
+/* Strong Leaflet seam suppression */
+
+
 
 
 
