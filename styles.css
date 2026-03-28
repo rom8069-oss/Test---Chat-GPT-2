@@ -702,26 +702,9 @@ tbody tr.rep-row-locked td:first-child{
   margin-bottom:4px;
 }
 
-.transfer-line{
-  display:flex;
-  align-items:center;
-  gap:5px;
-  flex-wrap:wrap;
-  margin-top:3px;
-}
 
-.rep-chip{
-  display:inline-flex;
-  align-items:center;
-  padding:2px 7px;
-  border-radius:999px;
-  background:#eef4fb;
-  border:1px solid #d7e3f0;
-  color:var(--text);
-  font-size:10px;
-  font-weight:800;
-  line-height:1;
-}
+
+
 
 .rep-arrow{
   color:var(--muted);
@@ -729,19 +712,7 @@ tbody tr.rep-row-locked td:first-child{
   font-weight:800;
 }
 
-.metric-chip{
-  display:inline-flex;
-  align-items:center;
-  padding:2px 7px;
-  border-radius:999px;
-  background:#f6f9fc;
-  border:1px solid #e0e8f1;
-  color:var(--muted);
-  font-size:10px;
-  font-weight:700;
-  line-height:1;
-  max-width:100%;
-}
+
 
 .moved-review{
   border-top:1px solid var(--border-soft);
@@ -1025,9 +996,6 @@ tbody tr.rep-row-locked td:first-child{
 
 
 
-.field-optimizer-balance.optimizer-mode-hidden-wrap{
-  display:flex !important;
-}
 
 .routes-head-insights{
   margin-left:auto;
