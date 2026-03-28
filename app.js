@@ -58,6 +58,7 @@ const state = {
   undoStack: [],
   changeLog: [],
   repColors: new Map(),
+  allReps: new Set(),
   repFocus: null,
   lockedReps: new Set(),
   theme: 'light',
@@ -351,8 +352,32 @@ function syncSortHeaderIndicators() {
   });
 }
 
+
+function registerRepNames(reps) {
+  if (!state.allReps) state.allReps = new Set();
+  for (const rep of reps || []) {
+    const value = safeString(rep).trim();
+    if (value) state.allReps.add(value);
+  }
+}
+
+function getAvailableReps() {
+  const reps = new Set();
+  if (state.allReps) {
+    for (const rep of state.allReps) {
+      const value = safeString(rep).trim();
+      if (value) reps.add(value);
+    }
+  }
+  for (const rep of getAllAssignedReps()) {
+    const value = safeString(rep).trim();
+    if (value) reps.add(value);
+  }
+  return [...reps].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
 function renderRepControls() {
-  const reps = getAllAssignedReps();
+  const reps = getAvailableReps();
   const currentValue = els.assignRepSelect ? els.assignRepSelect.value : '';
   fillSimpleSelect(els.assignRepSelect, reps, reps.includes(currentValue) ? currentValue : '', v => v, 'Select rep');
 }
@@ -821,7 +846,7 @@ function clearAllMulti(key) {
 
 function getFilterOptionsForKey(key) {
   switch (key) {
-    case 'rep': return getAllAssignedReps();
+    case 'rep': return getAvailableReps();
     case 'rank': return getDistinctValues(state.accounts, a => a.rank);
     case 'chain': return getDistinctValues(state.accounts, a => a.chain);
     case 'segment': return getDistinctValues(state.accounts, a => a.segment);
@@ -836,7 +861,7 @@ function getVisibleOptionsForKey(key, options) {
 }
 
 function renderMultiFilterOptions() {
-  renderMultiOptionList('rep', els.repFilterOptions, els.repFilterSummary, getAllAssignedReps(), 'All reps');
+  renderMultiOptionList('rep', els.repFilterOptions, els.repFilterSummary, getAvailableReps(), 'All reps');
   renderMultiOptionList('rank', els.rankFilterOptions, els.rankFilterSummary, getDistinctValues(state.accounts, a => a.rank), 'All ranks');
   renderMultiOptionList('chain', els.chainFilterOptions, els.chainFilterSummary, getDistinctValues(state.accounts, a => a.chain), 'All chains');
   renderMultiOptionList('segment', els.segmentFilterOptions, els.segmentFilterSummary, getDistinctValues(state.accounts, a => a.segment), 'All segments');
@@ -1938,7 +1963,7 @@ function updateGlobalStats() {
       planned4W += account.cadence4w || 0;
     }
 
-    const reps = getAllAssignedReps();
+    const reps = getAvailableReps();
     const unchangedPct = state.accounts.length
       ? ((state.accounts.length - movedCount) / state.accounts.length) * 100
       : 0;
@@ -1977,7 +2002,7 @@ function updateGlobalStats() {
 }
 
 function syncRepFilterSelection(previousAssignedReps = null) {
-  const reps = getAllAssignedReps();
+  const reps = getAvailableReps();
   const prev = Array.isArray(previousAssignedReps) ? new Set(previousAssignedReps) : state.filters.rep;
 
   state.filters.rep = new Set(reps.filter(rep => prev.has(rep) || !previousAssignedReps));
@@ -1999,7 +2024,7 @@ function syncControlState() {
   els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
 
-  const reps = getAllAssignedReps();
+  const reps = getAvailableReps();
   if (document.activeElement !== els.repCountInput) {
     els.repCountInput.value = reps.length || 1;
   }
@@ -2234,6 +2259,7 @@ function optimizeRoutes() {
 
     const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
+    registerRepNames(targetRepNames);
     const adjacency = state.neighborMap;
 
     if (!targetRepNames.length) {
