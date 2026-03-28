@@ -265,14 +265,6 @@ function getOptimizerWeightLabel() {
   return 'Hybrid';
 }
 
-function getOptimizerMix() {
-  const stopsPriority = Math.max(0, Math.min(100, Number(els.optimizerBalanceSlider ? els.optimizerBalanceSlider.value : 50) || 50)) / 100;
-  return {
-    stopsPriority,
-    revenuePriority: 1 - stopsPriority
-  };
-}
-
 function getDisruptionPreset(value = Number(els.disruptionSlider ? els.disruptionSlider.value : 100) || 100) {
   if (value >= 85) return { short: 'Minimum change', detail: 'Strongly favors keeping accounts with their current rep.' };
   if (value >= 65) return { short: 'Continuity first', detail: 'Strongly discourages moving accounts unless geography clearly improves.' };
@@ -2362,7 +2354,7 @@ function optimizeRoutes() {
       disruptionLabel: disruptionPreset.short
     });
     renderOptimizationFeedback();
-    updateLastActionWithOptimization('');
+    updateLastAction('');
 
   } catch (err) {
     console.error('Optimize Routes failed:', err);
@@ -2408,13 +2400,6 @@ function buildOptimizationSummary(previousSummary = null, meta = {}) {
   return summary;
 }
 
-function updateLastActionWithOptimization(baseText = '') {
-  if (!baseText) {
-    updateLastAction('');
-    return;
-  }
-  updateLastAction(baseText);
-}
 
 function createAssignmentContext(targetRepNames, assignments) {
   const ctx = { reps: new Map() };
@@ -2498,11 +2483,10 @@ function initializeCentroidsFast(targetRepNames, ctx) {
   return centroids;
 }
 
-function resetCentroidsFromContext(centroids, targetRepNames, ctx) {
-  targetRepNames.forEach(rep => {
-    centroids.set(rep, averageCentroidForRep(rep, ctx));
-  });
+function resetCentroidsFromContext(context) {
+  return refreshCentroidsFromContext(context);
 }
+
 
 function refreshCentroidsFromContext(centroids, targetRepNames, ctx) {
   targetRepNames.forEach(rep => {
@@ -2645,13 +2629,7 @@ function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, min
   }
 }
 
-function runEnclaveCleanupFast(assignments, targetRepNames, minStops, adjacency, ctx) {
-  runBorderCleanupFast(assignments, targetRepNames, 0, minStops, adjacency, ctx);
-}
 
-function runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacency, ctx) {
-  runBorderCleanupFast(assignments, targetRepNames, 0, minStops, adjacency, ctx);
-}
 
 async function exportWorkbook() {
   if (!state.accounts.length) {
