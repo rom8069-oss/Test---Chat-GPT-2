@@ -2173,6 +2173,15 @@ function resetAssignments() {
   showToast('Assignments reset to imported values.');
 }
 
+
+function runEnclaveCleanupFast(assignments, targetRepNames, minStops, adjacency, ctx) {
+  runBorderCleanupFast(assignments, targetRepNames, 0, minStops, adjacency, ctx);
+}
+
+function runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacency, ctx) {
+  runBorderCleanupFast(assignments, targetRepNames, 0, minStops, adjacency, ctx);
+}
+
 function optimizeRoutes() {
   if (!state.accounts.length) return;
 
