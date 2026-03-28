@@ -145,6 +145,10 @@ select{
   background:#fff;
 }
 
+.is-hidden{
+  display:none !important;
+}
+
 .file-label{
   display:inline-flex;
   align-items:center;
@@ -1102,17 +1106,6 @@ tbody tr.rep-row-locked td:first-child{
 .leaflet-container{
   background:#dde6ef;
 }
-
-
-/* Leaflet tile seam fixes */
-
-
-
-
-
-/* Strong Leaflet seam suppression */
-
-
 
 
 
