@@ -2005,10 +2005,31 @@ function updateGlobalStats() {
 
 function syncRepFilterSelection(previousAssignedReps = null) {
   const reps = getAvailableReps();
-  const prev = Array.isArray(previousAssignedReps) ? new Set(previousAssignedReps) : state.filters.rep;
+  const currentSelected = state.filters.rep instanceof Set ? new Set(state.filters.rep) : new Set();
+  const previousSet = Array.isArray(previousAssignedReps) ? new Set(previousAssignedReps) : null;
+  const nextSelected = new Set();
+  const hadExplicitNone = currentSelected.has(NONE_SELECTED_TOKEN);
 
-  state.filters.rep = new Set(reps.filter(rep => prev.has(rep) || !previousAssignedReps));
-  if (!state.filters.rep.size) reps.forEach(rep => state.filters.rep.add(rep));
+  reps.forEach(rep => {
+    if (currentSelected.has(rep)) {
+      nextSelected.add(rep);
+      return;
+    }
+    if (previousSet && previousSet.has(rep)) {
+      nextSelected.add(rep);
+      return;
+    }
+    if (!previousSet && !hadExplicitNone) {
+      nextSelected.add(rep);
+    }
+  });
+
+  if (!nextSelected.size && hadExplicitNone) {
+    nextSelected.add(NONE_SELECTED_TOKEN);
+  }
+  if (!nextSelected.size) reps.forEach(rep => nextSelected.add(rep));
+
+  state.filters.rep = nextSelected;
 
   fillSimpleSelect(els.assignRepSelect, reps, '', v => v, 'Select rep');
   renderMultiFilterOptions();
@@ -2260,6 +2281,7 @@ function optimizeRoutes() {
     const adjacency = state.neighborMap;
     const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
+    const currentAssignments = buildCurrentAssignmentMap();
 
     if (!targetRepNames.length) {
       showToast('No unlocked reps are available for optimization.');
@@ -2268,6 +2290,12 @@ function optimizeRoutes() {
 
     registerRepNames(targetRepNames);
     targetRepNames.forEach(rep => ensureRepColor(rep));
+
+    const currentScore = evaluateStrictSolution(currentAssignments, targetRepNames, adjacency, {
+      minStops,
+      maxStops,
+      continuityWeight
+    });
 
     const assignments = new Map();
     fixedAccounts.forEach(account => {
@@ -2360,6 +2388,20 @@ function optimizeRoutes() {
 
     replaceAssignmentMap(assignments, bestAssignments);
 
+    const candidateScore = evaluateStrictSolution(assignments, targetRepNames, adjacency, {
+      minStops,
+      maxStops,
+      continuityWeight
+    });
+
+    if (!(candidateScore < currentScore - 0.01)) {
+      syncRepFilterSelection();
+      renderRepControls();
+      syncControlState();
+      showToast('No better strict-territory solution found. Kept the current layout.');
+      return;
+    }
+
     const finalCtx = createAssignmentContext(targetRepNames, assignments);
     const finalViolations = targetRepNames.filter(rep => {
       const count = finalCtx.count(rep);
@@ -2416,6 +2458,14 @@ function replaceAssignmentMap(target, source) {
   source.forEach((value, key) => {
     target.set(key, value);
   });
+}
+
+function buildCurrentAssignmentMap() {
+  const assignments = new Map();
+  for (const account of state.accounts) {
+    assignments.set(account._id, account.assignedRep);
+  }
+  return assignments;
 }
 
 function chooseStrictSeeds(targetRepNames, movableAccounts, fixedAccounts = []) {
