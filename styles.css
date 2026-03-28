@@ -1101,7 +1101,9 @@ tbody tr.rep-row-locked td:first-child{
   box-shadow:none !important;
   backface-visibility:hidden;
   -webkit-backface-visibility:hidden;
-  image-rendering:auto;
+  transform:translate3d(0,0,0);
+  width:calc(100% + 1px) !important;
+  height:calc(100% + 1px) !important;
 }
 
 .leaflet-tile-container{
@@ -1123,6 +1125,6 @@ tbody tr.rep-row-locked td:first-child{
   transform: translate3d(0,0,0);
 }
 
-.leaflet-tile-pane {
-  will-change: transform;
+.leaflet-tile-pane{
+  will-change:transform;
 }
