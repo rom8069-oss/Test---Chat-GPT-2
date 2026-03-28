@@ -1097,7 +1097,6 @@ function loadSelectedSheet() {
 
   if (!normalized.length) {
     state.accounts = [];
-    state.allReps = new Set();
     state.accountById = new Map();
     state.neighborMap = new Map();
     state.markerById = new Map();
@@ -2094,7 +2093,7 @@ function assignSelectionToRep() {
 }
 
 function applyChanges(changes, label, previousAssignedReps = null) {
-  const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAvailableReps();
+  const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAllAssignedReps();
   const appliedChanges = [];
 
   changes.forEach(change => {
@@ -2579,6 +2578,7 @@ function averageCentroidForRep(rep, ctx) {
 function buildTargetRepNames(targetCount, currentReps) {
   const reps = [...currentReps];
   while (reps.length < targetCount) reps.push(`Rep ${reps.length + 1}`);
+  registerRepNames(reps);
   return reps.slice(0, targetCount);
 }
 
