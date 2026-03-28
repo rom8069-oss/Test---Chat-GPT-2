@@ -182,23 +182,6 @@ function ensureSummaryCardMounts() {
   els.globalAvgTotalStops = ensureCard('global-avg-total-stops', 'Avg Total Stops');
 }
 
-function ensureOptimizerFeedbackMount() {
-  if (els.optimizerFeedback) return els.optimizerFeedback;
-  const routesCard = els.repTableBody ? els.repTableBody.closest('.card, .routes-card') : null;
-  if (!routesCard) return null;
-  const head = routesCard.querySelector('.card-head') || routesCard.firstElementChild;
-  if (!head) return null;
-  let box = head.querySelector('.routes-head-insights');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'optimizer-feedback';
-    box.className = 'routes-head-insights';
-    head.appendChild(box);
-  }
-  els.optimizerFeedback = box;
-  return box;
-}
-
 
 function mountUploadStatusPanelToBody() {
   if (!els.uploadStatusPanel || !document.body) return;
@@ -245,7 +228,6 @@ function initOptimizerTuningUI() {
   }
 
   ensureSummaryCardMounts();
-  ensureOptimizerFeedbackMount();
 }
 
 function getOptimizerMix() {
@@ -259,12 +241,6 @@ function getOptimizerMix() {
   return { stopsPriority: 0.7, revenuePriority: 0.3 };
 }
 
-function getOptimizerWeightLabel() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
-  if (mode === 'stops') return 'Stops';
-  if (mode === 'revenue') return 'Revenue';
-  return 'Hybrid';
-}
 
 function buildRepLoadOrder(targetRepNames, ctx) {
   return [...targetRepNames].sort((a, b) => {
@@ -309,31 +285,7 @@ function updateOptimizerUI() {
   }
 }
 
-function renderOptimizationFeedback() {
-  const mount = ensureOptimizerFeedbackMount();
-  if (!mount) return;
-  const s = state.optimizationSummary;
-  if (!s) {
-    mount.hidden = true;
-    mount.innerHTML = '';
-    return;
-  }
-
-  const stopTone = s.stopRangeDeltaPct > 0 ? 'positive' : (s.stopRangeDeltaPct < 0 ? 'negative' : 'neutral');
-  const revenueTone = s.revenueRangeDeltaPct > 0 ? 'positive' : (s.revenueRangeDeltaPct < 0 ? 'negative' : 'neutral');
-  const stopLabel = s.stopRangeDeltaPct > 0
-    ? `Stop spread improved ${formatNumber(s.stopRangeDeltaPct, 1)}%`
-    : (s.stopRangeDeltaPct < 0 ? `Stop spread widened ${formatNumber(Math.abs(s.stopRangeDeltaPct), 1)}%` : 'Stop spread unchanged');
-  const revenueLabel = s.revenueRangeDeltaPct > 0
-    ? `Revenue spread improved ${formatNumber(s.revenueRangeDeltaPct, 1)}%`
-    : (s.revenueRangeDeltaPct < 0 ? `Revenue spread widened ${formatNumber(Math.abs(s.revenueRangeDeltaPct), 1)}%` : 'Revenue spread unchanged');
-
-  mount.innerHTML = `
-    <div class="optimizer-feedback-metric ${stopTone}">${escapeHtml(stopLabel)}</div>
-    <div class="optimizer-feedback-metric ${revenueTone}">${escapeHtml(revenueLabel)}</div>
-  `;
-  mount.hidden = false;
-}
+function renderOptimizationFeedback() {}
 
 function refreshMarkerStyles(accountIds = null) {
   refreshMarkers(accountIds);
@@ -2026,7 +1978,7 @@ function syncControlState() {
   els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
 
-  const reps = getAvailableReps();
+  const reps = getAllAssignedReps();
   if (document.activeElement !== els.repCountInput) {
     els.repCountInput.value = reps.length || 1;
   }
@@ -2224,30 +2176,11 @@ function optimizeRoutes() {
     const maxStops = Math.max(minStops, maxStopsRaw || minStops);
     const totalAccounts = state.accounts.length;
 
-    const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
-    const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
-    const fixedCount = fixedAccounts.length;
-    const movableCount = movableAccounts.length;
-    const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
-    const targetRepNames = buildTargetRepNames(targetCount, currentReps);
-
-    const fixedByRep = new Map();
-    fixedAccounts.forEach(account => {
-      const rep = account.assignedRep || 'Unassigned';
-      fixedByRep.set(rep, (fixedByRep.get(rep) || 0) + 1);
-    });
-
-    const lockedMinViolations = targetRepNames
-      .filter(rep => (fixedByRep.get(rep) || 0) > maxStops)
-      .map(rep => `${rep} (${fixedByRep.get(rep)} fixed)`);
+    const fixedCount = state.accounts.filter(a => a.protected || isAccountLocked(a)).length;
+    const movableCount = totalAccounts - fixedCount;
 
     if (!Number.isFinite(targetCount) || !Number.isFinite(minStops) || !Number.isFinite(maxStops)) {
       showToast('Optimizer inputs are invalid. Check rep count and stop limits.');
-      return;
-    }
-
-    if (!targetRepNames.length) {
-      showToast('No unlocked reps are available for optimization.');
       return;
     }
 
@@ -2257,17 +2190,12 @@ function optimizeRoutes() {
     }
 
     if (targetCount * minStops > totalAccounts) {
-      showToast(`Minimum stops impossible: ${targetCount} reps × ${minStops} minimum requires ${targetCount * minStops} accounts, but only ${totalAccounts} exist.`);
+      showToast(`Minimum stops too high. ${targetCount} reps × ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
       return;
     }
 
     if (Math.ceil(totalAccounts / targetCount) > maxStops) {
-      showToast(`Maximum stops impossible: ${targetCount} reps cannot cover ${totalAccounts} accounts with a max of ${maxStops} per rep.`);
-      return;
-    }
-
-    if (lockedMinViolations.length) {
-      showToast(`Maximum stops cannot be enforced because fixed/protected accounts already exceed the max for: ${lockedMinViolations.slice(0, 3).join(', ')}${lockedMinViolations.length > 3 ? '…' : ''}.`);
+      showToast(`Maximum stops too low. ${targetCount} reps cannot cover ${totalAccounts} accounts with a max of ${maxStops} per rep.`);
       return;
     }
 
@@ -2279,10 +2207,13 @@ function optimizeRoutes() {
     const continuityWeight = Number(els.disruptionSlider.value) / 100;
     const balanceMode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
     const optimizerMix = getOptimizerMix();
-    const beforeSummary = buildOptimizationSummary();
 
+    const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
+    const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
     const movableForCleanup = movableAccounts;
 
+    const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
+    const targetRepNames = buildTargetRepNames(targetCount, currentReps);
     registerRepNames(targetRepNames);
     const adjacency = state.neighborMap;
 
@@ -2411,15 +2342,11 @@ function optimizeRoutes() {
     });
 
     if (finalViolations.length) {
-      const sample = finalViolations
-        .slice(0, 3)
-        .map(rep => `${rep} (${assignmentCtx.count(rep)} stops)`)
-        .join(', ');
-      showToast(`Best-effort result: stop limits could not be fully satisfied under the current constraints. Review rep count / stop limits. ${sample}${finalViolations.length > 3 ? '…' : ''}`);
+      showToast('Optimizer could not fully satisfy the stop limits with the current constraints. Try adjusting rep count or stop limits.');
     }
 
     const changes = [];
-    const repsBefore = getAvailableReps();
+    const repsBefore = getAllAssignedReps();
 
     for (const account of state.accounts) {
       const nextRep = assignments.get(account._id) || account.assignedRep;
@@ -2438,19 +2365,12 @@ function optimizeRoutes() {
         : 'Optimizer did not find a better assignment under the current rules.');
       return;
     }
-
-    const disruptionPreset = getDisruptionPreset();
-    const optimizeLabel = `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`;
     applyChanges(
       changes,
-      optimizeLabel,
+      '',
       repsBefore
     );
 
-    state.optimizationSummary = buildOptimizationSummary(beforeSummary, {
-      weightLabel: getOptimizerWeightLabel(),
-      disruptionLabel: disruptionPreset.short
-    });
     renderOptimizationFeedback();
 
   } catch (err) {
@@ -2459,43 +2379,6 @@ function optimizeRoutes() {
   }
 }
 
-function buildOptimizationSummary(previousSummary = null, meta = {}) {
-  const rows = summarizeByRep();
-  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
-  const protectedHeld = state.accounts.filter(a => a.protected && a.assignedRep === a.originalAssignedRep).length;
-  const stops = rows.map(r => r.stops);
-  const revenue = rows.map(r => r.revenue);
-  const stopRange = Math.max(0, Math.max(...stops) - Math.min(...stops));
-  const revenueRange = Math.max(0, Math.max(...revenue) - Math.min(...revenue));
-
-  const summary = {
-    repCount: rows.length,
-    movedCount,
-    protectedHeld,
-    minStops: Math.min(...stops),
-    maxStops: Math.max(...stops),
-    minRevenue: Math.min(...revenue),
-    maxRevenue: Math.max(...revenue),
-    avgStops: rows.reduce((sum, r) => sum + r.stops, 0) / Math.max(1, rows.length),
-    stopRange,
-    revenueRange,
-    stopRangeDeltaPct: 0,
-    revenueRangeDeltaPct: 0,
-    weightLabel: meta.weightLabel || 'Balanced',
-    disruptionLabel: meta.disruptionLabel || getDisruptionPreset().short
-  };
-
-  if (previousSummary) {
-    summary.stopRangeDeltaPct = previousSummary.stopRange > 0
-      ? ((previousSummary.stopRange - summary.stopRange) / previousSummary.stopRange) * 100
-      : 0;
-    summary.revenueRangeDeltaPct = previousSummary.revenueRange > 0
-      ? ((previousSummary.revenueRange - summary.revenueRange) / previousSummary.revenueRange) * 100
-      : 0;
-  }
-
-  return summary;
-}
 
 
 function createAssignmentContext(targetRepNames, assignments) {
