@@ -1097,6 +1097,7 @@ function loadSelectedSheet() {
 
   if (!normalized.length) {
     state.accounts = [];
+    state.allReps = new Set();
     state.accountById = new Map();
     state.neighborMap = new Map();
     state.markerById = new Map();
@@ -2026,7 +2027,7 @@ function syncControlState() {
   els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
 
-  const reps = getAllAssignedReps();
+  const reps = getAvailableReps();
   if (document.activeElement !== els.repCountInput) {
     els.repCountInput.value = reps.length || 1;
   }
@@ -2043,7 +2044,7 @@ function assignSelectionToRep() {
     return;
   }
 
-  const previousAssignedReps = getAllAssignedReps();
+  const previousAssignedReps = getAvailableReps();
   const changes = [];
   let skippedProtected = 0;
   let skippedLocked = 0;
@@ -2093,7 +2094,7 @@ function assignSelectionToRep() {
 }
 
 function applyChanges(changes, label, previousAssignedReps = null) {
-  const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAllAssignedReps();
+  const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAvailableReps();
   const appliedChanges = [];
 
   changes.forEach(change => {
@@ -2395,7 +2396,7 @@ function optimizeRoutes() {
     }
 
     const changes = [];
-    const repsBefore = getAllAssignedReps();
+    const repsBefore = getAvailableReps();
 
     for (const account of state.accounts) {
       const nextRep = assignments.get(account._id) || account.assignedRep;
@@ -2428,7 +2429,6 @@ function optimizeRoutes() {
       disruptionLabel: disruptionPreset.short
     });
     renderOptimizationFeedback();
-    updateLastAction('');
 
   } catch (err) {
     console.error('Optimize Routes failed:', err);
