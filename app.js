@@ -107,6 +107,7 @@ document.addEventListener('DOMContentLoaded', init);
 
 function init() {
   bindElements();
+  mountUploadStatusPanelToBody();
   initMap();
   bindEvents();
   initMultiFilters();
@@ -197,6 +198,14 @@ function ensureOptimizerFeedbackMount() {
   return box;
 }
 
+
+function mountUploadStatusPanelToBody() {
+  if (!els.uploadStatusPanel || !document.body) return;
+  if (els.uploadStatusPanel.parentElement !== document.body) {
+    document.body.appendChild(els.uploadStatusPanel);
+  }
+}
+
 function initOptimizerTuningUI() {
   const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
   if (disruptionField) {
@@ -218,68 +227,42 @@ function initOptimizerTuningUI() {
     els.optimizerDisruptionHelper = helper;
   }
 
-  let balanceField = document.querySelector('[data-optimizer-weight]') || (els.balanceMode ? els.balanceMode.closest('.field') : null);
-  if (!balanceField) {
-    const controlsGrid = document.querySelector('.controls-grid');
-    const anchorField = els.maxStopsInput ? els.maxStopsInput.closest('.field') : null;
-    if (controlsGrid) {
-      balanceField = document.createElement('div');
-      balanceField.className = 'field';
-      balanceField.setAttribute('data-optimizer-weight', 'true');
-      balanceField.innerHTML = '<label>Optimize weight</label>';
-      if (anchorField && anchorField.parentNode === controlsGrid && anchorField.nextSibling) {
-        controlsGrid.insertBefore(balanceField, anchorField.nextSibling);
-      } else {
-        controlsGrid.appendChild(balanceField);
-      }
-    }
-  }
-
-  if (balanceField) {
-    balanceField.classList.add('field-optimizer-balance');
-    setFieldLabelText(balanceField, 'Optimize weight');
-
-    if (els.balanceMode) {
+  if (els.balanceMode) {
+    els.balanceMode.disabled = false;
+    els.balanceMode.classList.remove('optimizer-mode-hidden');
+    els.balanceMode.removeAttribute('aria-hidden');
+    els.balanceMode.tabIndex = 0;
+    if (!['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
       els.balanceMode.value = 'hybrid';
-      els.balanceMode.dataset.lockedMode = 'hybrid';
-      els.balanceMode.disabled = true;
-      els.balanceMode.classList.add('optimizer-mode-hidden');
-      els.balanceMode.setAttribute('aria-hidden', 'true');
-      els.balanceMode.tabIndex = -1;
     }
-
-    let wrap = balanceField.querySelector('.optimizer-balance-wrap');
-    if (!wrap) {
-      wrap = document.createElement('div');
-      wrap.className = 'optimizer-balance-wrap';
-      wrap.innerHTML = `
-        <div class="optimizer-mini-head">
-          <span>Optimize weight</span>
-          <span id="optimizer-balance-value">Balanced</span>
-        </div>
-        <input id="optimizer-balance-slider" type="range" min="0" max="100" value="50" step="5" />
-        <div class="optimizer-mini-scale">
-          <span>Revenue</span>
-          <span>Balanced</span>
-          <span>Stops</span>
-        </div>
-        <div id="optimizer-balance-helper" class="optimizer-balance-helper"></div>
-      `;
-      balanceField.appendChild(wrap);
-    }
-
-    els.optimizerBalanceSlider = wrap.querySelector('#optimizer-balance-slider');
-    els.optimizerBalanceValue = wrap.querySelector('#optimizer-balance-value');
-    els.optimizerBalanceHelper = wrap.querySelector('#optimizer-balance-helper');
-
-    if (els.optimizerBalanceSlider && !els.optimizerBalanceSlider.dataset.bound) {
-      els.optimizerBalanceSlider.addEventListener('input', updateOptimizerUI);
-      els.optimizerBalanceSlider.dataset.bound = 'true';
+    const balanceField = els.balanceMode.closest('.field');
+    if (balanceField) {
+      setFieldLabelText(balanceField, 'Optimize weight');
+      const wrap = balanceField.querySelector('.optimizer-balance-wrap');
+      if (wrap) wrap.remove();
     }
   }
 
   ensureSummaryCardMounts();
   ensureOptimizerFeedbackMount();
+}
+
+function getOptimizerMix() {
+  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  if (mode === 'stops') {
+    return { stopsPriority: 1, revenuePriority: 0 };
+  }
+  if (mode === 'revenue') {
+    return { stopsPriority: 0, revenuePriority: 1 };
+  }
+  return { stopsPriority: 0.7, revenuePriority: 0.3 };
+}
+
+function getOptimizerWeightLabel() {
+  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  if (mode === 'stops') return 'Stops';
+  if (mode === 'revenue') return 'Revenue';
+  return 'Hybrid';
 }
 
 function getOptimizerMix() {
@@ -319,21 +302,8 @@ function updateOptimizerUI() {
     els.disruptionSlider.title = preset.detail;
   }
 
-  if (els.balanceMode) {
+  if (els.balanceMode && !['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
     els.balanceMode.value = 'hybrid';
-  }
-
-  if (els.optimizerBalanceSlider && els.optimizerBalanceValue) {
-    const { stopsPriority, revenuePriority } = getOptimizerMix();
-    const stopPct = Math.round(stopsPriority * 100);
-    const revenuePct = Math.round(revenuePriority * 100);
-    let label = 'Balanced';
-    if (stopPct >= 65) label = 'Stops first';
-    else if (revenuePct >= 65) label = 'Revenue first';
-    els.optimizerBalanceValue.textContent = label;
-    if (els.optimizerBalanceHelper) {
-      els.optimizerBalanceHelper.textContent = `Stops ${stopPct}% • Revenue ${revenuePct}%`;
-    }
   }
 }
 
@@ -2231,7 +2201,7 @@ function optimizeRoutes() {
 
     const continuityWeight = Number(els.disruptionSlider.value) / 100;
     const geographyWeight = 1 - continuityWeight;
-    const balanceMode = 'hybrid';
+    const balanceMode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
     const optimizerMix = getOptimizerMix();
     const beforeSummary = buildOptimizationSummary();
 
@@ -2388,7 +2358,7 @@ function optimizeRoutes() {
     );
 
     state.optimizationSummary = buildOptimizationSummary(beforeSummary, {
-      weightLabel: els.optimizerBalanceValue ? els.optimizerBalanceValue.textContent : 'Balanced',
+      weightLabel: getOptimizerWeightLabel(),
       disruptionLabel: disruptionPreset.short
     });
     renderOptimizationFeedback();
