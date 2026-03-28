@@ -1063,8 +1063,16 @@ function loadWorkbook(workbook) {
   });
 
   fillSimpleSelect(els.sheetSelect, workbook.SheetNames, workbook.SheetNames[0]);
-  els.sheetSelect.disabled = false;
-  els.loadSheetBtn.disabled = false;
+
+  const hasMultipleSheets = workbook.SheetNames.length > 1;
+  if (els.sheetSelect) {
+    els.sheetSelect.disabled = !hasMultipleSheets;
+    els.sheetSelect.classList.toggle('is-hidden', !hasMultipleSheets);
+  }
+  if (els.loadSheetBtn) {
+    els.loadSheetBtn.disabled = !hasMultipleSheets;
+    els.loadSheetBtn.classList.toggle('is-hidden', !hasMultipleSheets);
+  }
 
   loadSelectedSheet();
 }
