@@ -1112,6 +1112,7 @@ function loadSelectedSheet() {
   }
 
   state.accounts = normalized;
+  state.allReps = new Set();
   registerRepNames(normalized.map(a => a.assignedRep || a.currentRep || a.originalAssignedRep));
   state.accountById = new Map(normalized.map(a => [a._id, a]));
   state.neighborMap = buildNeighborMap(normalized);
@@ -2025,7 +2026,7 @@ function syncControlState() {
   els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
 
-  const reps = getAvailableReps();
+  const reps = getAllAssignedReps();
   if (document.activeElement !== els.repCountInput) {
     els.repCountInput.value = reps.length || 1;
   }
@@ -2033,6 +2034,7 @@ function syncControlState() {
 
 function assignSelectionToRep() {
   const targetRep = els.assignRepSelect.value;
+  registerRepNames([targetRep]);
   const selectedIds = [...state.selection];
   if (!selectedIds.length || !targetRep) return;
 
@@ -2161,8 +2163,7 @@ function undoLastAction() {
 }
 
 function resetAssignments() {
-  registerRepNames(state.accounts.map(account => account.assignedRep || account.currentRep || account.originalAssignedRep));
-
+  registerRepNames(state.accounts.map(account => account.originalAssignedRep || account.currentRep || account.assignedRep));
   let resetCount = 0;
   const resetChanges = [];
 
@@ -2427,7 +2428,7 @@ function optimizeRoutes() {
       disruptionLabel: disruptionPreset.short
     });
     renderOptimizationFeedback();
-    
+    updateLastAction('');
 
   } catch (err) {
     console.error('Optimize Routes failed:', err);
