@@ -1097,7 +1097,6 @@ function loadSelectedSheet() {
 
   if (!normalized.length) {
     state.accounts = [];
-    state.allReps = new Set();
     state.accountById = new Map();
     state.neighborMap = new Map();
     state.markerById = new Map();
@@ -2044,7 +2043,7 @@ function assignSelectionToRep() {
     return;
   }
 
-  const previousAssignedReps = getAvailableReps();
+  const previousAssignedReps = getAllAssignedReps();
   const changes = [];
   let skippedProtected = 0;
   let skippedLocked = 0;
@@ -2094,7 +2093,7 @@ function assignSelectionToRep() {
 }
 
 function applyChanges(changes, label, previousAssignedReps = null) {
-  const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAvailableReps();
+  const repsBefore = Array.isArray(previousAssignedReps) ? previousAssignedReps : getAllAssignedReps();
   const appliedChanges = [];
 
   changes.forEach(change => {
@@ -2225,11 +2224,30 @@ function optimizeRoutes() {
     const maxStops = Math.max(minStops, maxStopsRaw || minStops);
     const totalAccounts = state.accounts.length;
 
-    const fixedCount = state.accounts.filter(a => a.protected || isAccountLocked(a)).length;
-    const movableCount = totalAccounts - fixedCount;
+    const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
+    const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+    const fixedCount = fixedAccounts.length;
+    const movableCount = movableAccounts.length;
+    const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
+    const targetRepNames = buildTargetRepNames(targetCount, currentReps);
+
+    const fixedByRep = new Map();
+    fixedAccounts.forEach(account => {
+      const rep = account.assignedRep || 'Unassigned';
+      fixedByRep.set(rep, (fixedByRep.get(rep) || 0) + 1);
+    });
+
+    const lockedMinViolations = targetRepNames
+      .filter(rep => (fixedByRep.get(rep) || 0) > maxStops)
+      .map(rep => `${rep} (${fixedByRep.get(rep)} fixed)`);
 
     if (!Number.isFinite(targetCount) || !Number.isFinite(minStops) || !Number.isFinite(maxStops)) {
       showToast('Optimizer inputs are invalid. Check rep count and stop limits.');
+      return;
+    }
+
+    if (!targetRepNames.length) {
+      showToast('No unlocked reps are available for optimization.');
       return;
     }
 
@@ -2239,12 +2257,17 @@ function optimizeRoutes() {
     }
 
     if (targetCount * minStops > totalAccounts) {
-      showToast(`Minimum stops too high. ${targetCount} reps × ${minStops} minimum exceeds ${totalAccounts} total accounts.`);
+      showToast(`Minimum stops impossible: ${targetCount} reps × ${minStops} minimum requires ${targetCount * minStops} accounts, but only ${totalAccounts} exist.`);
       return;
     }
 
     if (Math.ceil(totalAccounts / targetCount) > maxStops) {
-      showToast(`Maximum stops too low. ${targetCount} reps cannot cover ${totalAccounts} accounts with a max of ${maxStops} per rep.`);
+      showToast(`Maximum stops impossible: ${targetCount} reps cannot cover ${totalAccounts} accounts with a max of ${maxStops} per rep.`);
+      return;
+    }
+
+    if (lockedMinViolations.length) {
+      showToast(`Maximum stops cannot be enforced because fixed/protected accounts already exceed the max for: ${lockedMinViolations.slice(0, 3).join(', ')}${lockedMinViolations.length > 3 ? '…' : ''}.`);
       return;
     }
 
@@ -2258,13 +2281,8 @@ function optimizeRoutes() {
     const optimizerMix = getOptimizerMix();
     const beforeSummary = buildOptimizationSummary();
 
-    const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
-    const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
     const movableForCleanup = movableAccounts;
 
-    const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
-    const targetRepNames = buildTargetRepNames(targetCount, currentReps);
-    registerRepNames(targetRepNames);
     registerRepNames(targetRepNames);
     const adjacency = state.neighborMap;
 
@@ -2393,7 +2411,11 @@ function optimizeRoutes() {
     });
 
     if (finalViolations.length) {
-      showToast('Optimizer could not fully satisfy the stop limits with the current constraints. Try adjusting rep count or stop limits.');
+      const sample = finalViolations
+        .slice(0, 3)
+        .map(rep => `${rep} (${assignmentCtx.count(rep)} stops)`)
+        .join(', ');
+      showToast(`Best-effort result: stop limits could not be fully satisfied under the current constraints. Review rep count / stop limits. ${sample}${finalViolations.length > 3 ? '…' : ''}`);
     }
 
     const changes = [];
