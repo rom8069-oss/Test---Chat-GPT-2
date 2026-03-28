@@ -182,6 +182,23 @@ function ensureSummaryCardMounts() {
   els.globalAvgTotalStops = ensureCard('global-avg-total-stops', 'Avg Total Stops');
 }
 
+function ensureOptimizerFeedbackMount() {
+  if (els.optimizerFeedback) return els.optimizerFeedback;
+  const routesCard = els.repTableBody ? els.repTableBody.closest('.card, .routes-card') : null;
+  if (!routesCard) return null;
+  const head = routesCard.querySelector('.card-head') || routesCard.firstElementChild;
+  if (!head) return null;
+  let box = head.querySelector('.routes-head-insights');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'optimizer-feedback';
+    box.className = 'routes-head-insights';
+    head.appendChild(box);
+  }
+  els.optimizerFeedback = box;
+  return box;
+}
+
 
 function mountUploadStatusPanelToBody() {
   if (!els.uploadStatusPanel || !document.body) return;
@@ -228,6 +245,7 @@ function initOptimizerTuningUI() {
   }
 
   ensureSummaryCardMounts();
+  ensureOptimizerFeedbackMount();
 }
 
 function getOptimizerMix() {
@@ -241,6 +259,12 @@ function getOptimizerMix() {
   return { stopsPriority: 0.7, revenuePriority: 0.3 };
 }
 
+function getOptimizerWeightLabel() {
+  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  if (mode === 'stops') return 'Stops';
+  if (mode === 'revenue') return 'Revenue';
+  return 'Hybrid';
+}
 
 function buildRepLoadOrder(targetRepNames, ctx) {
   return [...targetRepNames].sort((a, b) => {
@@ -285,7 +309,31 @@ function updateOptimizerUI() {
   }
 }
 
-function renderOptimizationFeedback() {}
+function renderOptimizationFeedback() {
+  const mount = ensureOptimizerFeedbackMount();
+  if (!mount) return;
+  const s = state.optimizationSummary;
+  if (!s) {
+    mount.hidden = true;
+    mount.innerHTML = '';
+    return;
+  }
+
+  const stopTone = s.stopRangeDeltaPct > 0 ? 'positive' : (s.stopRangeDeltaPct < 0 ? 'negative' : 'neutral');
+  const revenueTone = s.revenueRangeDeltaPct > 0 ? 'positive' : (s.revenueRangeDeltaPct < 0 ? 'negative' : 'neutral');
+  const stopLabel = s.stopRangeDeltaPct > 0
+    ? `Stop spread improved ${formatNumber(s.stopRangeDeltaPct, 1)}%`
+    : (s.stopRangeDeltaPct < 0 ? `Stop spread widened ${formatNumber(Math.abs(s.stopRangeDeltaPct), 1)}%` : 'Stop spread unchanged');
+  const revenueLabel = s.revenueRangeDeltaPct > 0
+    ? `Revenue spread improved ${formatNumber(s.revenueRangeDeltaPct, 1)}%`
+    : (s.revenueRangeDeltaPct < 0 ? `Revenue spread widened ${formatNumber(Math.abs(s.revenueRangeDeltaPct), 1)}%` : 'Revenue spread unchanged');
+
+  mount.innerHTML = `
+    <div class="optimizer-feedback-metric ${stopTone}">${escapeHtml(stopLabel)}</div>
+    <div class="optimizer-feedback-metric ${revenueTone}">${escapeHtml(revenueLabel)}</div>
+  `;
+  mount.hidden = false;
+}
 
 function refreshMarkerStyles(accountIds = null) {
   refreshMarkers(accountIds);
@@ -2166,6 +2214,7 @@ function runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacen
 function optimizeRoutes() {
   if (!state.accounts.length) return;
 
+  console.time('optimizeRoutes');
   try {
     const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
     const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
@@ -2207,6 +2256,7 @@ function optimizeRoutes() {
     const continuityWeight = Number(els.disruptionSlider.value) / 100;
     const balanceMode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
     const optimizerMix = getOptimizerMix();
+    const beforeSummary = buildOptimizationSummary();
 
     const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
     const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
@@ -2242,7 +2292,7 @@ function optimizeRoutes() {
 
     let iterationsExecuted = 0;
 
-    for (let iter = 0; iter < 6; iter += 1) {
+    for (let iter = 0; iter < 20; iter += 1) {
       iterationsExecuted += 1;
       let changedThisPass = false;
       let repLoadOrder = null;
@@ -2332,6 +2382,20 @@ function optimizeRoutes() {
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
+
+    performLocalRefinement(
+      assignments,
+      targetRepNames,
+      continuityWeight,
+      minStops,
+      maxStops,
+      targetStopsPerRep,
+      adjacency,
+      assignmentCtx,
+      movableForCleanup
+    );
+
+    runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
     enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
@@ -2346,7 +2410,7 @@ function optimizeRoutes() {
     }
 
     const changes = [];
-    const repsBefore = getAllAssignedReps();
+    const repsBefore = getAvailableReps();
 
     for (const account of state.accounts) {
       const nextRep = assignments.get(account._id) || account.assignedRep;
@@ -2365,13 +2429,21 @@ function optimizeRoutes() {
         : 'Optimizer did not find a better assignment under the current rules.');
       return;
     }
+
+    const disruptionPreset = getDisruptionPreset();
+    const optimizeLabel = `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`;
     applyChanges(
       changes,
-      '',
+      optimizeLabel,
       repsBefore
     );
 
+    state.optimizationSummary = buildOptimizationSummary(beforeSummary, {
+      weightLabel: getOptimizerWeightLabel(),
+      disruptionLabel: disruptionPreset.short
+    });
     renderOptimizationFeedback();
+    updateLastAction('');
 
   } catch (err) {
     console.error('Optimize Routes failed:', err);
@@ -2379,6 +2451,43 @@ function optimizeRoutes() {
   }
 }
 
+function buildOptimizationSummary(previousSummary = null, meta = {}) {
+  const rows = summarizeByRep();
+  const movedCount = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep).length;
+  const protectedHeld = state.accounts.filter(a => a.protected && a.assignedRep === a.originalAssignedRep).length;
+  const stops = rows.map(r => r.stops);
+  const revenue = rows.map(r => r.revenue);
+  const stopRange = Math.max(0, Math.max(...stops) - Math.min(...stops));
+  const revenueRange = Math.max(0, Math.max(...revenue) - Math.min(...revenue));
+
+  const summary = {
+    repCount: rows.length,
+    movedCount,
+    protectedHeld,
+    minStops: Math.min(...stops),
+    maxStops: Math.max(...stops),
+    minRevenue: Math.min(...revenue),
+    maxRevenue: Math.max(...revenue),
+    avgStops: rows.reduce((sum, r) => sum + r.stops, 0) / Math.max(1, rows.length),
+    stopRange,
+    revenueRange,
+    stopRangeDeltaPct: 0,
+    revenueRangeDeltaPct: 0,
+    weightLabel: meta.weightLabel || 'Balanced',
+    disruptionLabel: meta.disruptionLabel || getDisruptionPreset().short
+  };
+
+  if (previousSummary) {
+    summary.stopRangeDeltaPct = previousSummary.stopRange > 0
+      ? ((previousSummary.stopRange - summary.stopRange) / previousSummary.stopRange) * 100
+      : 0;
+    summary.revenueRangeDeltaPct = previousSummary.revenueRange > 0
+      ? ((previousSummary.revenueRange - summary.revenueRange) / previousSummary.revenueRange) * 100
+      : 0;
+  }
+
+  return summary;
+}
 
 
 function createAssignmentContext(targetRepNames, assignments) {
@@ -2616,6 +2725,110 @@ function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, min
 
   runBorderPass(accounts, assignments, minStops, adjacency, ctx);
   runBorderPass([...accounts].reverse(), assignments, minStops, adjacency, ctx);
+}
+
+
+function performLocalRefinement(
+  assignments,
+  targetRepNames,
+  continuityWeight,
+  minStops,
+  maxStops,
+  targetStopsPerRep,
+  adjacency,
+  ctx,
+  movableAccounts = null
+) {
+  const candidatesBase = Array.isArray(movableAccounts) && movableAccounts.length
+    ? movableAccounts
+    : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+
+  let improved = true;
+  let passes = 0;
+
+  while (improved && passes < 6) {
+    improved = false;
+    passes += 1;
+
+    const candidates = [...candidatesBase]
+      .map(account => ({ account, sortKey: Math.random() }))
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .map(entry => entry.account);
+
+    for (const account of candidates) {
+      const currentRep = assignments.get(account._id) || account.assignedRep;
+      if (!currentRep) continue;
+
+      const neighbors = adjacency.get(account._id);
+      if (!neighbors || neighbors.size < 2) continue;
+
+      const possibleTargets = new Set();
+      neighbors.forEach(id => {
+        const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+        if (neighborRep && neighborRep !== currentRep) possibleTargets.add(neighborRep);
+      });
+
+      if (!possibleTargets.size) continue;
+
+      const currentCount = ctx.count(currentRep);
+      if (currentCount <= minStops) continue;
+
+      const oldCentroid = averageCentroidForRep(currentRep, ctx);
+      const oldDist = oldCentroid
+        ? squaredDistance(account.latitude, account.longitude, oldCentroid.lat, oldCentroid.lng)
+        : 0;
+
+      let bestTarget = null;
+      let bestDelta = 0;
+
+      for (const targetRep of possibleTargets) {
+        if (targetRep === currentRep) continue;
+        if (isRepLocked(targetRep)) continue;
+
+        const targetCount = ctx.count(targetRep);
+        if (targetCount >= maxStops) continue;
+
+        const newCentroid = averageCentroidForRep(targetRep, ctx);
+        const newDist = newCentroid
+          ? squaredDistance(account.latitude, account.longitude, newCentroid.lat, newCentroid.lng)
+          : 0;
+
+        const currentStopPenalty =
+          ((ctx.count(currentRep) - targetStopsPerRep) ** 2) +
+          ((ctx.count(targetRep) - targetStopsPerRep) ** 2);
+
+        const nextStopPenalty =
+          (((ctx.count(currentRep) - 1) - targetStopsPerRep) ** 2) +
+          (((ctx.count(targetRep) + 1) - targetStopsPerRep) ** 2);
+
+        const compactnessDelta = newDist - oldDist;
+        const stopDelta = nextStopPenalty - currentStopPenalty;
+        const localDelta =
+          localDominancePenalty(account, targetRep, assignments, adjacency) -
+          localDominancePenalty(account, currentRep, assignments, adjacency);
+
+        const continuityDelta = account.currentRep === targetRep ? -continuityWeight : 0;
+
+        const scoreDelta =
+          (compactnessDelta * (1 - continuityWeight)) +
+          (stopDelta * 0.85) +
+          (localDelta * 2.0) +
+          continuityDelta;
+
+        if (scoreDelta < bestDelta) {
+          bestDelta = scoreDelta;
+          bestTarget = targetRep;
+        }
+      }
+
+      if (bestTarget && bestDelta < -0.05) {
+        ctx.removeFromRep(currentRep, account);
+        ctx.addToRep(bestTarget, account);
+        assignments.set(account._id, bestTarget);
+        improved = true;
+      }
+    }
+  }
 }
 
 async function exportWorkbook() {
