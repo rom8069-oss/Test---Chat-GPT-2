@@ -2214,7 +2214,6 @@ function runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacen
 function optimizeRoutes() {
   if (!state.accounts.length) return;
 
-  console.time('optimizeRoutes');
   try {
     const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
     const minStopsRaw = parseInt(els.minStopsInput.value || '1', 10);
@@ -2319,7 +2318,7 @@ function optimizeRoutes() {
         for (const rep of targetRepNames) {
           const centroid = centroids.get(rep) || averageCentroidForRep(rep, assignmentCtx);
           const compactnessScore = centroid
-            ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * (1 - continuityWeight)
+            ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * ((1 - continuityWeight) * 1.4)
             : 0;
 
           const continuityPenalty = account.currentRep === rep ? 0 : continuityWeight;
@@ -2383,13 +2382,11 @@ function optimizeRoutes() {
     rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
 
-    performLocalRefinement(
+    performContiguityRefinement(
       assignments,
       targetRepNames,
-      continuityWeight,
       minStops,
       maxStops,
-      targetStopsPerRep,
       adjacency,
       assignmentCtx,
       movableForCleanup
@@ -2410,7 +2407,7 @@ function optimizeRoutes() {
     }
 
     const changes = [];
-    const repsBefore = getAvailableReps();
+    const repsBefore = getAllAssignedReps();
 
     for (const account of state.accounts) {
       const nextRep = assignments.get(account._id) || account.assignedRep;
@@ -2424,7 +2421,7 @@ function optimizeRoutes() {
     }
 
     if (!changes.length) {
-      showToast(iterationsExecuted < 6
+      showToast(iterationsExecuted < 20
         ? 'Optimizer converged early and did not find a better assignment under the current rules.'
         : 'Optimizer did not find a better assignment under the current rules.');
       return;
@@ -2622,7 +2619,102 @@ function localDominancePenalty(account, rep, assignments, adjacency) {
   if (!total) return 0;
 
   const agreementRatio = same / total;
-  return agreementRatio < 0.5 ? (0.5 - agreementRatio) * 0.6 : 0;
+
+  if (agreementRatio >= 0.75) return -0.08;
+  if (agreementRatio >= 0.6) return 0;
+
+  return (0.6 - agreementRatio) * 1.6;
+}
+
+
+
+function countNeighborRepSupport(account, rep, assignments, adjacency) {
+  const neighbors = adjacency.get(account._id);
+  if (!neighbors || !neighbors.size) return 0;
+
+  let support = 0;
+  neighbors.forEach(id => {
+    const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+    if (neighborRep === rep) support += 1;
+  });
+  return support;
+}
+
+function performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
+  const candidates = Array.isArray(movableAccounts) && movableAccounts.length
+    ? movableAccounts
+    : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+
+  let changed = true;
+  let passes = 0;
+
+  while (changed && passes < 10) {
+    changed = false;
+    passes += 1;
+
+    const ordered = [...candidates]
+      .sort((a, b) => {
+        const aSupport = countNeighborRepSupport(a, assignments.get(a._id) || a.assignedRep, assignments, adjacency);
+        const bSupport = countNeighborRepSupport(b, assignments.get(b._id) || b.assignedRep, assignments, adjacency);
+        return aSupport - bSupport;
+      });
+
+    for (const account of ordered) {
+      const currentRep = assignments.get(account._id) || account.assignedRep;
+      if (!currentRep) continue;
+      if (ctx.count(currentRep) <= minStops) continue;
+
+      const neighbors = adjacency.get(account._id);
+      if (!neighbors || neighbors.size < 2) continue;
+
+      const currentSupport = countNeighborRepSupport(account, currentRep, assignments, adjacency);
+      const oldCentroid = averageCentroidForRep(currentRep, ctx);
+      const oldDist = oldCentroid
+        ? squaredDistance(account.latitude, account.longitude, oldCentroid.lat, oldCentroid.lng)
+        : 0;
+
+      const targetCounts = new Map();
+      neighbors.forEach(id => {
+        const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+        if (!neighborRep || neighborRep === currentRep) return;
+        targetCounts.set(neighborRep, (targetCounts.get(neighborRep) || 0) + 1);
+      });
+
+      let bestRep = null;
+      let bestDelta = 0;
+
+      for (const [targetRep, targetSupport] of targetCounts.entries()) {
+        if (isRepLocked(targetRep)) continue;
+        if (ctx.count(targetRep) >= maxStops) continue;
+        if (targetSupport < 2) continue;
+
+        const newCentroid = averageCentroidForRep(targetRep, ctx);
+        const newDist = newCentroid
+          ? squaredDistance(account.latitude, account.longitude, newCentroid.lat, newCentroid.lng)
+          : oldDist;
+
+        const supportDelta = targetSupport - currentSupport;
+        const distanceDelta = newDist - oldDist;
+
+        const moveScore =
+          (supportDelta * 1.35) -
+          (distanceDelta * 0.85) -
+          (ctx.count(targetRep) < minStops ? 0.35 : 0);
+
+        if (moveScore > bestDelta && (supportDelta >= 2 || (supportDelta >= 1 && distanceDelta <= 0))) {
+          bestDelta = moveScore;
+          bestRep = targetRep;
+        }
+      }
+
+      if (bestRep) {
+        ctx.removeFromRep(currentRep, account);
+        ctx.addToRep(bestRep, account);
+        assignments.set(account._id, bestRep);
+        changed = true;
+      }
+    }
+  }
 }
 
 function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx) {
@@ -2725,110 +2817,6 @@ function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, min
 
   runBorderPass(accounts, assignments, minStops, adjacency, ctx);
   runBorderPass([...accounts].reverse(), assignments, minStops, adjacency, ctx);
-}
-
-
-function performLocalRefinement(
-  assignments,
-  targetRepNames,
-  continuityWeight,
-  minStops,
-  maxStops,
-  targetStopsPerRep,
-  adjacency,
-  ctx,
-  movableAccounts = null
-) {
-  const candidatesBase = Array.isArray(movableAccounts) && movableAccounts.length
-    ? movableAccounts
-    : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
-
-  let improved = true;
-  let passes = 0;
-
-  while (improved && passes < 6) {
-    improved = false;
-    passes += 1;
-
-    const candidates = [...candidatesBase]
-      .map(account => ({ account, sortKey: Math.random() }))
-      .sort((a, b) => a.sortKey - b.sortKey)
-      .map(entry => entry.account);
-
-    for (const account of candidates) {
-      const currentRep = assignments.get(account._id) || account.assignedRep;
-      if (!currentRep) continue;
-
-      const neighbors = adjacency.get(account._id);
-      if (!neighbors || neighbors.size < 2) continue;
-
-      const possibleTargets = new Set();
-      neighbors.forEach(id => {
-        const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
-        if (neighborRep && neighborRep !== currentRep) possibleTargets.add(neighborRep);
-      });
-
-      if (!possibleTargets.size) continue;
-
-      const currentCount = ctx.count(currentRep);
-      if (currentCount <= minStops) continue;
-
-      const oldCentroid = averageCentroidForRep(currentRep, ctx);
-      const oldDist = oldCentroid
-        ? squaredDistance(account.latitude, account.longitude, oldCentroid.lat, oldCentroid.lng)
-        : 0;
-
-      let bestTarget = null;
-      let bestDelta = 0;
-
-      for (const targetRep of possibleTargets) {
-        if (targetRep === currentRep) continue;
-        if (isRepLocked(targetRep)) continue;
-
-        const targetCount = ctx.count(targetRep);
-        if (targetCount >= maxStops) continue;
-
-        const newCentroid = averageCentroidForRep(targetRep, ctx);
-        const newDist = newCentroid
-          ? squaredDistance(account.latitude, account.longitude, newCentroid.lat, newCentroid.lng)
-          : 0;
-
-        const currentStopPenalty =
-          ((ctx.count(currentRep) - targetStopsPerRep) ** 2) +
-          ((ctx.count(targetRep) - targetStopsPerRep) ** 2);
-
-        const nextStopPenalty =
-          (((ctx.count(currentRep) - 1) - targetStopsPerRep) ** 2) +
-          (((ctx.count(targetRep) + 1) - targetStopsPerRep) ** 2);
-
-        const compactnessDelta = newDist - oldDist;
-        const stopDelta = nextStopPenalty - currentStopPenalty;
-        const localDelta =
-          localDominancePenalty(account, targetRep, assignments, adjacency) -
-          localDominancePenalty(account, currentRep, assignments, adjacency);
-
-        const continuityDelta = account.currentRep === targetRep ? -continuityWeight : 0;
-
-        const scoreDelta =
-          (compactnessDelta * (1 - continuityWeight)) +
-          (stopDelta * 0.85) +
-          (localDelta * 2.0) +
-          continuityDelta;
-
-        if (scoreDelta < bestDelta) {
-          bestDelta = scoreDelta;
-          bestTarget = targetRep;
-        }
-      }
-
-      if (bestTarget && bestDelta < -0.05) {
-        ctx.removeFromRep(currentRep, account);
-        ctx.addToRep(bestTarget, account);
-        assignments.set(account._id, bestTarget);
-        improved = true;
-      }
-    }
-  }
 }
 
 async function exportWorkbook() {
