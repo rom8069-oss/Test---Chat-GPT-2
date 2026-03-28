@@ -130,7 +130,7 @@ select{
 .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
 
 .btn-primary{
-  background:#4f79d8;
+  background:#1f3f73;
   color:#fff;
   border-color:transparent;
 }
@@ -1037,11 +1037,26 @@ tbody tr.rep-row-locked td:first-child{
 
 
 .leaflet-tile{
-  outline:1px solid transparent;
+  outline:none !important;
+  border:none !important;
+  box-shadow:none !important;
   backface-visibility:hidden;
   -webkit-backface-visibility:hidden;
+  image-rendering:auto;
 }
 
 .leaflet-container{
   background:#dde6ef;
+}
+
+
+.map-actions #assign-btn,
+.map-actions #optimize-btn{
+  min-width:132px;
+  justify-content:center;
+}
+
+
+.leaflet-tile-container{
+  transform:translateZ(0);
 }
