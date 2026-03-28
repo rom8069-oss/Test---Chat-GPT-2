@@ -145,6 +145,10 @@ select{
   background:#fff;
 }
 
+.is-hidden{
+  display:none !important;
+}
+
 .file-label{
   display:inline-flex;
   align-items:center;
@@ -154,10 +158,6 @@ select{
 }
 
 input[type="file"]{ display:none; }
-
-.is-hidden{
-  display:none !important;
-}
 
 .upload-status-wrap{
   position:relative;
@@ -1008,39 +1008,6 @@ tbody tr.rep-row-locked td:first-child{
 }
 
 
-.selected-item{
-  border:1px solid var(--border-soft);
-  border-radius:14px;
-  padding:10px 12px;
-  background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);
-  box-shadow:0 6px 16px rgba(41,65,91,.04);
-}
-
-.transfer-line{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  flex-wrap:wrap;
-}
-
-.metric-chip,.metric-chip{
-  background:#f5f9fd;
-  border:1px solid var(--border-soft);
-  color:var(--muted);
-}
-
-.rep-chip{
-  min-height:24px;
-  padding:0 9px;
-  border-radius:999px;
-  display:inline-flex;
-  align-items:center;
-  font-size:11px;
-  font-weight:800;
-  background:#eef5ff;
-  border:1px solid #d9e6fb;
-  color:var(--primary);
-}
 
 .leaflet-popup-content-wrapper{
   border-radius:16px;
@@ -1051,7 +1018,8 @@ tbody tr.rep-row-locked td:first-child{
   box-shadow:none;
 }
 
-n
+
+
 .routes-head-insights{
   margin-left:auto;
   display:flex;
@@ -1100,13 +1068,14 @@ n
 }
 
 
-/* Leaflet tile seam fixes */
 
 
 
 
 
-/* Strong Leaflet seam suppression */
+
+
+
 
 
 
