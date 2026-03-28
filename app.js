@@ -1112,6 +1112,7 @@ function loadSelectedSheet() {
   }
 
   state.accounts = normalized;
+  registerRepNames(normalized.map(a => a.assignedRep || a.currentRep || a.originalAssignedRep));
   state.accountById = new Map(normalized.map(a => [a._id, a]));
   state.neighborMap = buildNeighborMap(normalized);
   state.currentHeaderMap = normalizedResult.headerMap || {};
@@ -2160,6 +2161,8 @@ function undoLastAction() {
 }
 
 function resetAssignments() {
+  registerRepNames(state.accounts.map(account => account.assignedRep || account.currentRep || account.originalAssignedRep));
+
   let resetCount = 0;
   const resetChanges = [];
 
