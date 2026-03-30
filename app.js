@@ -282,7 +282,7 @@ function getOptimizerMix() {
     return { stopsPriority: 0, revenuePriority: 1 };
   }
   if (mode === 'compact') {
-    return { stopsPriority: 0.85, revenuePriority: 0.15 };
+    return { stopsPriority: 0.9, revenuePriority: 0.1 };
   }
   return { stopsPriority: 0.7, revenuePriority: 0.3 };
 }
@@ -328,27 +328,27 @@ function getOptimizerProfile(mode = getOptimizerMode(), repeatRun = false) {
 
   if (normalized === 'compact') {
     base.frontierSupportMin = 1;
-    base.frontierStrongSupportMin = 2;
+    base.frontierStrongSupportMin = 3;
     base.repairSupportMin = 2;
-    base.strongSupportToFreeze = repeatRun ? 3 : 4;
-    base.supportGainWeight = 2.8;
-    base.compactnessGainWeight = 1.0;
-    base.continuityMovePenaltyWeight = 0.95;
-    base.mixedNeighborWeight = 1.7;
-    base.hardMixedPenalty = 5.2;
-    base.underMinBoost = 1.15;
-    base.frontierPenalty = 0.3;
-    base.disconnectedComponentWeight = 95;
-    base.islandPenaltyWeight = 16;
-    base.mixedEdgeWeight = 6.5;
-    base.compactnessPenaltyWeight = 0.1;
-    base.stopPenaltyWeight = 14;
-    base.revenuePenaltyWeight = 0.8;
-    base.disruptionPenaltyWeight = 0.45;
-    base.cleanupPasses = repeatRun ? 1 : 4;
-    base.repairRoundsPrimary = repeatRun ? 1 : 3;
-    base.repairRoundsSecondary = repeatRun ? 1 : 2;
-    base.moveThreshold = repeatRun ? 1.35 : 1.0;
+    base.strongSupportToFreeze = repeatRun ? 4 : 5;
+    base.supportGainWeight = 3.2;
+    base.compactnessGainWeight = 1.2;
+    base.continuityMovePenaltyWeight = 1.0;
+    base.mixedNeighborWeight = 2.1;
+    base.hardMixedPenalty = 6.8;
+    base.underMinBoost = 1.1;
+    base.frontierPenalty = 0.38;
+    base.disconnectedComponentWeight = 110;
+    base.islandPenaltyWeight = 20;
+    base.mixedEdgeWeight = 8.0;
+    base.compactnessPenaltyWeight = 0.12;
+    base.stopPenaltyWeight = 13;
+    base.revenuePenaltyWeight = 0.7;
+    base.disruptionPenaltyWeight = 0.48;
+    base.cleanupPasses = repeatRun ? 2 : 5;
+    base.repairRoundsPrimary = repeatRun ? 2 : 4;
+    base.repairRoundsSecondary = repeatRun ? 1 : 3;
+    base.moveThreshold = repeatRun ? 1.55 : 1.2;
     base.borderOnlyOnRepeat = true;
     return base;
   }
@@ -1957,31 +1957,34 @@ function renderRepTable() {
 }
 
 function summarizeByRep() {
-  const availableReps = getAvailableReps();
-
   if (state.repSummaryCache && state.repSummaryCache.size) {
-    const rows = [...state.repSummaryCache.values()].map(row => ({ ...row }));
-    const seen = new Set(rows.map(row => row.rep));
-    availableReps.forEach(rep => {
-      if (!seen.has(rep)) rows.push(createEmptyRepSummaryRow(rep));
-    });
-    return rows;
+    return [...state.repSummaryCache.values()].map(row => ({ ...row }));
   }
 
   const map = new Map();
   const originalMap = new Map();
-
-  availableReps.forEach(rep => {
-    map.set(rep, createEmptyRepSummaryRow(rep));
-    if (!originalMap.has(rep)) originalMap.set(rep, { stops: 0, revenue: 0 });
-  });
 
   for (const account of state.accounts) {
     const assignedRep = account.assignedRep || 'Unassigned';
     const originalRep = account.originalAssignedRep || 'Unassigned';
 
     if (!map.has(assignedRep)) {
-      map.set(assignedRep, createEmptyRepSummaryRow(assignedRep));
+      map.set(assignedRep, {
+        rep: assignedRep,
+        stops: 0,
+        deltaStops: 0,
+        revenue: 0,
+        deltaRevenue: 0,
+        A: 0,
+        B: 0,
+        C: 0,
+        D: 0,
+        planned4W: 0,
+        avgWeekly: 0,
+        protected: 0,
+        movedIn: 0,
+        movedOut: 0
+      });
     }
 
     if (!originalMap.has(originalRep)) {
@@ -2211,7 +2214,7 @@ function syncControlState() {
   els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
 
-  const reps = getAvailableReps();
+  const reps = getAllAssignedReps();
   if (document.activeElement !== els.repCountInput) {
     els.repCountInput.value = reps.length || 1;
   }
