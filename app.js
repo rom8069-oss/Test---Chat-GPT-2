@@ -79,6 +79,8 @@ const state = {
   },
   optimizationSummary: null,
   lastOptimizeMeta: null,
+  totalRevenuePool: 0,
+  optimizationUiBusy: false,
   tableSort: {
     key: 'rep',
     dir: 'asc'
@@ -206,6 +208,34 @@ function mountUploadStatusPanelToBody() {
   if (els.uploadStatusPanel.parentElement !== document.body) {
     document.body.appendChild(els.uploadStatusPanel);
   }
+}
+
+function setOptimizeButtonBusy(isBusy) {
+  state.optimizationUiBusy = !!isBusy;
+  if (!els.optimizeBtn) return;
+  els.optimizeBtn.disabled = !!isBusy;
+  els.optimizeBtn.classList.toggle('is-busy', !!isBusy);
+  els.optimizeBtn.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+  if (!els.optimizeBtn.dataset.baseLabel) {
+    els.optimizeBtn.dataset.baseLabel = els.optimizeBtn.textContent || 'Optimize';
+  }
+  els.optimizeBtn.textContent = isBusy ? 'Optimizing…' : els.optimizeBtn.dataset.baseLabel;
+}
+
+function waitForNextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+function getNeighborIdsFast(account, adjacency = state.neighborMap) {
+  if (!account) return [];
+  if (Array.isArray(account._neighborIds)) return account._neighborIds;
+  const raw = adjacency.get(account._id);
+  if (!raw || !raw.size) {
+    account._neighborIds = [];
+    return account._neighborIds;
+  }
+  account._neighborIds = [...raw];
+  return account._neighborIds;
 }
 
 function ensureBalanceModeOptions() {
@@ -1411,6 +1441,10 @@ function buildHeaderMap(rows) {
     map[key] = match ? match.original : null;
   });
 
+  for (const account of accounts) {
+    account._neighborIds = map.has(account._id) ? [...map.get(account._id)] : [];
+  }
+
   return map;
 }
 
@@ -2400,28 +2434,19 @@ function runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacen
 }
 
 
-function setOptimizeBusy(isBusy) {
-  if (!els.optimizeBtn) return;
-  els.optimizeBtn.disabled = !!isBusy;
-  els.optimizeBtn.dataset.busy = isBusy ? '1' : '0';
-  els.optimizeBtn.classList.toggle('is-busy', !!isBusy);
-  els.optimizeBtn.textContent = isBusy ? 'Optimizing…' : 'Optimize Routes';
-}
-
-function nextPaintFrame() {
-  return new Promise(resolve => {
-    requestAnimationFrame(() => {
-      setTimeout(resolve, 0);
-    });
-  });
-}
-
 async function optimizeRoutes() {
-  if (!state.accounts.length) return;
-  if (els.optimizeBtn && els.optimizeBtn.dataset.busy === '1') return;
+  if (!state.accounts.length || state.optimizationUiBusy) return;
+  setOptimizeButtonBusy(true);
+  try {
+    await waitForNextPaint();
+    optimizeRoutesCore();
+  } finally {
+    setOptimizeButtonBusy(false);
+  }
+}
 
-  setOptimizeBusy(true);
-  await nextPaintFrame();
+function optimizeRoutesCore() {
+  if (!state.accounts.length) return;
 
   try {
     const targetCountRaw = parseInt(els.repCountInput.value || '1', 10);
@@ -2506,13 +2531,11 @@ async function optimizeRoutes() {
     const optimizerProfile = getOptimizerProfile(optimizerMode, repeatRun);
 
     const currentCtx = createAssignmentContext(targetRepNames, currentAssignments);
-    const totalRevenue = state.accounts.reduce((sum, account) => sum + Number(account.overallSales || 0), 0);
     const currentScore = evaluateStrictSolution(currentAssignments, targetRepNames, adjacency, {
       minStops,
       maxStops,
       continuityWeight,
-      profile: optimizerProfile,
-      totalRevenue
+      profile: optimizerProfile
     }, currentCtx);
 
     const assignments = new Map();
@@ -2552,8 +2575,7 @@ async function optimizeRoutes() {
       minStops,
       maxStops,
       continuityWeight,
-      profile: optimizerProfile,
-      totalRevenue
+      profile: optimizerProfile
     }, assignmentCtx);
 
     const maybeSaveBest = (force = false) => {
@@ -2562,8 +2584,7 @@ async function optimizeRoutes() {
         minStops,
         maxStops,
         continuityWeight,
-        profile: optimizerProfile,
-        totalRevenue
+        profile: optimizerProfile
       }, assignmentCtx);
       if (nextScore < bestScore) {
         bestScore = nextScore;
@@ -2632,8 +2653,7 @@ async function optimizeRoutes() {
         minStops,
         maxStops,
         continuityWeight,
-        profile: optimizerProfile,
-        totalRevenue
+        profile: optimizerProfile
       }, assignmentCtx);
       if (finalFastScore < bestScore) {
         bestScore = finalFastScore;
@@ -2655,8 +2675,7 @@ async function optimizeRoutes() {
       minStops,
       maxStops,
       continuityWeight,
-      profile: optimizerProfile,
-      totalRevenue
+      profile: optimizerProfile
     }, candidateCtx);
 
     if (!(candidateScore < currentScore - 0.01)) {
@@ -2726,8 +2745,6 @@ async function optimizeRoutes() {
   } catch (err) {
     console.error('Optimize Routes failed:', err);
     showToast('Optimize Routes hit an error. Send me the first red error line from the browser console.');
-  } finally {
-    setOptimizeBusy(false);
   }
 }
 
@@ -2749,29 +2766,19 @@ function buildOptimizeSignature(meta = {}) {
 }
 
 function buildAssignmentFingerprint(assignments) {
-  let hash = 2166136261;
-  let size = 0;
-
-  const applyString = value => {
-    const str = String(value || '');
-    for (let i = 0; i < str.length; i += 1) {
-      hash ^= str.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-  };
-
+  const buckets = new Map();
   assignments.forEach((rep, id) => {
     if (!rep) return;
-    size += 1;
-    applyString(rep);
-    hash ^= 31;
-    hash = Math.imul(hash, 16777619);
-    applyString(id);
-    hash ^= 127;
-    hash = Math.imul(hash, 16777619);
+    if (!buckets.has(rep)) buckets.set(rep, []);
+    buckets.get(rep).push(String(id));
   });
-
-  return `${size}:${(hash >>> 0).toString(16)}`;
+  return [...buckets.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base', numeric: true }))
+    .map(([rep, ids]) => {
+      ids.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+      return `${rep}:${ids.length}:${ids.join(',')}`;
+    })
+    .join('|');
 }
 
 function cloneAssignmentMap(assignments) {
@@ -3300,7 +3307,7 @@ function evaluateStrictSolution(assignments, targetRepNames, adjacency, options 
 
   const profile = options.profile || getOptimizerProfile();
   const localCtx = ctx || createAssignmentContext(targetRepNames, assignments);
-  const totalRevenue = Number(options.totalRevenue != null ? options.totalRevenue : state.accounts.reduce((sum, account) => sum + Number(account.overallSales || 0), 0));
+  const totalRevenue = state.accounts.reduce((sum, account) => sum + Number(account.overallSales || 0), 0);
   const targetRevenue = totalRevenue / Math.max(1, targetRepNames.length);
 
   for (const rep of targetRepNames) {
@@ -3547,18 +3554,18 @@ function buildFullRepStats(targetRepNames) {
 }
 
 function localDominancePenalty(account, rep, assignments, adjacency) {
-  const neighbors = adjacency.get(account._id);
-  if (!neighbors || !neighbors.size) return 0;
+  const neighbors = getNeighborIdsFast(account, adjacency);
+  if (!neighbors.length) return 0;
 
   let same = 0;
   let total = 0;
 
-  neighbors.forEach(id => {
+  for (const id of neighbors) {
     const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
-    if (!neighborRep) return;
+    if (!neighborRep) continue;
     if (neighborRep === rep) same += 1;
     total += 1;
-  });
+  }
 
   if (!total) return 0;
 
@@ -3574,37 +3581,37 @@ function localDominancePenalty(account, rep, assignments, adjacency) {
 
 
 function countNeighborRepSupport(account, rep, assignments, adjacency) {
-  const neighbors = adjacency.get(account._id);
-  if (!neighbors || !neighbors.size) return 0;
+  const neighbors = getNeighborIdsFast(account, adjacency);
+  if (!neighbors.length) return 0;
 
   let support = 0;
-  neighbors.forEach(id => {
+  for (const id of neighbors) {
     const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
     if (neighborRep === rep) support += 1;
-  });
+  }
   return support;
 }
 
 
 function fragmentationPenalty(account, rep, assignments, adjacency) {
-  const neighbors = adjacency.get(account._id);
-  if (!neighbors || !neighbors.size) return 0;
+  const neighbors = getNeighborIdsFast(account, adjacency);
+  if (!neighbors.length) return 0;
 
   let same = 0;
   let strongestOtherCount = 0;
   const otherCounts = new Map();
 
-  neighbors.forEach(id => {
+  for (const id of neighbors) {
     const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
-    if (!neighborRep) return;
+    if (!neighborRep) continue;
     if (neighborRep === rep) {
       same += 1;
-      return;
+      continue;
     }
     const next = (otherCounts.get(neighborRep) || 0) + 1;
     otherCounts.set(neighborRep, next);
     if (next > strongestOtherCount) strongestOtherCount = next;
-  });
+  }
 
   if (same >= 3) return 0;
   if (strongestOtherCount >= 3 && same <= 1) return 1.2;
@@ -3813,24 +3820,27 @@ function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops
     if (!under) break;
 
     let donor = null;
+    let donorCount = -Infinity;
     for (const rep of targetRepNames) {
-      if (ctx.count(rep) <= minStops) continue;
-      if (!donor || ctx.count(rep) > ctx.count(donor)) donor = rep;
+      const count = ctx.count(rep);
+      if (count > minStops && count > donorCount) {
+        donor = rep;
+        donorCount = count;
+      }
     }
     if (!donor) break;
 
     const underCentroid = averageCentroidForRep(under, ctx);
     let candidate = null;
-    let bestDist = Infinity;
-
+    let bestDistance = Infinity;
     for (const id of ctx.members(donor)) {
       const account = state.accountById.get(id);
       if (!account) continue;
-      const dist = underCentroid
+      const distance = underCentroid
         ? squaredDistance(account.latitude, account.longitude, underCentroid.lat, underCentroid.lng)
         : 0;
-      if (dist < bestDist) {
-        bestDist = dist;
+      if (distance < bestDistance) {
+        bestDistance = distance;
         candidate = account;
       }
     }
@@ -3858,24 +3868,27 @@ function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops
     if (!over) break;
 
     let receiver = null;
+    let receiverCount = Infinity;
     for (const rep of targetRepNames) {
-      if (ctx.count(rep) >= maxStops) continue;
-      if (!receiver || ctx.count(rep) < ctx.count(receiver)) receiver = rep;
+      const count = ctx.count(rep);
+      if (count < maxStops && count < receiverCount) {
+        receiver = rep;
+        receiverCount = count;
+      }
     }
     if (!receiver) break;
 
     const receiverCentroid = averageCentroidForRep(receiver, ctx);
     let candidate = null;
-    let bestDist = Infinity;
-
+    let bestDistance = Infinity;
     for (const id of ctx.members(over)) {
       const account = state.accountById.get(id);
       if (!account) continue;
-      const dist = receiverCentroid
+      const distance = receiverCentroid
         ? squaredDistance(account.latitude, account.longitude, receiverCentroid.lat, receiverCentroid.lng)
         : 0;
-      if (dist < bestDist) {
-        bestDist = dist;
+      if (distance < bestDistance) {
+        bestDistance = distance;
         candidate = account;
       }
     }
@@ -3995,15 +4008,15 @@ function enforceStopBoundsHard(assignments, targetRepNames, minStops, maxStops, 
 function runBorderPass(accounts, assignments, minStops, adjacency, ctx) {
   for (const account of accounts) {
     const currentRep = assignments.get(account._id) || account.assignedRep;
-    const neighbors = adjacency.get(account._id);
-    if (!neighbors || !neighbors.size) continue;
+    const neighbors = getNeighborIdsFast(account, adjacency);
+    if (!neighbors.length) continue;
 
     const counts = new Map();
-    neighbors.forEach(id => {
+    for (const id of neighbors) {
       const rep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
-      if (!rep) return;
+      if (!rep) continue;
       counts.set(rep, (counts.get(rep) || 0) + 1);
-    });
+    }
 
     const bestNeighborRep = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
     if (!bestNeighborRep || bestNeighborRep === currentRep) continue;
