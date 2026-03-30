@@ -208,35 +208,22 @@ function mountUploadStatusPanelToBody() {
   }
 }
 
-function ensureBalanceModeOptions(forceRebuild = false) {
+function ensureBalanceModeOptions() {
   if (!els.balanceMode) return;
-
   const desiredOptions = [
     { value: 'hybrid', label: 'Hybrid' },
     { value: 'stops', label: 'Stops' },
     { value: 'revenue', label: 'Revenue' },
     { value: 'compact', label: 'Compact' }
   ];
-
-  const currentValue = String(els.balanceMode.value || '').toLowerCase();
-
-  if (forceRebuild) {
-    els.balanceMode.innerHTML = desiredOptions.map(item => (
-      `<option value="${escapeHtmlAttr(item.value)}">${escapeHtml(item.label)}</option>`
-    )).join('');
-  } else {
-    const existing = new Set(Array.from(els.balanceMode.options || []).map(option => String(option.value || '').toLowerCase()));
-    for (const item of desiredOptions) {
-      if (existing.has(item.value)) continue;
-      const option = document.createElement('option');
-      option.value = item.value;
-      option.textContent = item.label;
-      els.balanceMode.appendChild(option);
-    }
+  const existing = new Set(Array.from(els.balanceMode.options || []).map(option => option.value));
+  for (const item of desiredOptions) {
+    if (existing.has(item.value)) continue;
+    const option = document.createElement('option');
+    option.value = item.value;
+    option.textContent = item.label;
+    els.balanceMode.appendChild(option);
   }
-
-  const allowed = new Set(desiredOptions.map(item => item.value));
-  els.balanceMode.value = allowed.has(currentValue) ? currentValue : 'hybrid';
 }
 
 function getOptimizerMode() {
@@ -270,7 +257,7 @@ function initOptimizerTuningUI() {
     els.balanceMode.classList.remove('optimizer-mode-hidden');
     els.balanceMode.removeAttribute('aria-hidden');
     els.balanceMode.tabIndex = 0;
-    ensureBalanceModeOptions(true);
+    ensureBalanceModeOptions();
     if (!['hybrid', 'stops', 'revenue', 'compact'].includes(els.balanceMode.value)) {
       els.balanceMode.value = 'hybrid';
     }
@@ -1970,34 +1957,31 @@ function renderRepTable() {
 }
 
 function summarizeByRep() {
+  const availableReps = getAvailableReps();
+
   if (state.repSummaryCache && state.repSummaryCache.size) {
-    return [...state.repSummaryCache.values()].map(row => ({ ...row }));
+    const rows = [...state.repSummaryCache.values()].map(row => ({ ...row }));
+    const seen = new Set(rows.map(row => row.rep));
+    availableReps.forEach(rep => {
+      if (!seen.has(rep)) rows.push(createEmptyRepSummaryRow(rep));
+    });
+    return rows;
   }
 
   const map = new Map();
   const originalMap = new Map();
+
+  availableReps.forEach(rep => {
+    map.set(rep, createEmptyRepSummaryRow(rep));
+    if (!originalMap.has(rep)) originalMap.set(rep, { stops: 0, revenue: 0 });
+  });
 
   for (const account of state.accounts) {
     const assignedRep = account.assignedRep || 'Unassigned';
     const originalRep = account.originalAssignedRep || 'Unassigned';
 
     if (!map.has(assignedRep)) {
-      map.set(assignedRep, {
-        rep: assignedRep,
-        stops: 0,
-        deltaStops: 0,
-        revenue: 0,
-        deltaRevenue: 0,
-        A: 0,
-        B: 0,
-        C: 0,
-        D: 0,
-        planned4W: 0,
-        avgWeekly: 0,
-        protected: 0,
-        movedIn: 0,
-        movedOut: 0
-      });
+      map.set(assignedRep, createEmptyRepSummaryRow(assignedRep));
     }
 
     if (!originalMap.has(originalRep)) {
@@ -2227,7 +2211,7 @@ function syncControlState() {
   els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
 
-  const reps = getAllAssignedReps();
+  const reps = getAvailableReps();
   if (document.activeElement !== els.repCountInput) {
     els.repCountInput.value = reps.length || 1;
   }
