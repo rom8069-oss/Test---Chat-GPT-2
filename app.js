@@ -233,7 +233,8 @@ function initOptimizerTuningUI() {
     els.balanceMode.classList.remove('optimizer-mode-hidden');
     els.balanceMode.removeAttribute('aria-hidden');
     els.balanceMode.tabIndex = 0;
-    if (!['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
+    ensureBalanceModeOptions();
+    if (!['hybrid', 'stops', 'revenue', 'compact'].includes(String(els.balanceMode.value || '').toLowerCase())) {
       els.balanceMode.value = 'hybrid';
     }
     const balanceField = els.balanceMode.closest('.field');
@@ -248,21 +249,42 @@ function initOptimizerTuningUI() {
   ensureOptimizerFeedbackMount();
 }
 
+
+function ensureBalanceModeOptions() {
+  if (!els.balanceMode) return;
+  const desiredOptions = [
+    { value: 'hybrid', label: 'Hybrid' },
+    { value: 'stops', label: 'Stops' },
+    { value: 'revenue', label: 'Revenue' },
+    { value: 'compact', label: 'Compact' }
+  ];
+  const previousValue = String(els.balanceMode.value || '').toLowerCase();
+  els.balanceMode.innerHTML = desiredOptions.map(item =>
+    `<option value="${escapeHtmlAttr(item.value)}">${escapeHtml(item.label)}</option>`
+  ).join('');
+  const allowed = new Set(desiredOptions.map(item => item.value));
+  els.balanceMode.value = allowed.has(previousValue) ? previousValue : 'hybrid';
+}
+
 function getOptimizerMix() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  const mode = (els.balanceMode && els.balanceMode.value) ? String(els.balanceMode.value).toLowerCase() : 'hybrid';
   if (mode === 'stops') {
     return { stopsPriority: 1, revenuePriority: 0 };
   }
   if (mode === 'revenue') {
     return { stopsPriority: 0, revenuePriority: 1 };
   }
+  if (mode === 'compact') {
+    return { stopsPriority: 0.85, revenuePriority: 0.15 };
+  }
   return { stopsPriority: 0.7, revenuePriority: 0.3 };
 }
 
 function getOptimizerWeightLabel() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  const mode = (els.balanceMode && els.balanceMode.value) ? String(els.balanceMode.value).toLowerCase() : 'hybrid';
   if (mode === 'stops') return 'Stops';
   if (mode === 'revenue') return 'Revenue';
+  if (mode === 'compact') return 'Compact';
   return 'Hybrid';
 }
 
@@ -304,8 +326,11 @@ function updateOptimizerUI() {
     els.disruptionSlider.title = preset.detail;
   }
 
-  if (els.balanceMode && !['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
-    els.balanceMode.value = 'hybrid';
+  if (els.balanceMode) {
+    ensureBalanceModeOptions();
+    if (!['hybrid', 'stops', 'revenue', 'compact'].includes(String(els.balanceMode.value || '').toLowerCase())) {
+      els.balanceMode.value = 'hybrid';
+    }
   }
 }
 
@@ -1796,43 +1821,28 @@ function summarizeByRep() {
 
   const map = new Map();
   const originalMap = new Map();
+  const visibleReps = new Set(getAvailableReps());
 
-  const seedRow = rep => ({
-    rep,
-    stops: 0,
-    deltaStops: 0,
-    revenue: 0,
-    deltaRevenue: 0,
-    A: 0,
-    B: 0,
-    C: 0,
-    D: 0,
-    planned4W: 0,
-    avgWeekly: 0,
-    protected: 0,
-    movedIn: 0,
-    movedOut: 0
-  });
+  for (const account of state.accounts) {
+    const assignedRep = account.assignedRep || 'Unassigned';
+    const originalRep = account.originalAssignedRep || 'Unassigned';
+    visibleReps.add(assignedRep);
+    visibleReps.add(originalRep);
+  }
 
-  getAvailableReps().forEach(rep => {
-    if (!map.has(rep)) map.set(rep, seedRow(rep));
+  visibleReps.forEach(rep => {
+    if (!map.has(rep)) map.set(rep, createEmptyRepSummaryRow(rep));
     if (!originalMap.has(rep)) originalMap.set(rep, { stops: 0, revenue: 0 });
   });
 
   for (const account of state.accounts) {
     const assignedRep = account.assignedRep || 'Unassigned';
     const originalRep = account.originalAssignedRep || 'Unassigned';
+    const row = map.get(assignedRep) || createEmptyRepSummaryRow(assignedRep);
+    const orig = originalMap.get(originalRep) || { stops: 0, revenue: 0 };
 
-    if (!map.has(assignedRep)) {
-      map.set(assignedRep, seedRow(assignedRep));
-    }
-
-    if (!originalMap.has(originalRep)) {
-      originalMap.set(originalRep, { stops: 0, revenue: 0 });
-    }
-
-    const row = map.get(assignedRep);
-    const orig = originalMap.get(originalRep);
+    map.set(assignedRep, row);
+    originalMap.set(originalRep, orig);
 
     row.stops += 1;
     row.revenue += Number(account.overallSales || 0);
@@ -1860,8 +1870,12 @@ function summarizeByRep() {
     row.avgWeekly = row.planned4W / 4;
   }
 
-  state.repSummaryCache = map;
-  return [...map.values()].map(row => ({ ...row }));
+  const rows = [...map.values()].sort((a, b) =>
+    a.rep.localeCompare(b.rep, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  state.repSummaryCache = new Map(rows.map(row => [row.rep, { ...row }]));
+  return rows;
 }
 
 function sortRepRows(rows) {
@@ -2297,9 +2311,8 @@ function optimizeRoutes() {
     const targetRevenuePerRep = totalRevenuePool / Math.max(1, targetRepNames.length);
 
     let iterationsExecuted = 0;
-    const iterationLimit = (balanceMode === 'compact' || balanceMode === 'hybrid') ? 24 : 20;
 
-    for (let iter = 0; iter < iterationLimit; iter += 1) {
+    for (let iter = 0; iter < 20; iter += 1) {
       iterationsExecuted += 1;
       let changedThisPass = false;
       let repLoadOrder = null;
@@ -2408,11 +2421,6 @@ function optimizeRoutes() {
     enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
-
-    if (balanceMode === 'compact' || balanceMode === 'hybrid') {
-      runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
-      rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
-    }
 
     const finalViolations = targetRepNames.filter(rep => {
       const count = assignmentCtx.count(rep);
