@@ -2472,11 +2472,12 @@ function optimizeRoutes() {
 
     if (
       state.lastOptimizeMeta &&
+      state.lastOptimizeMeta.mode === optimizerMode &&
       state.lastOptimizeMeta.signature === optimizeSignature &&
       state.lastOptimizeMeta.fingerprint === currentFingerprint &&
       state.lastOptimizeMeta.settled
     ) {
-      showToast(`Already optimized (${getOptimizerWeightLabel().toLowerCase()} mode).`);
+      showToast(`Already optimized (${optimizerMode} mode).`);
       return;
     }
 
@@ -2618,6 +2619,13 @@ function optimizeRoutes() {
     replaceAssignmentMap(assignments, bestAssignments);
 
     const candidateCtx = createAssignmentContext(targetRepNames, assignments);
+    enforceStopBoundsHard(assignments, targetRepNames, minStops, maxStops, adjacency, candidateCtx, {
+      minStops,
+      maxStops,
+      continuityWeight,
+      fastMode,
+      profile: optimizerProfile
+    });
     const candidateScore = evaluateStrictSolution(assignments, targetRepNames, adjacency, {
       minStops,
       maxStops,
@@ -2627,6 +2635,7 @@ function optimizeRoutes() {
 
     if (!(candidateScore < currentScore - 0.01)) {
       state.lastOptimizeMeta = {
+        mode: optimizerMode,
         signature: optimizeSignature,
         fingerprint: currentFingerprint,
         settled: true
@@ -2634,7 +2643,7 @@ function optimizeRoutes() {
       syncRepFilterSelection();
       renderRepControls();
       syncControlState();
-      showToast(`No better ${getOptimizerWeightLabel().toLowerCase()} solution found. Kept the current layout.`);
+      showToast(`No better ${optimizerMode} solution found. Kept the current layout.`);
       return;
     }
 
@@ -2663,11 +2672,12 @@ function optimizeRoutes() {
 
     if (!changes.length) {
       state.lastOptimizeMeta = {
+        mode: optimizerMode,
         signature: optimizeSignature,
         fingerprint: currentFingerprint,
         settled: true
       };
-      showToast(`Optimizer did not find a better assignment under the current ${getOptimizerWeightLabel().toLowerCase()} rules.`);
+      showToast(`Optimizer did not find a better assignment under the current ${optimizerMode} rules.`);
       return;
     }
 
@@ -2680,6 +2690,7 @@ function optimizeRoutes() {
       disruptionLabel: disruptionPreset.short
     });
     state.lastOptimizeMeta = {
+      mode: optimizerMode,
       signature: optimizeSignature,
       fingerprint: buildAssignmentFingerprint(buildCurrentAssignmentMap()),
       settled: false
@@ -2711,13 +2722,17 @@ function buildOptimizeSignature(meta = {}) {
 
 function buildAssignmentFingerprint(assignments) {
   const buckets = new Map();
-  assignments.forEach(rep => {
+  assignments.forEach((rep, id) => {
     if (!rep) return;
-    buckets.set(rep, (buckets.get(rep) || 0) + 1);
+    if (!buckets.has(rep)) buckets.set(rep, []);
+    buckets.get(rep).push(String(id));
   });
   return [...buckets.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base', numeric: true }))
-    .map(([rep, count]) => `${rep}:${count}`)
+    .map(([rep, ids]) => {
+      ids.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+      return `${rep}:${ids.length}:${ids.join(',')}`;
+    })
     .join('|');
 }
 
@@ -3812,6 +3827,105 @@ function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops
 function rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, ctx) {
   enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx);
   enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx);
+}
+
+function enforceStopBoundsHard(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, options = {}) {
+  let movedAny = false;
+  let guard = 0;
+
+  const moveAccount = (account, fromRep, toRep) => {
+    if (!account || !fromRep || !toRep || fromRep === toRep) return false;
+    if (ctx.count(fromRep) <= minStops) return false;
+    if (ctx.count(toRep) >= maxStops) return false;
+    if (wouldDisconnectRepByRemoving(account, fromRep, assignments, adjacency, ctx)) return false;
+    ctx.removeFromRep(fromRep, account);
+    ctx.addToRep(toRep, account);
+    assignments.set(account._id, toRep);
+    movedAny = true;
+    return true;
+  };
+
+  while (guard < 4000) {
+    guard += 1;
+    const overRep = targetRepNames
+      .filter(rep => ctx.count(rep) > maxStops)
+      .sort((a, b) => ctx.count(b) - ctx.count(a))[0];
+    if (!overRep) break;
+
+    const candidates = [...ctx.members(overRep)]
+      .map(id => state.accountById.get(id))
+      .filter(account => account && !account.protected && !isAccountLocked(account));
+
+    let moved = false;
+
+    for (const account of candidates) {
+      const counts = getNeighborRepCounts(account, assignments, adjacency);
+      const receiverCandidates = targetRepNames
+        .filter(rep => rep !== overRep && ctx.count(rep) < maxStops)
+        .map(rep => ({
+          rep,
+          support: counts.get(rep) || 0,
+          gain: estimateStrictMoveGain(account, overRep, rep, assignments, adjacency, ctx, options, counts.get(overRep) || 0),
+          underBoost: ctx.count(rep) < minStops ? 1000 : 0
+        }))
+        .filter(item => item.support > 0)
+        .sort((a, b) => (b.underBoost + b.support * 100 + b.gain) - (a.underBoost + a.support * 100 + a.gain));
+
+      for (const choice of receiverCandidates) {
+        if (moveAccount(account, overRep, choice.rep)) {
+          moved = true;
+          break;
+        }
+      }
+      if (moved) break;
+    }
+
+    if (!moved) break;
+  }
+
+  guard = 0;
+  while (guard < 4000) {
+    guard += 1;
+    const underRep = targetRepNames
+      .filter(rep => ctx.count(rep) < minStops)
+      .sort((a, b) => ctx.count(a) - ctx.count(b))[0];
+    if (!underRep) break;
+
+    const donorCandidates = targetRepNames
+      .filter(rep => rep !== underRep && ctx.count(rep) > minStops)
+      .sort((a, b) => ctx.count(b) - ctx.count(a));
+
+    let moved = false;
+    for (const donorRep of donorCandidates) {
+      const donorAccounts = [...ctx.members(donorRep)]
+        .map(id => state.accountById.get(id))
+        .filter(account => account && !account.protected && !isAccountLocked(account))
+        .map(account => {
+          const counts = getNeighborRepCounts(account, assignments, adjacency);
+          return {
+            account,
+            support: counts.get(underRep) || 0,
+            gain: estimateStrictMoveGain(account, donorRep, underRep, assignments, adjacency, ctx, options, counts.get(donorRep) || 0)
+          };
+        })
+        .filter(item => item.support > 0)
+        .sort((a, b) => (b.support * 100 + b.gain) - (a.support * 100 + a.gain));
+
+      for (const item of donorAccounts) {
+        if (moveAccount(item.account, donorRep, underRep)) {
+          moved = true;
+          break;
+        }
+      }
+      if (moved) break;
+    }
+
+    if (!moved) break;
+  }
+
+  enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx);
+  enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, ctx);
+  return movedAny;
 }
 
 function runBorderPass(accounts, assignments, minStops, adjacency, ctx) {
