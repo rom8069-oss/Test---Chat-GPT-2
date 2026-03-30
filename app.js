@@ -295,6 +295,141 @@ function getOptimizerWeightLabel() {
   return 'Hybrid';
 }
 
+function getOptimizerProfile(mode = getOptimizerMode(), repeatRun = false) {
+  const normalized = ['hybrid', 'stops', 'revenue', 'compact'].includes(mode) ? mode : 'hybrid';
+  const base = {
+    mode: normalized,
+    frontierSupportMin: 1,
+    frontierStrongSupportMin: 2,
+    repairSupportMin: 2,
+    strongSupportToFreeze: 3,
+    supportGainWeight: 2.4,
+    compactnessGainWeight: 0.9,
+    continuityMovePenaltyWeight: 0.8,
+    mixedNeighborWeight: 1.35,
+    hardMixedPenalty: 4.2,
+    underMinBoost: 1.35,
+    frontierPenalty: 0.25,
+    disconnectedComponentWeight: 75,
+    islandPenaltyWeight: 12,
+    mixedEdgeWeight: 4.5,
+    compactnessPenaltyWeight: 0.08,
+    stopPenaltyWeight: 18,
+    revenuePenaltyWeight: 1.2,
+    disruptionPenaltyWeight: 0.35,
+    cleanupPasses: repeatRun ? 1 : 3,
+    repairRoundsPrimary: repeatRun ? 2 : 3,
+    repairRoundsSecondary: repeatRun ? 1 : 2,
+    moveThreshold: repeatRun ? 1.15 : 0.8,
+    islandRepairEnabled: true,
+    borderOnlyOnRepeat: false,
+    label: normalized.charAt(0).toUpperCase() + normalized.slice(1)
+  };
+
+  if (normalized === 'compact') {
+    base.frontierSupportMin = 1;
+    base.frontierStrongSupportMin = 2;
+    base.repairSupportMin = 2;
+    base.strongSupportToFreeze = repeatRun ? 3 : 4;
+    base.supportGainWeight = 2.8;
+    base.compactnessGainWeight = 1.0;
+    base.continuityMovePenaltyWeight = 0.95;
+    base.mixedNeighborWeight = 1.7;
+    base.hardMixedPenalty = 5.2;
+    base.underMinBoost = 1.15;
+    base.frontierPenalty = 0.3;
+    base.disconnectedComponentWeight = 95;
+    base.islandPenaltyWeight = 16;
+    base.mixedEdgeWeight = 6.5;
+    base.compactnessPenaltyWeight = 0.1;
+    base.stopPenaltyWeight = 14;
+    base.revenuePenaltyWeight = 0.8;
+    base.disruptionPenaltyWeight = 0.45;
+    base.cleanupPasses = repeatRun ? 1 : 4;
+    base.repairRoundsPrimary = repeatRun ? 1 : 3;
+    base.repairRoundsSecondary = repeatRun ? 1 : 2;
+    base.moveThreshold = repeatRun ? 1.35 : 1.0;
+    base.borderOnlyOnRepeat = true;
+    return base;
+  }
+
+  if (normalized === 'stops') {
+    base.frontierSupportMin = 0;
+    base.frontierStrongSupportMin = 1;
+    base.repairSupportMin = 1;
+    base.strongSupportToFreeze = 4;
+    base.supportGainWeight = 1.7;
+    base.compactnessGainWeight = 0.55;
+    base.continuityMovePenaltyWeight = 0.7;
+    base.mixedNeighborWeight = 1.0;
+    base.hardMixedPenalty = 3.0;
+    base.underMinBoost = 2.0;
+    base.frontierPenalty = 0.05;
+    base.disconnectedComponentWeight = 45;
+    base.islandPenaltyWeight = 7;
+    base.mixedEdgeWeight = 2.4;
+    base.compactnessPenaltyWeight = 0.045;
+    base.stopPenaltyWeight = 28;
+    base.revenuePenaltyWeight = 0.55;
+    base.disruptionPenaltyWeight = 0.28;
+    base.cleanupPasses = repeatRun ? 1 : 2;
+    base.repairRoundsPrimary = repeatRun ? 1 : 2;
+    base.repairRoundsSecondary = 1;
+    base.moveThreshold = repeatRun ? 0.95 : 0.45;
+    return base;
+  }
+
+  if (normalized === 'revenue') {
+    base.frontierSupportMin = 0;
+    base.frontierStrongSupportMin = 1;
+    base.repairSupportMin = 1;
+    base.strongSupportToFreeze = 4;
+    base.supportGainWeight = 1.75;
+    base.compactnessGainWeight = 0.6;
+    base.continuityMovePenaltyWeight = 0.7;
+    base.mixedNeighborWeight = 1.0;
+    base.hardMixedPenalty = 3.1;
+    base.underMinBoost = 1.0;
+    base.frontierPenalty = 0.08;
+    base.disconnectedComponentWeight = 48;
+    base.islandPenaltyWeight = 7.5;
+    base.mixedEdgeWeight = 2.6;
+    base.compactnessPenaltyWeight = 0.05;
+    base.stopPenaltyWeight = 14;
+    base.revenuePenaltyWeight = 2.4;
+    base.disruptionPenaltyWeight = 0.28;
+    base.cleanupPasses = repeatRun ? 1 : 2;
+    base.repairRoundsPrimary = repeatRun ? 1 : 2;
+    base.repairRoundsSecondary = 1;
+    base.moveThreshold = repeatRun ? 0.95 : 0.5;
+    return base;
+  }
+
+  base.frontierSupportMin = 1;
+  base.frontierStrongSupportMin = 1;
+  base.repairSupportMin = 1;
+  base.strongSupportToFreeze = 4;
+  base.supportGainWeight = 2.0;
+  base.compactnessGainWeight = 0.72;
+  base.continuityMovePenaltyWeight = 0.78;
+  base.mixedNeighborWeight = 1.15;
+  base.hardMixedPenalty = 3.5;
+  base.underMinBoost = 1.45;
+  base.frontierPenalty = 0.14;
+  base.disconnectedComponentWeight = 58;
+  base.islandPenaltyWeight = 9;
+  base.mixedEdgeWeight = 3.2;
+  base.compactnessPenaltyWeight = 0.06;
+  base.stopPenaltyWeight = 20;
+  base.revenuePenaltyWeight = 1.0;
+  base.disruptionPenaltyWeight = 0.32;
+  base.cleanupPasses = repeatRun ? 1 : 3;
+  base.repairRoundsPrimary = repeatRun ? 1 : 2;
+  base.repairRoundsSecondary = 1;
+  base.moveThreshold = repeatRun ? 1.0 : 0.6;
+  return base;
+}
+
 function buildRepLoadOrder(targetRepNames, ctx) {
   return [...targetRepNames].sort((a, b) => {
     const countDiff = ctx.count(a) - ctx.count(b);
@@ -2309,6 +2444,7 @@ function optimizeRoutes() {
 
     const beforeSummary = buildOptimizationSummary();
     const continuityWeight = Number(els.disruptionSlider.value) / 100;
+    const optimizerMode = getOptimizerMode();
     const adjacency = state.neighborMap;
     const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
@@ -2327,6 +2463,7 @@ function optimizeRoutes() {
       minStops,
       maxStops,
       continuityWeight,
+      optimizerMode,
       targetRepNames,
       movableCount,
       totalAccounts
@@ -2339,18 +2476,20 @@ function optimizeRoutes() {
       state.lastOptimizeMeta.fingerprint === currentFingerprint &&
       state.lastOptimizeMeta.settled
     ) {
-      showToast('Already optimized (strict mode).');
+      showToast(`Already optimized (${getOptimizerWeightLabel().toLowerCase()} mode).`);
       return;
     }
 
     const repeatRun = !!(state.lastOptimizeMeta && state.lastOptimizeMeta.signature === optimizeSignature);
     const fastMode = repeatRun;
+    const optimizerProfile = getOptimizerProfile(optimizerMode, repeatRun);
 
     const currentCtx = createAssignmentContext(targetRepNames, currentAssignments);
     const currentScore = evaluateStrictSolution(currentAssignments, targetRepNames, adjacency, {
       minStops,
       maxStops,
-      continuityWeight
+      continuityWeight,
+      profile: optimizerProfile
     }, currentCtx);
 
     const assignments = new Map();
@@ -2373,21 +2512,24 @@ function optimizeRoutes() {
       minStops,
       maxStops,
       continuityWeight,
-      fastMode
+      fastMode,
+      profile: optimizerProfile
     });
 
     assignStrictStragglers(assignments, targetRepNames, movableAccounts, adjacency, assignmentCtx, {
       minStops,
       maxStops,
       continuityWeight,
-      fastMode
+      fastMode,
+      profile: optimizerProfile
     });
 
     let bestAssignments = cloneAssignmentMap(assignments);
     let bestScore = evaluateStrictSolution(bestAssignments, targetRepNames, adjacency, {
       minStops,
       maxStops,
-      continuityWeight
+      continuityWeight,
+      profile: optimizerProfile
     }, assignmentCtx);
 
     const maybeSaveBest = (force = false) => {
@@ -2395,7 +2537,8 @@ function optimizeRoutes() {
       const nextScore = evaluateStrictSolution(assignments, targetRepNames, adjacency, {
         minStops,
         maxStops,
-        continuityWeight
+        continuityWeight,
+        profile: optimizerProfile
       }, assignmentCtx);
       if (nextScore < bestScore) {
         bestScore = nextScore;
@@ -2409,8 +2552,9 @@ function optimizeRoutes() {
       minStops,
       maxStops,
       continuityWeight,
-      rounds: fastMode ? 2 : 3,
-      fastMode
+      rounds: optimizerProfile.repairRoundsPrimary,
+      fastMode,
+      profile: optimizerProfile
     });
     maybeSaveBest(!fastMode);
 
@@ -2419,8 +2563,9 @@ function optimizeRoutes() {
       minStops,
       maxStops,
       continuityWeight,
-      rounds: fastMode ? 1 : 2,
-      fastMode
+      rounds: optimizerProfile.repairRoundsSecondary,
+      fastMode,
+      profile: optimizerProfile
     });
     maybeSaveBest(!fastMode);
 
@@ -2434,8 +2579,8 @@ function optimizeRoutes() {
     });
     maybeSaveBest(!fastMode);
 
-    const cleanupPasses = fastMode ? 1 : 3;
-    const needsIslandRepair = !fastMode || hasFragmentationFast(targetRepNames, assignments, adjacency, assignmentCtx);
+    const cleanupPasses = optimizerProfile.cleanupPasses;
+    const needsIslandRepair = optimizerProfile.islandRepairEnabled && (!fastMode || hasFragmentationFast(targetRepNames, assignments, adjacency, assignmentCtx));
 
     for (let pass = 0; pass < cleanupPasses; pass += 1) {
       if (needsIslandRepair) {
@@ -2443,14 +2588,16 @@ function optimizeRoutes() {
           minStops,
           maxStops,
           continuityWeight,
-          fastMode
+          fastMode,
+          profile: optimizerProfile
         });
       }
       strictBorderCompactnessPass(assignments, targetRepNames, adjacency, assignmentCtx, {
         minStops,
         maxStops,
         continuityWeight,
-        fastMode
+        fastMode,
+        profile: optimizerProfile
       });
       maybeSaveBest(pass === cleanupPasses - 1);
     }
@@ -2459,7 +2606,8 @@ function optimizeRoutes() {
       const finalFastScore = evaluateStrictSolution(assignments, targetRepNames, adjacency, {
         minStops,
         maxStops,
-        continuityWeight
+        continuityWeight,
+        profile: optimizerProfile
       }, assignmentCtx);
       if (finalFastScore < bestScore) {
         bestScore = finalFastScore;
@@ -2473,7 +2621,8 @@ function optimizeRoutes() {
     const candidateScore = evaluateStrictSolution(assignments, targetRepNames, adjacency, {
       minStops,
       maxStops,
-      continuityWeight
+      continuityWeight,
+      profile: optimizerProfile
     }, candidateCtx);
 
     if (!(candidateScore < currentScore - 0.01)) {
@@ -2485,7 +2634,7 @@ function optimizeRoutes() {
       syncRepFilterSelection();
       renderRepControls();
       syncControlState();
-      showToast('No better strict-territory solution found. Kept the current layout.');
+      showToast(`No better ${getOptimizerWeightLabel().toLowerCase()} solution found. Kept the current layout.`);
       return;
     }
 
@@ -2518,12 +2667,12 @@ function optimizeRoutes() {
         fingerprint: currentFingerprint,
         settled: true
       };
-      showToast('Optimizer did not find a better assignment under the current strict territory rules.');
+      showToast(`Optimizer did not find a better assignment under the current ${getOptimizerWeightLabel().toLowerCase()} rules.`);
       return;
     }
 
     const disruptionPreset = getDisruptionPreset();
-    const optimizeLabel = `Optimized routes to ${targetRepNames.length} reps with strict territory mode`;
+    const optimizeLabel = `Optimized routes to ${targetRepNames.length} reps with ${getOptimizerWeightLabel()} mode`;
     applyChanges(changes, optimizeLabel, repsBefore);
 
     state.optimizationSummary = buildOptimizationSummary(beforeSummary, {
@@ -2553,6 +2702,7 @@ function buildOptimizeSignature(meta = {}) {
     meta.minStops || 0,
     meta.maxStops || 0,
     continuityKey,
+    meta.optimizerMode || 'hybrid',
     meta.movableCount || 0,
     meta.totalAccounts || 0,
     repNames
@@ -2733,6 +2883,7 @@ function chooseStrictFrontierRep(account, targetRepNames, assignments, adjacency
   const continuityWeight = Number(options.continuityWeight || 0);
   const minStops = Number(options.minStops || 1);
   const maxStops = Number(options.maxStops || 999999);
+  const profile = options.profile || getOptimizerProfile();
 
   let best = null;
 
@@ -2740,8 +2891,8 @@ function chooseStrictFrontierRep(account, targetRepNames, assignments, adjacency
     const support = counts.get(rep) || 0;
     const repCount = ctx.count(rep);
 
-    if (repCount > 0 && support < 1) continue;
-    if (repCount > 2 && support < 2) continue;
+    if (repCount > 0 && support < profile.frontierSupportMin) continue;
+    if (repCount > 2 && support < profile.frontierStrongSupportMin) continue;
     if (repCount >= maxStops) continue;
 
     const centroid = averageCentroidForRep(rep, ctx);
@@ -2749,11 +2900,17 @@ function chooseStrictFrontierRep(account, targetRepNames, assignments, adjacency
       ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng)
       : 0;
 
-    const supportPenalty = support >= 3 ? -4.0 : support >= 2 ? -2.2 : support >= 1 ? -0.8 : 0;
-    const mixedPenalty = strictMixedNeighborPenalty(account, rep, assignments, adjacency);
-    const currentRepBonus = account.assignedRep === rep ? -(continuityWeight * 0.8) : 0;
-    const underMinBoost = repCount < minStops ? -1.35 : 0;
-    const frontierPenalty = repCount === 0 ? 0.25 : 0;
+    const supportPenalty = support >= 3
+      ? -(profile.supportGainWeight * 1.7)
+      : support >= 2
+        ? -(profile.supportGainWeight * 0.95)
+        : support >= 1
+          ? -(profile.supportGainWeight * 0.35)
+          : 0;
+    const mixedPenalty = strictMixedNeighborPenalty(account, rep, assignments, adjacency, profile);
+    const currentRepBonus = account.assignedRep === rep ? -(continuityWeight * profile.continuityMovePenaltyWeight) : 0;
+    const underMinBoost = repCount < minStops ? -profile.underMinBoost : 0;
+    const frontierPenalty = repCount === 0 ? profile.frontierPenalty : 0;
 
     const score =
       compactness +
@@ -2787,7 +2944,8 @@ function assignStrictStragglers(assignments, targetRepNames, movableAccounts, ad
         ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng)
         : 0;
       const support = counts.get(rep) || 0;
-      const score = dist - (support * 1.75) - (ctx.count(rep) < options.minStops ? 0.75 : 0);
+      const profile = options.profile || getOptimizerProfile();
+      const score = dist - (support * Math.max(1.25, profile.supportGainWeight)) - (ctx.count(rep) < options.minStops ? profile.underMinBoost * 0.55 : 0);
       if (score < bestScore) {
         bestScore = score;
         bestRep = rep;
@@ -2828,10 +2986,11 @@ function getNeighborRepCounts(account, assignments, adjacency) {
   return counts;
 }
 
-function strictMixedNeighborPenalty(account, rep, assignments, adjacency) {
+function strictMixedNeighborPenalty(account, rep, assignments, adjacency, profile = null) {
   const neighbors = getNeighborIdsForAccount(account, adjacency);
   if (!neighbors.length) return 0;
 
+  const weights = profile || getOptimizerProfile();
   let same = 0;
   let other = 0;
 
@@ -2842,9 +3001,9 @@ function strictMixedNeighborPenalty(account, rep, assignments, adjacency) {
     else other += 1;
   }
 
-  if (!same && other >= 2) return 4.2;
+  if (!same && other >= 2) return weights.hardMixedPenalty;
   if (same >= other) return 0;
-  return (other - same) * 1.35;
+  return (other - same) * weights.mixedNeighborWeight;
 }
 
 function strictRepairPass(assignments, targetRepNames, adjacency, ctx, options = {}) {
@@ -2874,7 +3033,7 @@ function strictRepairPass(assignments, targetRepNames, adjacency, ctx, options =
 
       for (const rep of targetRepNames) {
         if (rep === currentRep) continue;
-        if ((counts.get(rep) || 0) < 2) continue;
+        if ((counts.get(rep) || 0) < ((options.profile || getOptimizerProfile()).repairSupportMin)) continue;
         if (ctx.count(rep) >= options.maxStops) continue;
         if (ctx.count(currentRep) <= options.minStops) continue;
         if (wouldDisconnectRepByRemoving(account, currentRep, assignments, adjacency, ctx)) continue;
@@ -2902,6 +3061,7 @@ function estimateStrictMoveGain(account, fromRep, toRep, assignments, adjacency,
   const counts = getNeighborRepCounts(account, assignments, adjacency);
   const fromSupport = currentSupport == null ? (counts.get(fromRep) || 0) : currentSupport;
   const toSupport = counts.get(toRep) || 0;
+  const profile = options.profile || getOptimizerProfile();
 
   const fromCentroid = averageCentroidForRep(fromRep, ctx);
   const toCentroid = averageCentroidForRep(toRep, ctx);
@@ -2912,10 +3072,10 @@ function estimateStrictMoveGain(account, fromRep, toRep, assignments, adjacency,
     ? squaredDistance(account.latitude, account.longitude, toCentroid.lat, toCentroid.lng)
     : oldDist;
 
-  const supportGain = (toSupport - fromSupport) * 2.4;
-  const compactnessGain = (oldDist - newDist) * 0.9;
+  const supportGain = (toSupport - fromSupport) * profile.supportGainWeight;
+  const compactnessGain = (oldDist - newDist) * profile.compactnessGainWeight;
   const keepPenalty = account.assignedRep === fromRep && account.assignedRep !== toRep
-    ? Number(options.continuityWeight || 0) * 0.8
+    ? Number(options.continuityWeight || 0) * profile.continuityMovePenaltyWeight
     : 0;
 
   return supportGain + compactnessGain - keepPenalty;
@@ -2969,6 +3129,8 @@ function chooseDominantBorderRep(component, fromRep, assignments, adjacency, tar
 }
 
 function strictBorderCompactnessPass(assignments, targetRepNames, adjacency, ctx, options = {}) {
+  const profile = options.profile || getOptimizerProfile();
+  if (profile.borderOnlyOnRepeat && !options.fastMode) return;
   const accounts = state.accounts.filter(account => !account.protected && !isAccountLocked(account));
 
   for (const account of accounts) {
@@ -2978,14 +3140,14 @@ function strictBorderCompactnessPass(assignments, targetRepNames, adjacency, ctx
 
     const counts = getNeighborRepCounts(account, assignments, adjacency);
     const currentSupport = counts.get(currentRep) || 0;
-    if (currentSupport >= 3) continue;
+    if (currentSupport >= ((options.profile || getOptimizerProfile()).strongSupportToFreeze)) continue;
 
     let bestRep = currentRep;
     let bestGain = 0;
 
     for (const rep of targetRepNames) {
       if (rep === currentRep) continue;
-      if ((counts.get(rep) || 0) < 2) continue;
+      if ((counts.get(rep) || 0) < ((options.profile || getOptimizerProfile()).repairSupportMin)) continue;
       if (ctx.count(rep) >= options.maxStops) continue;
       if (wouldDisconnectRepByRemoving(account, currentRep, assignments, adjacency, ctx)) continue;
 
@@ -2996,7 +3158,7 @@ function strictBorderCompactnessPass(assignments, targetRepNames, adjacency, ctx
       }
     }
 
-    const moveThreshold = options.fastMode ? 1.15 : 0.8;
+    const moveThreshold = (options.profile || getOptimizerProfile()).moveThreshold;
     if (bestRep !== currentRep && bestGain > moveThreshold) {
       ctx.removeFromRep(currentRep, account);
       ctx.addToRep(bestRep, account);
@@ -3083,20 +3245,21 @@ function evaluateStrictSolution(assignments, targetRepNames, adjacency, options 
   let revenuePenalty = 0;
   let disruptionPenalty = 0;
 
+  const profile = options.profile || getOptimizerProfile();
   const localCtx = ctx || createAssignmentContext(targetRepNames, assignments);
   const totalRevenue = state.accounts.reduce((sum, account) => sum + Number(account.overallSales || 0), 0);
   const targetRevenue = totalRevenue / Math.max(1, targetRepNames.length);
 
   for (const rep of targetRepNames) {
     const components = getRepComponents(rep, assignments, adjacency, localCtx);
-    if (components.length > 1) disconnectedPenalty += (components.length - 1) * 75;
+    if (components.length > 1) disconnectedPenalty += (components.length - 1) * profile.disconnectedComponentWeight;
 
     components
       .slice()
       .sort((a, b) => b.length - a.length)
       .slice(1)
       .forEach(component => {
-        islandPenalty += component.length * 12;
+        islandPenalty += component.length * profile.islandPenaltyWeight;
       });
 
     const members = [...localCtx.members(rep)].map(id => state.accountById.get(id)).filter(Boolean);
@@ -3106,15 +3269,15 @@ function evaluateStrictSolution(assignments, targetRepNames, adjacency, options 
     for (const account of members) {
       repRevenue += Number(account.overallSales || 0);
       if (centroid) {
-        compactnessPenalty += squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * 0.08;
+        compactnessPenalty += squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * profile.compactnessPenaltyWeight;
       }
-      if (account.assignedRep !== rep) disruptionPenalty += Number(options.continuityWeight || 0) * 0.35;
+      if (account.assignedRep !== rep) disruptionPenalty += Number(options.continuityWeight || 0) * profile.disruptionPenaltyWeight;
     }
 
     const repStops = members.length;
-    if (repStops < options.minStops) stopPenalty += (options.minStops - repStops) * 18;
-    if (repStops > options.maxStops) stopPenalty += (repStops - options.maxStops) * 18;
-    revenuePenalty += Math.abs(repRevenue - targetRevenue) / Math.max(1, targetRevenue) * 1.2;
+    if (repStops < options.minStops) stopPenalty += (options.minStops - repStops) * profile.stopPenaltyWeight;
+    if (repStops > options.maxStops) stopPenalty += (repStops - options.maxStops) * profile.stopPenaltyWeight;
+    revenuePenalty += Math.abs(repRevenue - targetRevenue) / Math.max(1, targetRevenue) * profile.revenuePenaltyWeight;
   }
 
   for (const account of state.accounts) {
@@ -3133,7 +3296,7 @@ function evaluateStrictSolution(assignments, targetRepNames, adjacency, options 
   return (
     disconnectedPenalty +
     islandPenalty +
-    (mixedEdgePenalty * 4.5) +
+    (mixedEdgePenalty * profile.mixedEdgeWeight) +
     compactnessPenalty +
     stopPenalty +
     revenuePenalty +
