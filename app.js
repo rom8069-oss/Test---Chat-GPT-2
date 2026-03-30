@@ -233,8 +233,7 @@ function initOptimizerTuningUI() {
     els.balanceMode.classList.remove('optimizer-mode-hidden');
     els.balanceMode.removeAttribute('aria-hidden');
     els.balanceMode.tabIndex = 0;
-    ensureBalanceModeOptions();
-    if (!['hybrid', 'stops', 'revenue', 'compact'].includes(String(els.balanceMode.value || '').toLowerCase())) {
+    if (!['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
       els.balanceMode.value = 'hybrid';
     }
     const balanceField = els.balanceMode.closest('.field');
@@ -249,42 +248,21 @@ function initOptimizerTuningUI() {
   ensureOptimizerFeedbackMount();
 }
 
-
-function ensureBalanceModeOptions() {
-  if (!els.balanceMode) return;
-  const desiredOptions = [
-    { value: 'hybrid', label: 'Hybrid' },
-    { value: 'stops', label: 'Stops' },
-    { value: 'revenue', label: 'Revenue' },
-    { value: 'compact', label: 'Compact' }
-  ];
-  const previousValue = String(els.balanceMode.value || '').toLowerCase();
-  els.balanceMode.innerHTML = desiredOptions.map(item =>
-    `<option value="${escapeHtmlAttr(item.value)}">${escapeHtml(item.label)}</option>`
-  ).join('');
-  const allowed = new Set(desiredOptions.map(item => item.value));
-  els.balanceMode.value = allowed.has(previousValue) ? previousValue : 'hybrid';
-}
-
 function getOptimizerMix() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? String(els.balanceMode.value).toLowerCase() : 'hybrid';
+  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
   if (mode === 'stops') {
     return { stopsPriority: 1, revenuePriority: 0 };
   }
   if (mode === 'revenue') {
     return { stopsPriority: 0, revenuePriority: 1 };
   }
-  if (mode === 'compact') {
-    return { stopsPriority: 0.85, revenuePriority: 0.15 };
-  }
   return { stopsPriority: 0.7, revenuePriority: 0.3 };
 }
 
 function getOptimizerWeightLabel() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? String(els.balanceMode.value).toLowerCase() : 'hybrid';
+  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
   if (mode === 'stops') return 'Stops';
   if (mode === 'revenue') return 'Revenue';
-  if (mode === 'compact') return 'Compact';
   return 'Hybrid';
 }
 
@@ -326,11 +304,8 @@ function updateOptimizerUI() {
     els.disruptionSlider.title = preset.detail;
   }
 
-  if (els.balanceMode) {
-    ensureBalanceModeOptions();
-    if (!['hybrid', 'stops', 'revenue', 'compact'].includes(String(els.balanceMode.value || '').toLowerCase())) {
-      els.balanceMode.value = 'hybrid';
-    }
+  if (els.balanceMode && !['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
+    els.balanceMode.value = 'hybrid';
   }
 }
 
@@ -1821,28 +1796,36 @@ function summarizeByRep() {
 
   const map = new Map();
   const originalMap = new Map();
-  const visibleReps = new Set(getAvailableReps());
 
   for (const account of state.accounts) {
     const assignedRep = account.assignedRep || 'Unassigned';
     const originalRep = account.originalAssignedRep || 'Unassigned';
-    visibleReps.add(assignedRep);
-    visibleReps.add(originalRep);
-  }
 
-  visibleReps.forEach(rep => {
-    if (!map.has(rep)) map.set(rep, createEmptyRepSummaryRow(rep));
-    if (!originalMap.has(rep)) originalMap.set(rep, { stops: 0, revenue: 0 });
-  });
+    if (!map.has(assignedRep)) {
+      map.set(assignedRep, {
+        rep: assignedRep,
+        stops: 0,
+        deltaStops: 0,
+        revenue: 0,
+        deltaRevenue: 0,
+        A: 0,
+        B: 0,
+        C: 0,
+        D: 0,
+        planned4W: 0,
+        avgWeekly: 0,
+        protected: 0,
+        movedIn: 0,
+        movedOut: 0
+      });
+    }
 
-  for (const account of state.accounts) {
-    const assignedRep = account.assignedRep || 'Unassigned';
-    const originalRep = account.originalAssignedRep || 'Unassigned';
-    const row = map.get(assignedRep) || createEmptyRepSummaryRow(assignedRep);
-    const orig = originalMap.get(originalRep) || { stops: 0, revenue: 0 };
+    if (!originalMap.has(originalRep)) {
+      originalMap.set(originalRep, { stops: 0, revenue: 0 });
+    }
 
-    map.set(assignedRep, row);
-    originalMap.set(originalRep, orig);
+    const row = map.get(assignedRep);
+    const orig = originalMap.get(originalRep);
 
     row.stops += 1;
     row.revenue += Number(account.overallSales || 0);
@@ -1870,12 +1853,8 @@ function summarizeByRep() {
     row.avgWeekly = row.planned4W / 4;
   }
 
-  const rows = [...map.values()].sort((a, b) =>
-    a.rep.localeCompare(b.rep, undefined, { numeric: true, sensitivity: 'base' })
-  );
-
-  state.repSummaryCache = new Map(rows.map(row => [row.rep, { ...row }]));
-  return rows;
+  state.repSummaryCache = map;
+  return [...map.values()].map(row => ({ ...row }));
 }
 
 function sortRepRows(rows) {
@@ -2026,10 +2005,31 @@ function updateGlobalStats() {
 
 function syncRepFilterSelection(previousAssignedReps = null) {
   const reps = getAvailableReps();
-  const prev = Array.isArray(previousAssignedReps) ? new Set(previousAssignedReps) : state.filters.rep;
+  const currentSelected = state.filters.rep instanceof Set ? new Set(state.filters.rep) : new Set();
+  const previousSet = Array.isArray(previousAssignedReps) ? new Set(previousAssignedReps) : null;
+  const nextSelected = new Set();
+  const hadExplicitNone = currentSelected.has(NONE_SELECTED_TOKEN);
 
-  state.filters.rep = new Set(reps.filter(rep => prev.has(rep) || !previousAssignedReps));
-  if (!state.filters.rep.size) reps.forEach(rep => state.filters.rep.add(rep));
+  reps.forEach(rep => {
+    if (currentSelected.has(rep)) {
+      nextSelected.add(rep);
+      return;
+    }
+    if (previousSet && previousSet.has(rep)) {
+      nextSelected.add(rep);
+      return;
+    }
+    if (!hadExplicitNone) {
+      nextSelected.add(rep);
+    }
+  });
+
+  if (!nextSelected.size && hadExplicitNone) {
+    nextSelected.add(NONE_SELECTED_TOKEN);
+  }
+  if (!nextSelected.size) reps.forEach(rep => nextSelected.add(rep));
+
+  state.filters.rep = nextSelected;
 
   fillSimpleSelect(els.assignRepSelect, reps, '', v => v, 'Select rep');
   renderMultiFilterOptions();
@@ -2282,7 +2282,7 @@ function optimizeRoutes() {
     const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
     const movableForCleanup = movableAccounts;
 
-    const currentReps = getAvailableReps().filter(rep => !isRepLocked(rep));
+    const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
     registerRepNames(targetRepNames);
     const adjacency = state.neighborMap;
