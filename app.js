@@ -208,22 +208,35 @@ function mountUploadStatusPanelToBody() {
   }
 }
 
-function ensureBalanceModeOptions() {
+function ensureBalanceModeOptions(forceRebuild = false) {
   if (!els.balanceMode) return;
+
   const desiredOptions = [
     { value: 'hybrid', label: 'Hybrid' },
     { value: 'stops', label: 'Stops' },
     { value: 'revenue', label: 'Revenue' },
     { value: 'compact', label: 'Compact' }
   ];
-  const existing = new Set(Array.from(els.balanceMode.options || []).map(option => option.value));
-  for (const item of desiredOptions) {
-    if (existing.has(item.value)) continue;
-    const option = document.createElement('option');
-    option.value = item.value;
-    option.textContent = item.label;
-    els.balanceMode.appendChild(option);
+
+  const currentValue = String(els.balanceMode.value || '').toLowerCase();
+
+  if (forceRebuild) {
+    els.balanceMode.innerHTML = desiredOptions.map(item => (
+      `<option value="${escapeHtmlAttr(item.value)}">${escapeHtml(item.label)}</option>`
+    )).join('');
+  } else {
+    const existing = new Set(Array.from(els.balanceMode.options || []).map(option => String(option.value || '').toLowerCase()));
+    for (const item of desiredOptions) {
+      if (existing.has(item.value)) continue;
+      const option = document.createElement('option');
+      option.value = item.value;
+      option.textContent = item.label;
+      els.balanceMode.appendChild(option);
+    }
   }
+
+  const allowed = new Set(desiredOptions.map(item => item.value));
+  els.balanceMode.value = allowed.has(currentValue) ? currentValue : 'hybrid';
 }
 
 function getOptimizerMode() {
@@ -257,7 +270,7 @@ function initOptimizerTuningUI() {
     els.balanceMode.classList.remove('optimizer-mode-hidden');
     els.balanceMode.removeAttribute('aria-hidden');
     els.balanceMode.tabIndex = 0;
-    ensureBalanceModeOptions();
+    ensureBalanceModeOptions(true);
     if (!['hybrid', 'stops', 'revenue', 'compact'].includes(els.balanceMode.value)) {
       els.balanceMode.value = 'hybrid';
     }
