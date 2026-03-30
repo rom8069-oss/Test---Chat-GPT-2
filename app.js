@@ -208,6 +208,29 @@ function mountUploadStatusPanelToBody() {
   }
 }
 
+function ensureBalanceModeOptions() {
+  if (!els.balanceMode) return;
+  const desiredOptions = [
+    { value: 'hybrid', label: 'Hybrid' },
+    { value: 'stops', label: 'Stops' },
+    { value: 'revenue', label: 'Revenue' },
+    { value: 'compact', label: 'Compact' }
+  ];
+  const existing = new Set(Array.from(els.balanceMode.options || []).map(option => option.value));
+  for (const item of desiredOptions) {
+    if (existing.has(item.value)) continue;
+    const option = document.createElement('option');
+    option.value = item.value;
+    option.textContent = item.label;
+    els.balanceMode.appendChild(option);
+  }
+}
+
+function getOptimizerMode() {
+  const mode = (els.balanceMode && els.balanceMode.value) ? String(els.balanceMode.value).toLowerCase() : 'hybrid';
+  return ['hybrid', 'stops', 'revenue', 'compact'].includes(mode) ? mode : 'hybrid';
+}
+
 function initOptimizerTuningUI() {
   const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
   if (disruptionField) {
@@ -234,7 +257,8 @@ function initOptimizerTuningUI() {
     els.balanceMode.classList.remove('optimizer-mode-hidden');
     els.balanceMode.removeAttribute('aria-hidden');
     els.balanceMode.tabIndex = 0;
-    if (!['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
+    ensureBalanceModeOptions();
+    if (!['hybrid', 'stops', 'revenue', 'compact'].includes(els.balanceMode.value)) {
       els.balanceMode.value = 'hybrid';
     }
     const balanceField = els.balanceMode.closest('.field');
@@ -250,20 +274,24 @@ function initOptimizerTuningUI() {
 }
 
 function getOptimizerMix() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  const mode = getOptimizerMode();
   if (mode === 'stops') {
     return { stopsPriority: 1, revenuePriority: 0 };
   }
   if (mode === 'revenue') {
     return { stopsPriority: 0, revenuePriority: 1 };
   }
+  if (mode === 'compact') {
+    return { stopsPriority: 0.85, revenuePriority: 0.15 };
+  }
   return { stopsPriority: 0.7, revenuePriority: 0.3 };
 }
 
 function getOptimizerWeightLabel() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  const mode = getOptimizerMode();
   if (mode === 'stops') return 'Stops';
   if (mode === 'revenue') return 'Revenue';
+  if (mode === 'compact') return 'Compact';
   return 'Hybrid';
 }
 
@@ -305,8 +333,11 @@ function updateOptimizerUI() {
     els.disruptionSlider.title = preset.detail;
   }
 
-  if (els.balanceMode && !['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
-    els.balanceMode.value = 'hybrid';
+  if (els.balanceMode) {
+    ensureBalanceModeOptions();
+    if (!['hybrid', 'stops', 'revenue', 'compact'].includes(els.balanceMode.value)) {
+      els.balanceMode.value = 'hybrid';
+    }
   }
 }
 
@@ -2496,7 +2527,7 @@ function optimizeRoutes() {
     applyChanges(changes, optimizeLabel, repsBefore);
 
     state.optimizationSummary = buildOptimizationSummary(beforeSummary, {
-      weightLabel: 'Strict Geography',
+      weightLabel: getOptimizerWeightLabel(),
       disruptionLabel: disruptionPreset.short
     });
     state.lastOptimizeMeta = {
