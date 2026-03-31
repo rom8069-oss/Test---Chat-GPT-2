@@ -641,7 +641,7 @@ function bindEvents() {
   els.resetBtn.addEventListener('click', resetAssignments);
   els.optimizeBtn.addEventListener('click', optimizeRoutes);
   els.exportBtn.addEventListener('click', exportWorkbook);
-  els.clearSelectionBtn.addEventListener('click', clearSelection);
+  if (els.clearSelectionBtn) els.clearSelectionBtn.addEventListener('click', clearSelection);
 
   if (els.detailPanel) {
     const detailCard = els.detailPanel.closest('.detail-card');
@@ -1956,6 +1956,8 @@ function toggleTableSort(key) {
 }
 
 function renderSelectionPreview() {
+  if (!els.selectionPreview || !els.selectionCount) return;
+
   const ids = [...state.selection];
   els.selectionCount.textContent = ids.length;
 
@@ -1980,6 +1982,8 @@ function renderSelectionPreview() {
 }
 
 function renderMovedReview() {
+  if (!els.movedReviewList || !els.movedReviewCount) return;
+
   const term = (state.multiSearch.moved || '').trim().toLowerCase();
   let moved = state.accounts.filter(a => a.assignedRep !== a.originalAssignedRep);
 
@@ -2110,7 +2114,7 @@ function syncControlState() {
   els.resetBtn.disabled = !hasAccounts;
   els.optimizeBtn.disabled = !hasAccounts;
   els.exportBtn.disabled = !hasAccounts;
-  els.clearSelectionBtn.disabled = !hasSelection;
+  if (els.clearSelectionBtn) els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
 
   const reps = getAvailableReps();
@@ -2430,11 +2434,11 @@ function optimizeRoutes() {
           const localPenaltyBase = localDominancePenalty(account, rep, assignments, adjacency);
           const neighborSupport = countNeighborRepSupport(account, rep, assignments, adjacency);
           const supportBonus = compactMode
-            ? (neighborSupport >= 3 ? -1.35 : neighborSupport >= 2 ? -0.72 : neighborSupport === 1 ? -0.12 : 0.68)
+            ? (neighborSupport >= 4 ? -2.4 : neighborSupport >= 3 ? -1.55 : neighborSupport >= 2 ? -0.9 : neighborSupport === 1 ? -0.18 : 1.45)
             : (neighborSupport >= 2 ? -0.25 : 0);
-          const fragmentPenalty = fragmentationPenalty(account, rep, assignments, adjacency) * (compactMode ? 1.9 : 0.7);
-          const localPenalty = compactMode ? (localPenaltyBase * 1.65) : localPenaltyBase;
-          const unsupportedPenalty = compactMode && neighborSupport === 0 && currentRep && currentRep !== rep ? 1.05 : 0;
+          const fragmentPenalty = fragmentationPenalty(account, rep, assignments, adjacency) * (compactMode ? 2.8 : 0.7);
+          const localPenalty = compactMode ? (localPenaltyBase * 2.15) : localPenaltyBase;
+          const unsupportedPenalty = compactMode && neighborSupport === 0 && currentRep && currentRep !== rep ? 2.2 : 0;
 
           const score =
             compactnessScore +
@@ -2495,9 +2499,12 @@ function optimizeRoutes() {
       tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
     }
 
-    const compactCleanupPasses = compactMode ? 3 : 1;
+    const compactCleanupPasses = compactMode ? 5 : 1;
     for (let compactPass = 0; compactPass < compactCleanupPasses; compactPass += 1) {
       runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
+      if (compactMode) {
+        absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      }
       performContiguityRefinement(
         assignments,
         targetRepNames,
@@ -2509,6 +2516,7 @@ function optimizeRoutes() {
       );
       if (compactMode) {
         tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+        absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       }
       enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
@@ -2740,11 +2748,11 @@ function localDominancePenalty(account, rep, assignments, adjacency) {
 
   const compactMode = getOptimizerMode() === 'compact';
 
-  if (agreementRatio >= 0.8) return compactMode ? -0.3 : -0.12;
-  if (agreementRatio >= 0.65) return compactMode ? -0.08 : -0.03;
-  if (agreementRatio >= 0.5) return 0;
+  if (agreementRatio >= 0.9) return compactMode ? -0.48 : -0.12;
+  if (agreementRatio >= 0.75) return compactMode ? -0.18 : -0.03;
+  if (agreementRatio >= 0.6) return compactMode ? 0.06 : 0;
 
-  return (0.5 - agreementRatio) * (compactMode ? 3.0 : 2.1);
+  return (0.6 - agreementRatio) * (compactMode ? 4.2 : 2.1);
 }
 
 
@@ -2782,11 +2790,15 @@ function fragmentationPenalty(account, rep, assignments, adjacency) {
     if (next > strongestOtherCount) strongestOtherCount = next;
   });
 
-  if (same >= 3) return 0;
-  if (strongestOtherCount >= 3 && same <= 1) return 1.2;
-  if (strongestOtherCount > same) return 0.55;
-  if (same === 0 && strongestOtherCount >= 2) return 0.8;
-  return 0;
+  const compactMode = getOptimizerMode() === 'compact';
+
+  if (same >= 4) return 0;
+  if (same >= 3 && strongestOtherCount <= 1) return compactMode ? 0.04 : 0;
+  if (strongestOtherCount >= 4 && same <= 1) return compactMode ? 2.4 : 1.2;
+  if (strongestOtherCount >= 3 && same <= 1) return compactMode ? 1.8 : 1.2;
+  if (strongestOtherCount > same) return compactMode ? 1.1 : 0.55;
+  if (same === 0 && strongestOtherCount >= 2) return compactMode ? 1.45 : 0.8;
+  return compactMode && same <= 1 ? 0.35 : 0;
 }
 
 function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
@@ -2902,7 +2914,7 @@ function performContiguityRefinement(assignments, targetRepNames, minStops, maxS
   let changed = true;
   let passes = 0;
 
-  while (changed && passes < (compactMode ? 14 : 10)) {
+  while (changed && passes < (compactMode ? 18 : 10)) {
     changed = false;
     passes += 1;
 
@@ -2955,12 +2967,12 @@ function performContiguityRefinement(assignments, targetRepNames, minStops, maxS
           fragmentationPenalty(account, targetRep, assignments, adjacency);
 
         const moveScore =
-          (supportDelta * (compactMode ? 1.95 : 1.55)) +
-          (fragmentationDelta * (compactMode ? 3.0 : 2.2)) -
-          (distanceDelta * 0.95) -
-          (ctx.count(targetRep) < minStops ? 0.35 : 0);
+          (supportDelta * (compactMode ? 2.55 : 1.55)) +
+          (fragmentationDelta * (compactMode ? 4.3 : 2.2)) -
+          (distanceDelta * (compactMode ? 1.15 : 0.95)) -
+          (ctx.count(targetRep) < minStops ? (compactMode ? 0.5 : 0.35) : 0);
 
-        if (moveScore > bestDelta && (supportDelta >= (compactMode ? 2 : 2) || (supportDelta >= 1 && distanceDelta <= 0 && !compactMode))) {
+        if (moveScore > bestDelta && (supportDelta >= (compactMode ? 3 : 2) || (supportDelta >= 2 && fragmentationDelta > 0 && compactMode) || (supportDelta >= 1 && distanceDelta <= 0 && !compactMode))) {
           bestDelta = moveScore;
           bestRep = targetRep;
         }
@@ -3046,6 +3058,8 @@ function rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxSt
 }
 
 function runBorderPass(accounts, assignments, minStops, adjacency, ctx) {
+  const compactMode = getOptimizerMode() === 'compact';
+
   for (const account of accounts) {
     const currentRep = assignments.get(account._id) || account.assignedRep;
     const neighbors = adjacency.get(account._id);
@@ -3058,10 +3072,23 @@ function runBorderPass(accounts, assignments, minStops, adjacency, ctx) {
       counts.set(rep, (counts.get(rep) || 0) + 1);
     });
 
-    const bestNeighborRep = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const ordered = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const bestNeighborRep = ordered[0]?.[0];
+    const bestNeighborCount = ordered[0]?.[1] || 0;
+    const currentSupport = counts.get(currentRep) || 0;
+    const runnerUpCount = ordered[1]?.[1] || 0;
+
     if (!bestNeighborRep || bestNeighborRep === currentRep) continue;
     if (ctx.count(currentRep) <= minStops) continue;
     if (isRepLocked(bestNeighborRep)) continue;
+
+    if (compactMode) {
+      if (bestNeighborCount < 3) continue;
+      if ((bestNeighborCount - currentSupport) < 2) continue;
+      if ((bestNeighborCount - runnerUpCount) < 1) continue;
+    } else if (bestNeighborCount <= currentSupport) {
+      continue;
+    }
 
     ctx.removeFromRep(currentRep, account);
     ctx.addToRep(bestNeighborRep, account);
@@ -3079,6 +3106,84 @@ function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, min
   runBorderPass([...accounts].reverse(), assignments, minStops, adjacency, ctx);
   if (compactMode) {
     runBorderPass(accounts, assignments, minStops, adjacency, ctx);
+    runBorderPass([...accounts].sort((a, b) => {
+      const aSupport = countNeighborRepSupport(a, assignments.get(a._id) || a.assignedRep, assignments, adjacency);
+      const bSupport = countNeighborRepSupport(b, assignments.get(b._id) || b.assignedRep, assignments, adjacency);
+      return aSupport - bSupport;
+    }), assignments, minStops, adjacency, ctx);
+  }
+}
+
+function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
+  const accounts = Array.isArray(movableAccounts) && movableAccounts.length
+    ? movableAccounts
+    : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+
+  const accountIds = new Set(accounts.map(a => a._id));
+  const visited = new Set();
+  const accountsByRep = new Map();
+
+  for (const account of accounts) {
+    const rep = assignments.get(account._id) || account.assignedRep;
+    if (!rep) continue;
+    if (!accountsByRep.has(rep)) accountsByRep.set(rep, []);
+    accountsByRep.get(rep).push(account);
+  }
+
+  for (const rep of targetRepNames) {
+    const repAccounts = accountsByRep.get(rep) || [];
+    for (const seed of repAccounts) {
+      if (visited.has(seed._id)) continue;
+
+      const component = [];
+      const componentSet = new Set();
+      const stack = [seed._id];
+      visited.add(seed._id);
+
+      while (stack.length) {
+        const id = stack.pop();
+        component.push(id);
+        componentSet.add(id);
+        const neighbors = adjacency.get(id);
+        if (!neighbors) continue;
+        neighbors.forEach(neighborId => {
+          if (visited.has(neighborId) || !accountIds.has(neighborId)) return;
+          const neighborRep = assignments.get(neighborId) || state.accountById.get(neighborId)?.assignedRep;
+          if (neighborRep !== rep) return;
+          visited.add(neighborId);
+          stack.push(neighborId);
+        });
+      }
+
+      if (component.length > 4) continue;
+      if (ctx.count(rep) - component.length < minStops) continue;
+
+      const borderCounts = new Map();
+      for (const id of component) {
+        const neighbors = adjacency.get(id);
+        if (!neighbors) continue;
+        neighbors.forEach(neighborId => {
+          if (componentSet.has(neighborId)) return;
+          const neighborRep = assignments.get(neighborId) || state.accountById.get(neighborId)?.assignedRep;
+          if (!neighborRep || neighborRep === rep || isRepLocked(neighborRep)) return;
+          borderCounts.set(neighborRep, (borderCounts.get(neighborRep) || 0) + 1);
+        });
+      }
+
+      const ordered = [...borderCounts.entries()].sort((a, b) => b[1] - a[1]);
+      const targetRep = ordered[0]?.[0];
+      const targetTouches = ordered[0]?.[1] || 0;
+      if (!targetRep || targetTouches < 2) continue;
+      if (ctx.count(targetRep) + component.length > maxStops) continue;
+
+      for (const id of component) {
+        const account = state.accountById.get(id);
+        if (!account) continue;
+        ctx.removeFromRep(rep, account);
+        ctx.addToRep(targetRep, account);
+        assignments.set(id, targetRep);
+      }
+    }
   }
 }
 
