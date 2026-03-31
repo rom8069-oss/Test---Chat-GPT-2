@@ -102,12 +102,14 @@ button,input,select,textarea{
   justify-content:flex-end;
 }
 
+/* FIX 4: Uniform height for ALL form controls */
 .btn,
 .input,
 .file-label,
 select,
 input[type="number"],
-input[type="text"]{
+input[type="text"],
+input[type="range"]{
   height:32px;
   border:1px solid #ccd8e4;
   border-radius:10px;
@@ -126,6 +128,15 @@ select{
   -moz-appearance:none;
 }
 
+/* Range input gets special treatment so it still looks like a slider */
+input[type="range"]{
+  padding:0;
+  border:none;
+  background:transparent;
+  height:32px;
+  width:100%;
+}
+
 .btn{
   cursor:pointer;
   transition:.15s ease;
@@ -135,8 +146,9 @@ select{
 .btn:hover:not(:disabled){transform:translateY(-1px);}
 .btn:disabled{opacity:.55;cursor:not-allowed;transform:none;}
 
+/* FIX 3: Darker blue Assign button */
 .btn-primary{
-  background:#7f92b7;
+  background:#1e40af;
   color:#fff;
   border-color:transparent;
 }
@@ -304,6 +316,7 @@ input[type="file"]{display:none;}
   overflow:visible;
 }
 
+/* FIX 4: Uniform field layout so all controls sit at the same height */
 .field{
   min-width:0;
   display:flex;
@@ -322,9 +335,30 @@ input[type="file"]{display:none;}
 
 .field input,
 .field select,
-.field .input{
+.field .input,
+.field .multi-trigger{
   width:100%;
   min-width:0;
+  height:32px;         /* enforce uniform height */
+  box-sizing:border-box;
+}
+
+/* Range wrapper matches the 32px height of other inputs */
+.range-wrap{
+  height:32px;
+  display:flex;
+  align-items:center;
+  border:1px solid #ccd8e4;
+  border-radius:10px;
+  background:#fff;
+  padding:0 8px;
+}
+
+.range-wrap input[type="range"]{
+  height:auto;
+  border:none;
+  background:transparent;
+  padding:0;
 }
 
 .field-disruption-compact{gap:2px;}
@@ -337,6 +371,14 @@ input[type="file"]{display:none;}
   align-items:center;
   justify-content:space-between;
   cursor:pointer;
+  padding:0 10px;
+  border:1px solid #ccd8e4;
+  border-radius:10px;
+  background:#fff;
+  font-size:12px;
+  font-weight:700;
+  color:var(--text);
+  height:32px;
 }
 .multi-trigger-text{
   overflow:hidden;
@@ -505,12 +547,20 @@ input[type="file"]{display:none;}
   color:var(--muted);
 }
 
+/* FIX 3: Assign and Optimize buttons same width */
 .map-actions{
   display:flex;
   align-items:center;
   justify-content:flex-end;
   gap:8px;
   flex-wrap:wrap;
+}
+
+.map-actions #assign-btn,
+.map-actions #optimize-btn{
+  width:140px;
+  min-width:140px;
+  justify-content:center;
 }
 
 .inline-check{
@@ -587,40 +637,68 @@ th.is-active{color:#1f3d61;}
   flex:0 0 10px;
 }
 
+/* FIX 1: Delta number colors in Routes table */
+.num-pos,
 .delta-positive,
-.routes-card .delta-positive,
-.routes-card td.delta-positive,
 .routes-card .positive{
   color:#0d9c65 !important;
   font-weight:800;
 }
 
+.num-neg,
 .delta-negative,
-.routes-card .delta-negative,
-.routes-card td.delta-negative,
 .routes-card .negative{
   color:#d84b4b !important;
   font-weight:800;
 }
 
-.routes-card tbody tr:hover{
+.num-zero{
+  color:var(--muted);
+  font-weight:700;
+}
+
+/* FIX 2: Rep row hover is subtle; active/focused rep row highlights in header grey */
+.routes-card tbody tr{
+  cursor:pointer;
+  transition:background .12s ease;
+}
+
+.routes-card tbody tr:hover td{
+  background:#f4f8fc;
+}
+
+/* Active rep row = same colour as thead (#edf3f9) */
+.routes-card tbody tr.rep-row-active td{
+  background:#edf3f9 !important;
+}
+
+.routes-card tbody tr.rep-row-locked{
   background:#f7fbff;
 }
 
-.routes-card tbody tr.selected,
-.routes-card tbody tr.is-selected,
-.routes-card tbody tr.active,
-.routes-card tbody tr[aria-selected="true"],
-.routes-card tbody tr.row-selected{
-  background:#edf4ff;
+.routes-card tbody tr.rep-row-locked td:first-child{
+  box-shadow:inset 3px 0 0 #7b8da6;
 }
 
-.routes-card tbody tr.selected td,
-.routes-card tbody tr.is-selected td,
-.routes-card tbody tr.active td,
-.routes-card tbody tr[aria-selected="true"] td,
-.routes-card tbody tr.row-selected td{
-  background:transparent;
+.lock-cell{
+  text-align:center;
+  min-width:40px;
+  width:40px;
+}
+
+.lock-toggle{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.lock-toggle input{margin:0;}
+
+.rep-cell{
+  display:flex;
+  align-items:center;
+  gap:6px;
 }
 
 .selected-body,
@@ -633,6 +711,13 @@ th.is-active{color:#1f3d61;}
   font-family:"Tw Cen MT","Trebuchet MS","Segoe UI",Arial,sans-serif;
 }
 
+.detail-panel{
+  padding:12px;
+  overflow:auto;
+  min-height:0;
+  flex:1 1 auto;
+}
+
 #selection-preview,
 #moved-review-list{
   display:flex;
@@ -641,17 +726,21 @@ th.is-active{color:#1f3d61;}
 }
 
 .selection-item,
-.moved-item{
+.moved-item,
+.selected-item{
   border:1px solid var(--border-soft);
   border-radius:14px;
   padding:10px 12px;
   background:#fff;
+  margin-bottom:8px;
 }
 
+.selected-item-title,
 .selection-name,
+.moved-item-title,
 .moved-name{
-  font-size:13px;
-  font-weight:900;
+  font-size:12px;
+  font-weight:800;
   color:#1f3d61;
   margin-bottom:4px;
 }
@@ -661,6 +750,46 @@ th.is-active{color:#1f3d61;}
   font-size:12px;
   color:#627b94;
   line-height:1.45;
+}
+
+.transfer-line{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  flex-wrap:wrap;
+  margin-top:4px;
+}
+
+.rep-chip{
+  display:inline-flex;
+  align-items:center;
+  background:#edf3fb;
+  border:1px solid #c8d8eb;
+  border-radius:999px;
+  padding:2px 8px;
+  font-size:11px;
+  font-weight:800;
+  color:#2c4f7a;
+  white-space:nowrap;
+}
+
+.metric-chip{
+  display:inline-flex;
+  align-items:center;
+  background:#f4f8fc;
+  border:1px solid #dde7f1;
+  border-radius:999px;
+  padding:2px 8px;
+  font-size:11px;
+  font-weight:700;
+  color:#5f7892;
+  white-space:nowrap;
+}
+
+.rep-arrow{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
 }
 
 .clear-btn{
@@ -673,6 +802,12 @@ th.is-active{color:#1f3d61;}
   font-size:11px;
   font-weight:800;
   cursor:pointer;
+}
+
+.empty{
+  color:var(--muted);
+  font-size:12px;
+  padding:14px;
 }
 
 .toast{
