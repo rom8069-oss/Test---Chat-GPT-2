@@ -562,9 +562,10 @@ input[type="range"]{
 .side{
   min-height:0;
   display:grid;
-  grid-template-rows:minmax(440px,68%) minmax(300px,32%);
-  gap:10px;
+  grid-template-rows:minmax(440px,1fr) minmax(168px,auto) minmax(0,auto);
+  gap:12px;
   overflow:hidden;
+  align-content:start;
 }
 
 .routes-card,
@@ -578,6 +579,21 @@ input[type="range"]{
 
 .routes-card{
   box-shadow:0 10px 26px rgba(41,65,91,.08);
+}
+
+.map-card > .card-head,
+.routes-card > .card-head{
+  min-height:64px;
+  padding-top:11px;
+  padding-bottom:11px;
+}
+
+.detail-card{
+  margin-top:4px;
+}
+
+.selected-card{
+  margin-top:2px;
 }
 
 .table-wrap{
@@ -987,7 +1003,7 @@ tbody tr.rep-row-locked td:first-child{
   .controls-grid{ grid-template-columns:repeat(6,minmax(0,1fr)); }
   .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
   .main{ grid-template-columns:1fr; }
-  .side{ grid-template-rows:minmax(440px,1fr) minmax(320px,.8fr); }
+  .side{ grid-template-rows:minmax(440px,1fr) minmax(168px,auto) minmax(320px,.9fr); }
 }
 
 @media (max-width:900px){
