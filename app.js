@@ -2296,7 +2296,9 @@ function optimizeRoutes() {
     }
 
     const continuityWeight = Number(els.disruptionSlider.value) / 100;
-    const balanceMode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+    const optimizerMode = getOptimizerMode();
+    const balanceMode = optimizerMode;
+    const compactMode = optimizerMode === 'compact';
     const optimizerMix = getOptimizerMix();
     const beforeSummary = buildOptimizationSummary();
 
@@ -2381,7 +2383,14 @@ function optimizeRoutes() {
 
           const underMinBoost = stat.stops < minStops ? -2.2 : 0;
           const overMaxPenalty = nextStops > maxStops ? ((nextStops - maxStops) * 4.5) : 0;
-          const localPenalty = localDominancePenalty(account, rep, assignments, adjacency);
+          const localPenaltyBase = localDominancePenalty(account, rep, assignments, adjacency);
+          const neighborSupport = countNeighborRepSupport(account, rep, assignments, adjacency);
+          const supportBonus = compactMode
+            ? (neighborSupport >= 3 ? -1.35 : neighborSupport >= 2 ? -0.72 : neighborSupport === 1 ? -0.12 : 0.68)
+            : (neighborSupport >= 2 ? -0.25 : 0);
+          const fragmentPenalty = fragmentationPenalty(account, rep, assignments, adjacency) * (compactMode ? 1.9 : 0.7);
+          const localPenalty = compactMode ? (localPenaltyBase * 1.65) : localPenaltyBase;
+          const unsupportedPenalty = compactMode && neighborSupport === 0 && currentRep && currentRep !== rep ? 1.05 : 0;
 
           const score =
             compactnessScore +
@@ -2389,8 +2398,11 @@ function optimizeRoutes() {
             existingPenalty +
             balancePenalty +
             localPenalty +
+            fragmentPenalty +
+            unsupportedPenalty +
             underMinBoost +
-            overMaxPenalty;
+            overMaxPenalty +
+            supportBonus;
 
           if (score < bestScore) {
             bestScore = score;
@@ -2439,10 +2451,25 @@ function optimizeRoutes() {
       tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
     }
 
-    runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
-    enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
-    enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
-    rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    const compactCleanupPasses = compactMode ? 3 : 1;
+    for (let compactPass = 0; compactPass < compactCleanupPasses; compactPass += 1) {
+      runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
+      performContiguityRefinement(
+        assignments,
+        targetRepNames,
+        minStops,
+        maxStops,
+        adjacency,
+        assignmentCtx,
+        movableForCleanup
+      );
+      if (compactMode) {
+        tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      }
+      enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+      enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+      rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    }
 
     const finalViolations = targetRepNames.filter(rep => {
       const count = assignmentCtx.count(rep);
@@ -2667,11 +2694,13 @@ function localDominancePenalty(account, rep, assignments, adjacency) {
 
   const agreementRatio = same / total;
 
-  if (agreementRatio >= 0.8) return -0.12;
-  if (agreementRatio >= 0.65) return -0.03;
+  const compactMode = getOptimizerMode() === 'compact';
+
+  if (agreementRatio >= 0.8) return compactMode ? -0.3 : -0.12;
+  if (agreementRatio >= 0.65) return compactMode ? -0.08 : -0.03;
   if (agreementRatio >= 0.5) return 0;
 
-  return (0.5 - agreementRatio) * 2.1;
+  return (0.5 - agreementRatio) * (compactMode ? 3.0 : 2.1);
 }
 
 
@@ -2717,6 +2746,7 @@ function fragmentationPenalty(account, rep, assignments, adjacency) {
 }
 
 function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
+  const compactMode = getOptimizerMode() === 'compact';
   const candidates = Array.isArray(movableAccounts) && movableAccounts.length
     ? movableAccounts
     : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
@@ -2791,9 +2821,9 @@ function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacen
       const supportGain = supportAfter - supportBefore;
       const fragmentGain = fragmentBefore - fragmentAfter;
 
-      const totalGain = (fragmentGain * 2.4) + (supportGain * 1.3) + (distanceGain * 0.85);
+      const totalGain = (fragmentGain * (compactMode ? 3.2 : 2.4)) + (supportGain * (compactMode ? 1.8 : 1.3)) + (distanceGain * 0.85);
 
-      if (totalGain > bestGain && (fragmentGain > 0 || (supportGain >= 2 && distanceGain > 0))) {
+      if (totalGain > bestGain && (fragmentGain > 0 || (supportGain >= (compactMode ? 1 : 2) && distanceGain > 0))) {
         bestGain = totalGain;
         bestSwap = { neighbor, neighborRep };
       }
@@ -2820,6 +2850,7 @@ function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacen
 }
 
 function performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
+  const compactMode = getOptimizerMode() === 'compact';
   const candidates = Array.isArray(movableAccounts) && movableAccounts.length
     ? movableAccounts
     : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
@@ -2827,7 +2858,7 @@ function performContiguityRefinement(assignments, targetRepNames, minStops, maxS
   let changed = true;
   let passes = 0;
 
-  while (changed && passes < 10) {
+  while (changed && passes < (compactMode ? 14 : 10)) {
     changed = false;
     passes += 1;
 
@@ -2865,7 +2896,7 @@ function performContiguityRefinement(assignments, targetRepNames, minStops, maxS
       for (const [targetRep, targetSupport] of targetCounts.entries()) {
         if (isRepLocked(targetRep)) continue;
         if (ctx.count(targetRep) >= maxStops) continue;
-        if (targetSupport < 2) continue;
+        if (targetSupport < (compactMode ? 3 : 2)) continue;
 
         const newCentroid = averageCentroidForRep(targetRep, ctx);
         const newDist = newCentroid
@@ -2880,12 +2911,12 @@ function performContiguityRefinement(assignments, targetRepNames, minStops, maxS
           fragmentationPenalty(account, targetRep, assignments, adjacency);
 
         const moveScore =
-          (supportDelta * 1.55) +
-          (fragmentationDelta * 2.2) -
+          (supportDelta * (compactMode ? 1.95 : 1.55)) +
+          (fragmentationDelta * (compactMode ? 3.0 : 2.2)) -
           (distanceDelta * 0.95) -
           (ctx.count(targetRep) < minStops ? 0.35 : 0);
 
-        if (moveScore > bestDelta && (supportDelta >= 2 || (supportDelta >= 1 && distanceDelta <= 0))) {
+        if (moveScore > bestDelta && (supportDelta >= (compactMode ? 2 : 2) || (supportDelta >= 1 && distanceDelta <= 0 && !compactMode))) {
           bestDelta = moveScore;
           bestRep = targetRep;
         }
@@ -2995,12 +3026,16 @@ function runBorderPass(accounts, assignments, minStops, adjacency, ctx) {
 }
 
 function runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, ctx, movableAccounts = null) {
+  const compactMode = getOptimizerMode() === 'compact';
   const accounts = Array.isArray(movableAccounts) && movableAccounts.length
     ? movableAccounts
     : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
 
   runBorderPass(accounts, assignments, minStops, adjacency, ctx);
   runBorderPass([...accounts].reverse(), assignments, minStops, adjacency, ctx);
+  if (compactMode) {
+    runBorderPass(accounts, assignments, minStops, adjacency, ctx);
+  }
 }
 
 async function exportWorkbook() {
