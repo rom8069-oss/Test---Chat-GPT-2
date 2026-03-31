@@ -562,15 +562,15 @@ input[type="range"]{
 .side{
   min-height:0;
   display:grid;
-  grid-template-rows:minmax(440px,1fr) minmax(168px,auto) minmax(0,auto);
-  gap:12px;
+  grid-template-rows:minmax(440px,1fr) minmax(188px,auto);
+  gap:14px;
   overflow:hidden;
   align-content:start;
+  padding-top:8px;
 }
 
 .routes-card,
-.detail-card,
-.selected-card{
+.detail-card{
   display:flex;
   flex-direction:column;
   min-height:0;
@@ -579,6 +579,7 @@ input[type="range"]{
 
 .routes-card{
   box-shadow:0 10px 26px rgba(41,65,91,.08);
+  margin-top:8px;
 }
 
 .map-card > .card-head,
@@ -589,11 +590,7 @@ input[type="range"]{
 }
 
 .detail-card{
-  margin-top:4px;
-}
-
-.selected-card{
-  margin-top:2px;
+  margin-top:12px;
 }
 
 .table-wrap{
@@ -1003,7 +1000,7 @@ tbody tr.rep-row-locked td:first-child{
   .controls-grid{ grid-template-columns:repeat(6,minmax(0,1fr)); }
   .stats{ grid-template-columns:repeat(4,minmax(0,1fr)); }
   .main{ grid-template-columns:1fr; }
-  .side{ grid-template-rows:minmax(440px,1fr) minmax(168px,auto) minmax(320px,.9fr); }
+  .side{ grid-template-rows:minmax(440px,1fr) minmax(188px,auto); }
 }
 
 @media (max-width:900px){
