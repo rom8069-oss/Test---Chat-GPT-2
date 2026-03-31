@@ -393,6 +393,10 @@ input[type="range"]{
   line-height:1.15;
 }
 
+.stat-compact{
+  min-height:50px;
+}
+
 .main{
   flex:1 1 auto;
   min-height:0;
@@ -562,11 +566,11 @@ input[type="range"]{
 .side{
   min-height:0;
   display:grid;
-  grid-template-rows:minmax(440px,1fr) minmax(188px,auto);
-  gap:14px;
+  grid-template-rows:minmax(0,1fr) minmax(188px,auto);
+  gap:10px;
   overflow:hidden;
-  align-content:start;
-  padding-top:8px;
+  align-content:stretch;
+  padding-top:0;
 }
 
 .routes-card,
@@ -579,7 +583,8 @@ input[type="range"]{
 
 .routes-card{
   box-shadow:0 10px 26px rgba(41,65,91,.08);
-  margin-top:8px;
+  margin-top:0;
+  height:100%;
 }
 
 .map-card > .card-head,
@@ -590,7 +595,7 @@ input[type="range"]{
 }
 
 .detail-card{
-  margin-top:12px;
+  margin-top:0;
 }
 
 .table-wrap{
