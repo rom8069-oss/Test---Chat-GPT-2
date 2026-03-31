@@ -58,7 +58,7 @@ button,input,select,textarea{
 
 .topbar{
   border-radius:20px;
-  padding:12px 14px;
+  padding:7px 12px;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -71,22 +71,22 @@ button,input,select,textarea{
 .brand-wrap{
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:10px;
   min-width:0;
   flex:0 1 auto;
 }
 
 .brand-logo{
-  height:42px;
+  height:34px;
   width:auto;
-  max-width:220px;
+  max-width:200px;
   display:block;
   flex:0 0 auto;
   object-fit:contain;
 }
 
 .title{
-  font-size:19px;
+  font-size:17px;
   font-weight:800;
   letter-spacing:.2px;
   white-space:nowrap;
@@ -102,7 +102,7 @@ button,input,select,textarea{
   justify-content:flex-end;
 }
 
-/* FIX 4: Uniform height for ALL form controls */
+/* Uniform height for ALL form controls */
 .btn,
 .input,
 .file-label,
@@ -146,7 +146,7 @@ input[type="range"]{
 .btn:hover:not(:disabled){transform:translateY(-1px);}
 .btn:disabled{opacity:.55;cursor:not-allowed;transform:none;}
 
-/* FIX 3: Darker blue Assign button */
+/* Darker blue Assign button */
 .btn-primary{
   background:#1e40af;
   color:#fff;
@@ -298,25 +298,25 @@ input[type="file"]{display:none;}
 .controls-grid{
   display:grid;
   grid-template-columns:
-    minmax(165px,1.18fr)
-    minmax(102px,.78fr)
-    minmax(102px,.78fr)
-    minmax(102px,.8fr)
-    minmax(116px,.88fr)
-    minmax(106px,.8fr)
-    minmax(116px,.8fr)
-    minmax(116px,.8fr)
-    minmax(92px,.68fr)
-    minmax(92px,.68fr)
-    minmax(92px,.68fr)
-    minmax(102px,.74fr)
-    minmax(165px,.96fr);
+    minmax(120px,1.4fr)
+    minmax(100px,1fr)
+    minmax(100px,1fr)
+    minmax(100px,1fr)
+    minmax(100px,1fr)
+    minmax(100px,1fr)
+    minmax(100px,1fr)
+    minmax(100px,1fr)
+    minmax(80px,.85fr)
+    minmax(80px,.85fr)
+    minmax(80px,.85fr)
+    minmax(100px,1fr)
+    minmax(120px,1.2fr);
   gap:8px;
   align-items:end;
   overflow:visible;
 }
 
-/* FIX 4: Uniform field layout so all controls sit at the same height */
+/* Uniform field layout — all controls fill column width equally */
 .field{
   min-width:0;
   display:flex;
@@ -439,22 +439,22 @@ input[type="file"]{display:none;}
 .stats{
   display:grid;
   grid-template-columns:repeat(9, minmax(0,1fr));
-  gap:10px;
+  gap:8px;
   flex:0 0 auto;
 }
 
 .stat{
-  border-radius:18px;
-  padding:12px 14px;
+  border-radius:16px;
+  padding:9px 12px;
   min-width:0;
-  min-height:56px;
+  min-height:50px;
   display:flex;
   flex-direction:column;
   justify-content:center;
-  gap:4px;
+  gap:3px;
 }
 
-.stat-compact{min-height:56px;}
+.stat-compact{min-height:50px;}
 
 .stat .k{
   font-size:11px;
@@ -516,8 +516,10 @@ input[type="file"]{display:none;}
 .detail-card{
   min-width:0;
   min-height:0;
+  max-height:260px;
   display:flex;
   flex-direction:column;
+  overflow:hidden;
 }
 
 .card-head,
@@ -547,7 +549,7 @@ input[type="file"]{display:none;}
   color:var(--muted);
 }
 
-/* FIX 3: Assign and Optimize buttons same width */
+/* Assign and Optimize buttons same width */
 .map-actions{
   display:flex;
   align-items:center;
@@ -558,8 +560,8 @@ input[type="file"]{display:none;}
 
 .map-actions #assign-btn,
 .map-actions #optimize-btn{
-  width:140px;
-  min-width:140px;
+  width:118px;
+  min-width:118px;
   justify-content:center;
 }
 
@@ -581,7 +583,7 @@ input[type="file"]{display:none;}
 
 #map{
   flex:1 1 auto;
-  min-height:520px;
+  min-height:400px;
   width:100%;
 }
 
@@ -917,7 +919,8 @@ th.is-active{color:#1f3d61;}
   .map-card,
   .side{grid-column:auto;}
   .side{grid-template-rows:minmax(440px,1fr) minmax(188px,auto);}
-  #map{min-height:480px;}
+  #map{min-height:420px;}
+  .detail-card{max-height:none;}
 }
 
 @media (max-width:900px){
