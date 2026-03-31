@@ -6,15 +6,6 @@ const COLOR_PALETTE = [
   '#60a5fa','#4ade80','#f87171','#818cf8','#67e8f9','#bef264','#f9a8d4','#93c5fd'
 ];
 
-function hexToRgb(hex) {
-  const value = safeString(hex).replace('#', '').trim();
-  if (value.length !== 6) return null;
-  const r = Number.parseInt(value.slice(0, 2), 16);
-  const g = Number.parseInt(value.slice(2, 4), 16);
-  const b = Number.parseInt(value.slice(4, 6), 16);
-  if ([r, g, b].some(v => Number.isNaN(v))) return null;
-  return { r, g, b };
-}
 
 function colorDistance(a, b) {
   const rgbA = hexToRgb(a);
@@ -2389,11 +2380,13 @@ function optimizeRoutes() {
     const movableForAssignment = movableAccounts.filter(a => !state.optimizerSeedIds.has(a._id));
     const movableForCleanup = movableForAssignment;
 
-    const orderedMovable = [...movableForAssignment].sort((a, b) => {
-      if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
-      if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
-      return a.customerName.localeCompare(b.customerName);
-    });
+    const orderedMovable = compactMode
+      ? buildCompactAssignmentOrder(movableForAssignment, seedPlan)
+      : [...movableForAssignment].sort((a, b) => {
+          if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
+          if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
+          return a.customerName.localeCompare(b.customerName);
+        });
 
     const targetStopsPerRep = Math.max(minStops, Math.min(maxStops, totalAccounts / Math.max(1, targetRepNames.length)));
     const totalRevenuePool = state.accounts.reduce((sum, account) => sum + (account.overallSales || 0), 0);
@@ -2405,7 +2398,6 @@ function optimizeRoutes() {
       iterationsExecuted += 1;
       let changedThisPass = false;
       let repLoadOrder = null;
-      let repLoadDirty = true;
 
       assignmentCtx.clearMovableAssignments(movableForAssignment, assignments);
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
@@ -2456,6 +2448,9 @@ function optimizeRoutes() {
           const fragmentPenalty = fragmentationPenalty(account, rep, assignments, adjacency) * (compactMode ? 2.8 : 0.7);
           const localPenalty = compactMode ? (localPenaltyBase * 2.15) : localPenaltyBase;
           const unsupportedPenalty = compactMode && neighborSupport === 0 && currentRep && currentRep !== rep ? 2.2 : 0;
+          const seedScatterPenalty = compactMode
+            ? newRepScatterPenalty(account, rep, seedPlan, adjacency, assignments, assignmentCtx, iter)
+            : 0;
 
           const score =
             compactnessScore +
@@ -2465,6 +2460,7 @@ function optimizeRoutes() {
             localPenalty +
             fragmentPenalty +
             unsupportedPenalty +
+            seedScatterPenalty +
             underMinBoost +
             overMaxPenalty +
             supportBonus;
@@ -2476,9 +2472,8 @@ function optimizeRoutes() {
         }
 
         if (!bestRep) {
-          if (repLoadDirty || !repLoadOrder) {
+          if (!repLoadOrder) {
             repLoadOrder = buildRepLoadOrder(targetRepNames, assignmentCtx);
-            repLoadDirty = false;
           }
           bestRep = repLoadOrder[0] || currentRep || targetRepNames[0];
         }
@@ -2490,12 +2485,14 @@ function optimizeRoutes() {
         stat.revenue += account.overallSales || 0;
 
         if (bestRep !== currentRep) changedThisPass = true;
-        repLoadDirty = true;
       }
 
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
       if (compactMode && seedPlan.seededReps && seedPlan.seededReps.size) {
         enforceSeedAnchors(assignments, assignmentCtx, seedPlan);
+        if (pruneScatteredNewRepAssignments(assignments, seedPlan, adjacency, assignmentCtx, minStops, maxStops, movableForCleanup)) {
+          changedThisPass = true;
+        }
         refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
       }
       if (!changedThisPass) break;
@@ -2538,10 +2535,14 @@ function optimizeRoutes() {
       if (compactMode) {
         tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
         absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+        pruneScatteredNewRepAssignments(assignments, seedPlan, adjacency, assignmentCtx, minStops, maxStops, movableForCleanup);
       }
       enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+      if (compactMode) {
+        pruneScatteredNewRepAssignments(assignments, seedPlan, adjacency, assignmentCtx, minStops, maxStops, movableForCleanup);
+      }
     }
 
     const finalViolations = targetRepNames.filter(rep => {
@@ -2643,7 +2644,9 @@ function createEmptySeedPlan() {
     seedAssignments: new Map(),
     seededAccountIds: new Set(),
     seededReps: new Set(),
-    seedTargetByRep: new Map()
+    seedTargetByRep: new Map(),
+    seedCentroidByRep: new Map(),
+    seedRadiusByRep: new Map()
   };
 }
 
@@ -2770,8 +2773,18 @@ function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, 
       plan.seededAccountIds.add(account._id);
     }
 
+    let radius = 0;
+    for (const account of best.cluster) {
+      radius = Math.max(
+        radius,
+        squaredDistance(best.center.latitude, best.center.longitude, account.latitude, account.longitude)
+      );
+    }
+
     plan.seededReps.add(newRep);
     plan.seedTargetByRep.set(newRep, best.cluster.length);
+    plan.seedCentroidByRep.set(newRep, { lat: best.center.latitude, lng: best.center.longitude });
+    plan.seedRadiusByRep.set(newRep, Math.max(radius, 0.0065));
     seedCentroids.push({ lat: best.center.latitude, lng: best.center.longitude });
     donorCounts.set(best.donorRep, Math.max(0, (donorCounts.get(best.donorRep) || 0) - best.cluster.length));
   }
@@ -2807,6 +2820,128 @@ function enforceSeedAnchors(assignments, ctx, seedPlan) {
     }
   }
 }
+
+
+function buildCompactAssignmentOrder(movableAccounts, seedPlan) {
+  const seedCentroids = [...((seedPlan && seedPlan.seedCentroidByRep) ? seedPlan.seedCentroidByRep.values() : [])];
+  if (!seedCentroids.length) {
+    return [...movableAccounts].sort((a, b) => {
+      if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
+      if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
+      return a.customerName.localeCompare(b.customerName);
+    });
+  }
+
+  return [...movableAccounts].sort((a, b) => {
+    const aDist = nearestSeedCentroidDistance(a, seedCentroids);
+    const bDist = nearestSeedCentroidDistance(b, seedCentroids);
+    const aNear = aDist <= 0.11 ? 0 : 1;
+    const bNear = bDist <= 0.11 ? 0 : 1;
+    if (aNear !== bNear) return aNear - bNear;
+    if (aNear === 0 && Math.abs(aDist - bDist) > 1e-9) return aDist - bDist;
+    if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
+    if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
+    return a.customerName.localeCompare(b.customerName);
+  });
+}
+
+function nearestSeedCentroidDistance(account, seedCentroids) {
+  let best = Infinity;
+  for (const centroid of seedCentroids || []) {
+    best = Math.min(best, squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng));
+  }
+  return Number.isFinite(best) ? best : Infinity;
+}
+
+function newRepScatterPenalty(account, rep, seedPlan, adjacency, assignments, ctx, iter) {
+  if (!seedPlan || !seedPlan.seededReps || !seedPlan.seededReps.has(rep)) return 0;
+
+  const seedCentroid = seedPlan.seedCentroidByRep.get(rep) || averageCentroidForRep(rep, ctx);
+  if (!seedCentroid) return 0;
+
+  const seedRadius = Math.max(seedPlan.seedRadiusByRep.get(rep) || 0.0065, 0.0065);
+  const neighborSupport = countNeighborRepSupport(account, rep, assignments, adjacency);
+  const repCount = ctx.count(rep);
+  const seedTarget = seedPlan.seedTargetByRep.get(rep) || 0;
+  const earlyPhase = iter < 8;
+  const dist = squaredDistance(account.latitude, account.longitude, seedCentroid.lat, seedCentroid.lng);
+
+  const softGrowthRadius = seedRadius * (repCount < seedTarget + 16 ? 2.0 : 2.8);
+  const hardGrowthRadius = seedRadius * (repCount < seedTarget + 16 ? 3.0 : 4.2);
+
+  if (neighborSupport === 0 && dist > hardGrowthRadius) {
+    return earlyPhase ? (14 + (dist - hardGrowthRadius) * 140) : (10 + (dist - hardGrowthRadius) * 90);
+  }
+
+  if (neighborSupport === 0 && dist > softGrowthRadius) {
+    return earlyPhase ? (8 + (dist - softGrowthRadius) * 80) : (5 + (dist - softGrowthRadius) * 42);
+  }
+
+  if (neighborSupport <= 1 && dist > seedRadius * 3.4) {
+    return 1.8 + (dist - seedRadius * 3.4) * 18;
+  }
+
+  return 0;
+}
+
+function pruneScatteredNewRepAssignments(assignments, seedPlan, adjacency, ctx, minStops, maxStops, movableAccounts = null) {
+  if (!seedPlan || !seedPlan.seededReps || !seedPlan.seededReps.size) return false;
+
+  const movableIds = movableAccounts ? new Set(movableAccounts.map(a => a._id)) : null;
+  let changed = false;
+
+  for (const rep of seedPlan.seededReps) {
+    const centroid = averageCentroidForRep(rep, ctx) || seedPlan.seedCentroidByRep.get(rep);
+    if (!centroid) continue;
+
+    const seedRadius = Math.max(seedPlan.seedRadiusByRep.get(rep) || 0.0065, 0.0065);
+    const members = [...ctx.members(rep)]
+      .map(id => state.accountById.get(id))
+      .filter(Boolean)
+      .sort((a, b) => {
+        const ad = squaredDistance(a.latitude, a.longitude, centroid.lat, centroid.lng);
+        const bd = squaredDistance(b.latitude, b.longitude, centroid.lat, centroid.lng);
+        return bd - ad;
+      });
+
+    for (const account of members) {
+      if (isOptimizerSeedAccount(account._id)) continue;
+      if (movableIds && !movableIds.has(account._id)) continue;
+      if ((ctx.count(rep) - 1) < minStops) break;
+
+      const dist = squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng);
+      const support = countNeighborRepSupport(account, rep, assignments, adjacency);
+      if (support >= 2 && dist <= seedRadius * 3.2) continue;
+      if (support >= 1 && dist <= seedRadius * 4.0) continue;
+
+      const neighbors = adjacency.get(account._id);
+      if (!neighbors || !neighbors.size) continue;
+
+      const candidateCounts = new Map();
+      neighbors.forEach(id => {
+        const neighborRep = assignments.get(id);
+        if (!neighborRep || neighborRep === rep) return;
+        candidateCounts.set(neighborRep, (candidateCounts.get(neighborRep) || 0) + 1);
+      });
+
+      const candidateRep = [...candidateCounts.entries()]
+        .filter(([candidate]) => ctx.count(candidate) < maxStops)
+        .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+      if (!candidateRep) continue;
+      const candidateSupport = countNeighborRepSupport(account, candidateRep, assignments, adjacency);
+      if (candidateSupport < Math.max(1, support)) continue;
+
+      assignments.set(account._id, candidateRep);
+      ctx.removeFromRep(rep, account);
+      ctx.addToRep(candidateRep, account);
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
 
 function createAssignmentContext(targetRepNames, assignments) {
   const ctx = { reps: new Map() };
