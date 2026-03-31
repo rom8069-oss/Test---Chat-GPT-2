@@ -207,6 +207,23 @@ function mountUploadStatusPanelToBody() {
   }
 }
 
+function ensureBalanceModeOptions() {
+  if (!els.balanceMode) return;
+  const selected = els.balanceMode.value || 'hybrid';
+  els.balanceMode.innerHTML = `
+    <option value="hybrid">Hybrid</option>
+    <option value="stops">Stops</option>
+    <option value="revenue">Revenue</option>
+    <option value="compact">Compact</option>
+  `;
+  els.balanceMode.value = ['hybrid','stops','revenue','compact'].includes(selected) ? selected : 'hybrid';
+}
+
+function getOptimizerMode() {
+  const mode = (els.balanceMode && els.balanceMode.value) ? String(els.balanceMode.value).toLowerCase() : 'hybrid';
+  return ['hybrid', 'stops', 'revenue', 'compact'].includes(mode) ? mode : 'hybrid';
+}
+
 function initOptimizerTuningUI() {
   const disruptionField = els.disruptionSlider ? els.disruptionSlider.closest('.field') : null;
   if (disruptionField) {
@@ -233,9 +250,7 @@ function initOptimizerTuningUI() {
     els.balanceMode.classList.remove('optimizer-mode-hidden');
     els.balanceMode.removeAttribute('aria-hidden');
     els.balanceMode.tabIndex = 0;
-    if (!['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
-      els.balanceMode.value = 'hybrid';
-    }
+    ensureBalanceModeOptions();
     const balanceField = els.balanceMode.closest('.field');
     if (balanceField) {
       setFieldLabelText(balanceField, 'Optimize weight');
@@ -249,20 +264,24 @@ function initOptimizerTuningUI() {
 }
 
 function getOptimizerMix() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  const mode = getOptimizerMode();
   if (mode === 'stops') {
     return { stopsPriority: 1, revenuePriority: 0 };
   }
   if (mode === 'revenue') {
     return { stopsPriority: 0, revenuePriority: 1 };
   }
+  if (mode === 'compact') {
+    return { stopsPriority: 0.85, revenuePriority: 0.15 };
+  }
   return { stopsPriority: 0.7, revenuePriority: 0.3 };
 }
 
 function getOptimizerWeightLabel() {
-  const mode = (els.balanceMode && els.balanceMode.value) ? els.balanceMode.value : 'hybrid';
+  const mode = getOptimizerMode();
   if (mode === 'stops') return 'Stops';
   if (mode === 'revenue') return 'Revenue';
+  if (mode === 'compact') return 'Compact';
   return 'Hybrid';
 }
 
@@ -304,8 +323,11 @@ function updateOptimizerUI() {
     els.disruptionSlider.title = preset.detail;
   }
 
-  if (els.balanceMode && !['hybrid', 'stops', 'revenue'].includes(els.balanceMode.value)) {
-    els.balanceMode.value = 'hybrid';
+  if (els.balanceMode) {
+    ensureBalanceModeOptions();
+    if (!['hybrid', 'stops', 'revenue', 'compact'].includes(els.balanceMode.value)) {
+      els.balanceMode.value = 'hybrid';
+    }
   }
 }
 
