@@ -548,7 +548,7 @@ table{
 }
 
 th, td{
-  padding:7px 8px;
+  padding:8px 8px;
   border-bottom:1px solid var(--border-soft);
   text-align:left;
   font-size:11px;
@@ -559,28 +559,69 @@ th{
   position:sticky;
   top:0;
   z-index:2;
-  background:#fbfdff;
+  background:#edf3f9;
   color:#5f7892;
   font-weight:900;
   font-size:11px;
-  padding:6px 8px;
+  padding:7px 8px;
+  box-shadow:inset 0 -1px 0 #d8e3ef;
+}
+
+.routes-card thead th{
+  background:#edf3f9;
 }
 
 th[data-sort]{cursor:pointer;}
 th.is-active{color:#1f3d61;}
 .sort-indicator{font-size:10px;margin-left:3px;}
 
-.rep-dot{
+.rep-dot,
+.rep-color-dot,
+.color-dot{
   width:10px;
   height:10px;
   border-radius:50%;
   display:inline-block;
   vertical-align:middle;
   margin-right:8px;
+  flex:0 0 10px;
 }
 
-.delta-positive{color:#0d9c65;font-weight:800;}
-.delta-negative{color:#d84b4b;font-weight:800;}
+.delta-positive,
+.routes-card .delta-positive,
+.routes-card td.delta-positive,
+.routes-card .positive{
+  color:#0d9c65 !important;
+  font-weight:800;
+}
+
+.delta-negative,
+.routes-card .delta-negative,
+.routes-card td.delta-negative,
+.routes-card .negative{
+  color:#d84b4b !important;
+  font-weight:800;
+}
+
+.routes-card tbody tr:hover{
+  background:#f7fbff;
+}
+
+.routes-card tbody tr.selected,
+.routes-card tbody tr.is-selected,
+.routes-card tbody tr.active,
+.routes-card tbody tr[aria-selected="true"],
+.routes-card tbody tr.row-selected{
+  background:#edf4ff;
+}
+
+.routes-card tbody tr.selected td,
+.routes-card tbody tr.is-selected td,
+.routes-card tbody tr.active td,
+.routes-card tbody tr[aria-selected="true"] td,
+.routes-card tbody tr.row-selected td{
+  background:transparent;
+}
 
 .selected-body,
 .moved-review-body{
@@ -715,24 +756,21 @@ th.is-active{color:#1f3d61;}
 
 .leaflet-tile-pane{will-change:transform;}
 
-/* Routes table density polish */
 .routes-card table tr{
-  height:30px;
+  height:34px;
 }
 
-/* Selected Account(s) font + empty state */
-.detail-card,
-.detail-card *{
+.detail-card{
   font-family:"Tw Cen MT","Trebuchet MS","Segoe UI",Arial,sans-serif;
 }
 
 .detail-card .muted,
 .detail-card .small,
 .detail-card .small.muted{
-  font-size:12px;
+  font-size:11px;
   color:#72879d;
-  line-height:1.4;
-  margin-top:6px;
+  line-height:1.35;
+  margin-top:4px;
 }
 
 @media (max-width:1500px){
