@@ -2404,8 +2404,6 @@ function optimizeRoutes() {
     for (let iter = 0; iter < 20; iter += 1) {
       iterationsExecuted += 1;
       let changedThisPass = false;
-      let repLoadOrder = null;
-      let repLoadDirty = true;
 
       assignmentCtx.clearMovableAssignments(movableForAssignment, assignments);
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
@@ -2426,6 +2424,15 @@ function optimizeRoutes() {
         const currentRep = assignments.get(account._id) || account.assignedRep;
 
         for (const rep of targetRepNames) {
+          const neighborSupport = countNeighborRepSupport(account, rep, assignments, adjacency);
+
+          // HARD CONSTRAINT FOR COMPACT:
+          // If a rep already has territory, it can only grow through touching accounts.
+          // Empty reps are still allowed so they can seed.
+          if (compactMode && neighborSupport === 0 && assignmentCtx.count(rep) > 0) {
+            continue;
+          }
+
           const centroid = centroids.get(rep) || averageCentroidForRep(rep, assignmentCtx);
           const compactnessScore = centroid
             ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * ((1 - continuityWeight) * 1.4)
@@ -2449,7 +2456,6 @@ function optimizeRoutes() {
           const underMinBoost = stat.stops < minStops ? -2.2 : 0;
           const overMaxPenalty = nextStops > maxStops ? ((nextStops - maxStops) * 4.5) : 0;
           const localPenaltyBase = localDominancePenalty(account, rep, assignments, adjacency);
-          const neighborSupport = countNeighborRepSupport(account, rep, assignments, adjacency);
           const supportBonus = compactMode
             ? (neighborSupport >= 4 ? -2.4 : neighborSupport >= 3 ? -1.55 : neighborSupport >= 2 ? -0.9 : neighborSupport === 1 ? -0.18 : 1.45)
             : (neighborSupport >= 2 ? -0.25 : 0);
@@ -2476,11 +2482,7 @@ function optimizeRoutes() {
         }
 
         if (!bestRep) {
-          if (repLoadDirty || !repLoadOrder) {
-            repLoadOrder = buildRepLoadOrder(targetRepNames, assignmentCtx);
-            repLoadDirty = false;
-          }
-          bestRep = repLoadOrder[0] || currentRep || targetRepNames[0];
+          continue;
         }
 
         assignments.set(account._id, bestRep);
@@ -2490,7 +2492,6 @@ function optimizeRoutes() {
         stat.revenue += account.overallSales || 0;
 
         if (bestRep !== currentRep) changedThisPass = true;
-        repLoadDirty = true;
       }
 
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
