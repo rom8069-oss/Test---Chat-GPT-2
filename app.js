@@ -2352,7 +2352,6 @@ function optimizeRoutes() {
 
     const fixedAccounts = state.accounts.filter(a => a.protected || isAccountLocked(a));
     const movableAccounts = state.accounts.filter(a => !a.protected && !isAccountLocked(a));
-    const movableForCleanup = movableAccounts;
 
     const currentReps = getAllAssignedReps().filter(rep => !isRepLocked(rep));
     const targetRepNames = buildTargetRepNames(targetCount, currentReps);
@@ -2370,9 +2369,27 @@ function optimizeRoutes() {
     fixedAccounts.forEach(a => assignments.set(a._id, a.assignedRep));
 
     const assignmentCtx = createAssignmentContext(targetRepNames, assignments);
-    const centroids = initializeCentroidsFast(targetRepNames, assignmentCtx);
+    const existingRepNames = new Set(currentReps);
+    const seedPlan = compactMode
+      ? buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops)
+      : createEmptySeedPlan();
 
-    const orderedMovable = [...movableAccounts].sort((a, b) => {
+    state.optimizerSeedIds = new Set(seedPlan.seededAccountIds || []);
+
+    if (seedPlan.seedAssignments && seedPlan.seedAssignments.size) {
+      seedPlan.seedAssignments.forEach((rep, accountId) => {
+        const account = state.accountById.get(accountId);
+        if (!account) return;
+        assignments.set(accountId, rep);
+        assignmentCtx.addToRep(rep, account);
+      });
+    }
+
+    const centroids = initializeCentroidsFast(targetRepNames, assignmentCtx);
+    const movableForAssignment = movableAccounts.filter(a => !state.optimizerSeedIds.has(a._id));
+    const movableForCleanup = movableForAssignment;
+
+    const orderedMovable = [...movableForAssignment].sort((a, b) => {
       if (a.rank !== b.rank) return rankSortValue(a.rank) - rankSortValue(b.rank);
       if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
       return a.customerName.localeCompare(b.customerName);
@@ -2390,7 +2407,7 @@ function optimizeRoutes() {
       let repLoadOrder = null;
       let repLoadDirty = true;
 
-      assignmentCtx.clearMovableAssignments(orderedMovable, assignments);
+      assignmentCtx.clearMovableAssignments(movableForAssignment, assignments);
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
 
       const repStats = buildFullRepStats(targetRepNames);
@@ -2477,6 +2494,10 @@ function optimizeRoutes() {
       }
 
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
+      if (compactMode && seedPlan.seededReps && seedPlan.seededReps.size) {
+        enforceSeedAnchors(assignments, assignmentCtx, seedPlan);
+        refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
+      }
       if (!changedThisPass) break;
     }
 
@@ -2561,6 +2582,8 @@ function optimizeRoutes() {
       repsBefore
     );
 
+    state.optimizerSeedIds = new Set();
+
     state.optimizationSummary = buildOptimizationSummary(beforeSummary, {
       weightLabel: getOptimizerWeightLabel(),
       disruptionLabel: disruptionPreset.short
@@ -2569,6 +2592,7 @@ function optimizeRoutes() {
     updateLastAction('');
 
   } catch (err) {
+    state.optimizerSeedIds = new Set();
     console.error('Optimize Routes failed:', err);
     showToast('Optimize Routes hit an error. Send me the first red error line from the browser console.');
   }
@@ -2612,6 +2636,177 @@ function buildOptimizationSummary(previousSummary = null, meta = {}) {
   return summary;
 }
 
+
+
+function createEmptySeedPlan() {
+  return {
+    seedAssignments: new Map(),
+    seededAccountIds: new Set(),
+    seededReps: new Set(),
+    seedTargetByRep: new Map()
+  };
+}
+
+function isOptimizerSeedAccount(accountId) {
+  return !!(state.optimizerSeedIds && state.optimizerSeedIds.has(accountId));
+}
+
+function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops) {
+  const plan = createEmptySeedPlan();
+  const newReps = targetRepNames.filter(rep => !existingRepNames.has(rep));
+  if (!newReps.length || !movableAccounts.length) return plan;
+
+  const movableByCurrentRep = new Map();
+  for (const account of movableAccounts) {
+    const rep = account.assignedRep || account.currentRep;
+    if (!rep) continue;
+    if (!movableByCurrentRep.has(rep)) movableByCurrentRep.set(rep, []);
+    movableByCurrentRep.get(rep).push(account);
+  }
+
+  const currentCentroids = new Map();
+  for (const [rep, accounts] of movableByCurrentRep.entries()) {
+    if (!accounts.length) continue;
+    let latSum = 0;
+    let lngSum = 0;
+    for (const account of accounts) {
+      latSum += account.latitude;
+      lngSum += account.longitude;
+    }
+    currentCentroids.set(rep, { lat: latSum / accounts.length, lng: lngSum / accounts.length });
+  }
+
+  const reservedIds = new Set();
+  const seedCentroids = [];
+  const donorCounts = new Map();
+  for (const [rep, accounts] of movableByCurrentRep.entries()) donorCounts.set(rep, accounts.length);
+
+  const baseSeedSize = Math.max(32, Math.min(72, Math.round(minStops * 0.62)));
+  const minClusterSize = Math.max(20, Math.min(40, Math.round(baseSeedSize * 0.58)));
+
+  for (const newRep of newReps) {
+    const donorOrder = [...movableByCurrentRep.keys()]
+      .filter(rep => (donorCounts.get(rep) || 0) > Math.max(minStops + minClusterSize - 1, minClusterSize + 8))
+      .sort((a, b) => (donorCounts.get(b) || 0) - (donorCounts.get(a) || 0));
+
+    let best = null;
+
+    for (const donorRep of donorOrder.slice(0, 8)) {
+      const donorAccounts = (movableByCurrentRep.get(donorRep) || []).filter(a => !reservedIds.has(a._id));
+      if (donorAccounts.length < minClusterSize) continue;
+
+      const donorCentroid = currentCentroids.get(donorRep);
+      const rankedCenters = donorAccounts
+        .map(account => {
+          const donorEdgeDistance = donorCentroid
+            ? squaredDistance(account.latitude, account.longitude, donorCentroid.lat, donorCentroid.lng)
+            : 0;
+          const localNeighbors = donorAccounts.reduce((sum, other) => {
+            if (other._id === account._id) return sum;
+            return sum + (squaredDistance(account.latitude, account.longitude, other.latitude, other.longitude) <= 0.02 ? 1 : 0);
+          }, 0);
+          return { account, donorEdgeDistance, localNeighbors };
+        })
+        .sort((a, b) => {
+          if (b.localNeighbors !== a.localNeighbors) return b.localNeighbors - a.localNeighbors;
+          return b.donorEdgeDistance - a.donorEdgeDistance;
+        })
+        .slice(0, 18);
+
+      for (const candidate of rankedCenters) {
+        const center = candidate.account;
+        const cluster = donorAccounts
+          .map(account => ({
+            account,
+            dist: squaredDistance(center.latitude, center.longitude, account.latitude, account.longitude)
+          }))
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, Math.min(baseSeedSize, donorAccounts.length))
+          .map(entry => entry.account);
+
+        if (cluster.length < minClusterSize) continue;
+
+        const clusterSet = new Set(cluster.map(a => a._id));
+        let avgDist = 0;
+        let borderTouches = 0;
+        for (const account of cluster) {
+          avgDist += squaredDistance(center.latitude, center.longitude, account.latitude, account.longitude);
+          const neighbors = state.neighborMap.get(account._id);
+          if (!neighbors) continue;
+          neighbors.forEach(id => {
+            if (!clusterSet.has(id)) borderTouches += 1;
+          });
+        }
+        avgDist /= Math.max(1, cluster.length);
+
+        let separation = Infinity;
+        for (const existing of seedCentroids) {
+          separation = Math.min(separation, squaredDistance(center.latitude, center.longitude, existing.lat, existing.lng));
+        }
+        for (const centroid of currentCentroids.values()) {
+          separation = Math.min(separation, squaredDistance(center.latitude, center.longitude, centroid.lat, centroid.lng));
+        }
+        if (!Number.isFinite(separation)) separation = 1;
+
+        const score =
+          (candidate.localNeighbors * 6.5) +
+          (candidate.donorEdgeDistance * 240) +
+          (separation * 140) -
+          (avgDist * 520) +
+          (borderTouches * 0.18);
+
+        if (!best || score > best.score) {
+          best = { donorRep, cluster, center, score };
+        }
+      }
+    }
+
+    if (!best) continue;
+
+    for (const account of best.cluster) {
+      if (reservedIds.has(account._id)) continue;
+      reservedIds.add(account._id);
+      plan.seedAssignments.set(account._id, newRep);
+      plan.seededAccountIds.add(account._id);
+    }
+
+    plan.seededReps.add(newRep);
+    plan.seedTargetByRep.set(newRep, best.cluster.length);
+    seedCentroids.push({ lat: best.center.latitude, lng: best.center.longitude });
+    donorCounts.set(best.donorRep, Math.max(0, (donorCounts.get(best.donorRep) || 0) - best.cluster.length));
+  }
+
+  return plan;
+}
+
+function enforceSeedAnchors(assignments, ctx, seedPlan) {
+  if (!seedPlan || !seedPlan.seededReps || !seedPlan.seededReps.size) return;
+
+  for (const rep of seedPlan.seededReps) {
+    const target = seedPlan.seedTargetByRep.get(rep) || 0;
+    if (!target) continue;
+    const centroid = averageCentroidForRep(rep, ctx);
+    if (!centroid) continue;
+
+    const seedMembers = [...(ctx.members(rep) || [])]
+      .filter(id => isOptimizerSeedAccount(id))
+      .map(id => state.accountById.get(id))
+      .filter(Boolean)
+      .sort((a, b) => {
+        const ad = squaredDistance(a.latitude, a.longitude, centroid.lat, centroid.lng);
+        const bd = squaredDistance(b.latitude, b.longitude, centroid.lat, centroid.lng);
+        return ad - bd;
+      });
+
+    for (let index = target; index < seedMembers.length; index += 1) {
+      const account = seedMembers[index];
+      const currentRep = assignments.get(account._id) || rep;
+      if (currentRep !== rep) continue;
+      // Keep the closest seed core anchored. Farther seeded points are allowed to behave normally if later moved.
+      state.optimizerSeedIds.delete(account._id);
+    }
+  }
+}
 
 function createAssignmentContext(targetRepNames, assignments) {
   const ctx = { reps: new Map() };
@@ -3007,6 +3202,9 @@ function enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops
       .map(id => state.accountById.get(id))
       .filter(Boolean)
       .sort((a, b) => {
+        const aSeed = isOptimizerSeedAccount(a._id) ? 1 : 0;
+        const bSeed = isOptimizerSeedAccount(b._id) ? 1 : 0;
+        if (aSeed !== bSeed) return aSeed - bSeed;
         const ad = underCentroid ? squaredDistance(a.latitude, a.longitude, underCentroid.lat, underCentroid.lng) : 0;
         const bd = underCentroid ? squaredDistance(b.latitude, b.longitude, underCentroid.lat, underCentroid.lng) : 0;
         return ad - bd;
@@ -3039,6 +3237,9 @@ function enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops
       .map(id => state.accountById.get(id))
       .filter(Boolean)
       .sort((a, b) => {
+        const aSeed = isOptimizerSeedAccount(a._id) ? 1 : 0;
+        const bSeed = isOptimizerSeedAccount(b._id) ? 1 : 0;
+        if (aSeed !== bSeed) return aSeed - bSeed;
         const ad = receiverCentroid ? squaredDistance(a.latitude, a.longitude, receiverCentroid.lat, receiverCentroid.lng) : 0;
         const bd = receiverCentroid ? squaredDistance(b.latitude, b.longitude, receiverCentroid.lat, receiverCentroid.lng) : 0;
         return ad - bd;
