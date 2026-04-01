@@ -990,9 +990,22 @@ function buildNeighborMap(accounts) {
     if (a.longitude < minLng) minLng = a.longitude;
     if (a.longitude > maxLng) maxLng = a.longitude;
   }
+
   const spread = Math.max(maxLng - minLng, maxLat - minLat);
   const densityFactor = Math.sqrt(accounts.length) / 100;
-  const cellSize = Math.max(0.05, Math.min(0.5, spread / (40 + densityFactor) || 0.18));
+
+  // Tighter cell size: was spread/40, now spread/70. This makes the grid
+  // finer so accounts in different suburbs don't falsely share a cell.
+  // Hard cap of 0.18 degrees (~12 miles) prevents distant accounts from
+  // ever being considered neighbors — the old 0.5 cap was ~35 miles which
+  // is why Kenosha and Frankfort could end up connected.
+  const cellSize = Math.max(0.04, Math.min(0.18, spread / (70 + densityFactor) || 0.12));
+
+  // Max neighbor distance: ~8 miles in squared degrees.
+  // 0.12 degrees lat ≈ 8 miles. Anything further is never a neighbor
+  // regardless of what the grid says.
+  const MAX_NEIGHBOR_DIST_SQ = 0.12 * 0.12;
+
   const grid = new Map();
   const cellKey = (lat, lng) => `${Math.floor(lng / cellSize)}|${Math.floor(lat / cellSize)}`;
   for (const a of accounts) {
@@ -1001,6 +1014,7 @@ function buildNeighborMap(accounts) {
     if (!grid.has(key)) grid.set(key, []);
     grid.get(key).push(a);
   }
+
   for (const a of accounts) {
     const x = Math.floor(a.longitude / cellSize);
     const y = Math.floor(a.latitude / cellSize);
@@ -1012,7 +1026,7 @@ function buildNeighborMap(accounts) {
       }
     }
     if (candidates.length < 10) {
-      for (let r = 2; r <= 4 && candidates.length < 20; r++) {
+      for (let r = 2; r <= 3 && candidates.length < 15; r++) {
         for (let dx = -r; dx <= r; dx++) {
           for (let dy = -r; dy <= r; dy++) {
             if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
@@ -1024,6 +1038,7 @@ function buildNeighborMap(accounts) {
     }
     candidates
       .map(o => ({ id: o._id, d: squaredDistance(a.latitude, a.longitude, o.latitude, o.longitude) }))
+      .filter(item => item.d <= MAX_NEIGHBOR_DIST_SQ)  // hard distance cap
       .sort((a, b) => a.d - b.d)
       .slice(0, 10)
       .forEach(item => { map.get(a._id).add(item.id); map.get(item.id)?.add(a._id); });
@@ -2429,12 +2444,20 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
   const accounts = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
   const accountIds = new Set(accounts.map(a => a._id));
 
+  // Max distance for two accounts to be considered part of the same
+  // contiguous component. ~0.22 degrees ≈ ~15 miles.
+  // This is the key fix: without this, Kenosha and Frankfort accounts
+  // can appear "connected" through a chain of distant neighbors even
+  // though they're 60+ miles apart geographically.
+  const MAX_COMPONENT_DIST_SQ = 0.22 * 0.22;
+
   for (const rep of targetRepNames) {
     if (isRepLocked(rep)) continue;
     const repAccounts = accounts.filter(a => (assignments.get(a._id) || a.assignedRep) === rep);
     if (!repAccounts.length) continue;
 
     const repAccountIds = new Set(repAccounts.map(a => a._id));
+    const repById = new Map(repAccounts.map(a => [a._id, a]));
     const visited = new Set();
     const components = [];
 
@@ -2446,8 +2469,15 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
       while (stack.length) {
         const id = stack.pop();
         component.push(id);
+        const current = repById.get(id) || state.accountById.get(id);
+        if (!current) continue;
         adjacency.get(id)?.forEach(nId => {
           if (visited.has(nId) || !repAccountIds.has(nId)) return;
+          // Geographic distance check — only connect accounts within ~15 miles
+          const neighbor = repById.get(nId) || state.accountById.get(nId);
+          if (!neighbor) return;
+          const dist = squaredDistance(current.latitude, current.longitude, neighbor.latitude, neighbor.longitude);
+          if (dist > MAX_COMPONENT_DIST_SQ) return;
           visited.add(nId); stack.push(nId);
         });
       }
@@ -2456,11 +2486,13 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
 
     if (components.length <= 1) continue;
 
-    // Keep largest component; reassign all minority components
+    // Keep the largest component; reassign all minority components
     components.sort((a, b) => b.length - a.length);
     for (const component of components.slice(1)) {
       if (ctx.count(rep) - component.length < minStops) continue;
       const componentSet = new Set(component);
+
+      // Find the best receiving rep by most border touches
       const borderCounts = new Map();
       for (const id of component) {
         adjacency.get(id)?.forEach(nId => {
@@ -2470,7 +2502,31 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
           borderCounts.set(nRep, (borderCounts.get(nRep) || 0) + 1);
         });
       }
-      if (!borderCounts.size) continue;
+
+      // If no neighbor-graph border touches (true geographic island), find
+      // the closest rep by centroid distance instead
+      if (!borderCounts.size) {
+        const compAccounts = component.map(id => state.accountById.get(id)).filter(Boolean);
+        const compLat = compAccounts.reduce((s, a) => s + a.latitude, 0) / compAccounts.length;
+        const compLng = compAccounts.reduce((s, a) => s + a.longitude, 0) / compAccounts.length;
+        let closestRep = null, closestDist = Infinity;
+        for (const otherRep of targetRepNames) {
+          if (otherRep === rep || isRepLocked(otherRep)) continue;
+          if (ctx.count(otherRep) + component.length > maxStops) continue;
+          const cent = averageCentroidForRep(otherRep, ctx);
+          if (!cent) continue;
+          const d = squaredDistance(compLat, compLng, cent.lat, cent.lng);
+          if (d < closestDist) { closestDist = d; closestRep = otherRep; }
+        }
+        if (!closestRep) continue;
+        for (const id of component) {
+          const a = state.accountById.get(id);
+          if (!a) continue;
+          ctx.removeFromRep(rep, a); ctx.addToRep(closestRep, a); assignments.set(id, closestRep);
+        }
+        continue;
+      }
+
       const sorted = [...borderCounts.entries()].sort((a, b) => b[1] - a[1]);
       const targetRep = sorted[0][0];
       if (ctx.count(targetRep) + component.length > maxStops) continue;
