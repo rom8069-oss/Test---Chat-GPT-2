@@ -134,6 +134,9 @@ select{
 .btn:hover:not(:disabled){transform:translateY(-1px);}
 .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 
+/* Primary button stays more visible when disabled — just slightly muted */
+.btn-primary:disabled{opacity:.72;}
+
 /* Button variants */
 .btn-primary{
   background:#2563eb;
