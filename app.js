@@ -1772,9 +1772,7 @@ function optimizeRoutes() {
       }
     }
 
-    // Final dedicated fragmentation sweep — runs after ALL other cleanup
-    // so it catches any islands created by the balance enforcement passes.
-    // Three full cycles: stranded → absorb → contiguity → swap → enforce.
+    // Final fragmentation sweep — catches any islands created by balance enforcement
     for (let fragPass = 0; fragPass < 3; fragPass += 1) {
       resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
@@ -2424,7 +2422,7 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
           visited.add(nId); stack.push(nId);
         });
       }
-      // Raised 4 → 12: absorb larger stranded clusters
+      // Raised 4 → 8: absorb larger stranded clusters
       if (component.length > 12) continue;
       if (ctx.count(rep) - component.length < minStops) continue;
       const borderCounts = new Map();
@@ -2459,15 +2457,11 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
   const accounts = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
   const accountIds = new Set(accounts.map(a => a._id));
 
-  // Max hop distance in BFS — accounts further apart than this in a single
-  // neighbor step are treated as disconnected. ~15 miles.
-  const MAX_HOP_DIST_SQ = 0.18 * 0.18;
-
-  // If two components of the same rep have centroids further apart than
-  // this, they are always treated as separate territories even if BFS
-  // found a chain connecting them. ~25 miles. This is the key fix for
-  // Szymon's north/south split — 0.22 per hop allows bridging chains.
-  const MAX_CENTROID_SEPARATION_SQ = 0.38 * 0.38;
+  // Max distance per BFS hop — 0.08 degrees ≈ ~5 miles.
+  // Tight enough that accounts in different suburbs (Gurnee vs Frankfort)
+  // can never be chained together even through intermediate accounts.
+  // Previously 0.22 (~15 miles) allowed bridging chains 60+ miles long.
+  const MAX_COMPONENT_DIST_SQ = 0.08 * 0.08;
 
   for (const rep of targetRepNames) {
     if (isRepLocked(rep)) continue;
@@ -2477,9 +2471,8 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
     const repAccountIds = new Set(repAccounts.map(a => a._id));
     const repById = new Map(repAccounts.map(a => [a._id, a]));
     const visited = new Set();
-    let components = [];
+    const components = [];
 
-    // Phase 1: BFS with per-hop distance limit
     for (const seed of repAccounts) {
       if (visited.has(seed._id)) continue;
       const component = [];
@@ -2492,41 +2485,16 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
         if (!current) continue;
         adjacency.get(id)?.forEach(nId => {
           if (visited.has(nId) || !repAccountIds.has(nId)) return;
+          // Geographic distance check — only connect accounts within ~15 miles
           const neighbor = repById.get(nId) || state.accountById.get(nId);
           if (!neighbor) return;
-          if (squaredDistance(current.latitude, current.longitude, neighbor.latitude, neighbor.longitude) > MAX_HOP_DIST_SQ) return;
+          const dist = squaredDistance(current.latitude, current.longitude, neighbor.latitude, neighbor.longitude);
+          if (dist > MAX_COMPONENT_DIST_SQ) return;
           visited.add(nId); stack.push(nId);
         });
       }
       components.push(component);
     }
-
-    // Phase 2: centroid-distance split — if two BFS components that ended
-    // up in the same group have centroids far apart, force-split them.
-    // This catches the chain-bridging problem where many small hops
-    // connect geographically distant clusters.
-    const splitComponents = [];
-    for (const component of components) {
-      const compAccounts = component.map(id => repById.get(id) || state.accountById.get(id)).filter(Boolean);
-      const compLat = compAccounts.reduce((s, a) => s + a.latitude, 0) / compAccounts.length;
-      const compLng = compAccounts.reduce((s, a) => s + a.longitude, 0) / compAccounts.length;
-
-      // Check if this component is far from any existing splitComponent centroid
-      let merged = false;
-      for (const existing of splitComponents) {
-        const existAccounts = existing.map(id => repById.get(id) || state.accountById.get(id)).filter(Boolean);
-        const existLat = existAccounts.reduce((s, a) => s + a.latitude, 0) / existAccounts.length;
-        const existLng = existAccounts.reduce((s, a) => s + a.longitude, 0) / existAccounts.length;
-        if (squaredDistance(compLat, compLng, existLat, existLng) <= MAX_CENTROID_SEPARATION_SQ) {
-          // Close enough — merge into existing group
-          existing.push(...component);
-          merged = true;
-          break;
-        }
-      }
-      if (!merged) splitComponents.push([...component]);
-    }
-    components = splitComponents;
 
     if (components.length <= 1) continue;
 
@@ -2536,7 +2504,7 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
       if (ctx.count(rep) - component.length < minStops) continue;
       const componentSet = new Set(component);
 
-      // Find best receiving rep by border touches
+      // Find the best receiving rep by most border touches
       const borderCounts = new Map();
       for (const id of component) {
         adjacency.get(id)?.forEach(nId => {
@@ -2547,7 +2515,8 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
         });
       }
 
-      // No border touches — find closest rep by centroid distance
+      // If no neighbor-graph border touches (true geographic island), find
+      // the closest rep by centroid distance instead
       if (!borderCounts.size) {
         const compAccounts = component.map(id => state.accountById.get(id)).filter(Boolean);
         const compLat = compAccounts.reduce((s, a) => s + a.latitude, 0) / compAccounts.length;
