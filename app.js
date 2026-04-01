@@ -2459,12 +2459,15 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
   const accounts = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
   const accountIds = new Set(accounts.map(a => a._id));
 
-  // Max distance for two accounts to be considered part of the same
-  // contiguous component. ~0.22 degrees ≈ ~15 miles.
-  // This is the key fix: without this, Kenosha and Frankfort accounts
-  // can appear "connected" through a chain of distant neighbors even
-  // though they're 60+ miles apart geographically.
-  const MAX_COMPONENT_DIST_SQ = 0.22 * 0.22;
+  // Max hop distance in BFS — accounts further apart than this in a single
+  // neighbor step are treated as disconnected. ~15 miles.
+  const MAX_HOP_DIST_SQ = 0.18 * 0.18;
+
+  // If two components of the same rep have centroids further apart than
+  // this, they are always treated as separate territories even if BFS
+  // found a chain connecting them. ~25 miles. This is the key fix for
+  // Szymon's north/south split — 0.22 per hop allows bridging chains.
+  const MAX_CENTROID_SEPARATION_SQ = 0.38 * 0.38;
 
   for (const rep of targetRepNames) {
     if (isRepLocked(rep)) continue;
@@ -2474,8 +2477,9 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
     const repAccountIds = new Set(repAccounts.map(a => a._id));
     const repById = new Map(repAccounts.map(a => [a._id, a]));
     const visited = new Set();
-    const components = [];
+    let components = [];
 
+    // Phase 1: BFS with per-hop distance limit
     for (const seed of repAccounts) {
       if (visited.has(seed._id)) continue;
       const component = [];
@@ -2488,16 +2492,41 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
         if (!current) continue;
         adjacency.get(id)?.forEach(nId => {
           if (visited.has(nId) || !repAccountIds.has(nId)) return;
-          // Geographic distance check — only connect accounts within ~15 miles
           const neighbor = repById.get(nId) || state.accountById.get(nId);
           if (!neighbor) return;
-          const dist = squaredDistance(current.latitude, current.longitude, neighbor.latitude, neighbor.longitude);
-          if (dist > MAX_COMPONENT_DIST_SQ) return;
+          if (squaredDistance(current.latitude, current.longitude, neighbor.latitude, neighbor.longitude) > MAX_HOP_DIST_SQ) return;
           visited.add(nId); stack.push(nId);
         });
       }
       components.push(component);
     }
+
+    // Phase 2: centroid-distance split — if two BFS components that ended
+    // up in the same group have centroids far apart, force-split them.
+    // This catches the chain-bridging problem where many small hops
+    // connect geographically distant clusters.
+    const splitComponents = [];
+    for (const component of components) {
+      const compAccounts = component.map(id => repById.get(id) || state.accountById.get(id)).filter(Boolean);
+      const compLat = compAccounts.reduce((s, a) => s + a.latitude, 0) / compAccounts.length;
+      const compLng = compAccounts.reduce((s, a) => s + a.longitude, 0) / compAccounts.length;
+
+      // Check if this component is far from any existing splitComponent centroid
+      let merged = false;
+      for (const existing of splitComponents) {
+        const existAccounts = existing.map(id => repById.get(id) || state.accountById.get(id)).filter(Boolean);
+        const existLat = existAccounts.reduce((s, a) => s + a.latitude, 0) / existAccounts.length;
+        const existLng = existAccounts.reduce((s, a) => s + a.longitude, 0) / existAccounts.length;
+        if (squaredDistance(compLat, compLng, existLat, existLng) <= MAX_CENTROID_SEPARATION_SQ) {
+          // Close enough — merge into existing group
+          existing.push(...component);
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) splitComponents.push([...component]);
+    }
+    components = splitComponents;
 
     if (components.length <= 1) continue;
 
@@ -2507,7 +2536,7 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
       if (ctx.count(rep) - component.length < minStops) continue;
       const componentSet = new Set(component);
 
-      // Find the best receiving rep by most border touches
+      // Find best receiving rep by border touches
       const borderCounts = new Map();
       for (const id of component) {
         adjacency.get(id)?.forEach(nId => {
@@ -2518,8 +2547,7 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
         });
       }
 
-      // If no neighbor-graph border touches (true geographic island), find
-      // the closest rep by centroid distance instead
+      // No border touches — find closest rep by centroid distance
       if (!borderCounts.size) {
         const compAccounts = component.map(id => state.accountById.get(id)).filter(Boolean);
         const compLat = compAccounts.reduce((s, a) => s + a.latitude, 0) / compAccounts.length;
