@@ -106,10 +106,10 @@ const state = {
   optimizationSummary: null,
   tableSort: { key: 'rep', dir: 'asc' },
   filters: {
-    rep: new Set(), rank: new Set(), chain: new Set(), segment: new Set(),
-    premise: 'ALL', protected: 'ALL', moved: 'ALL'
+    rep: new Set(), rank: new Set(), chain: new Set(), segment: new Set(), city: new Set(),
+    premise: 'ALL', moved: 'ALL'
   },
-  multiSearch: { rep: '', rank: '', chain: '', segment: '', moved: '' },
+  multiSearch: { rep: '', rank: '', chain: '', segment: '', city: '', moved: '' },
   openMultiKey: null,
   repCountUserSet: false
 };
@@ -455,11 +455,11 @@ function computeFilterPass(account) {
   const rankOk = state.filters.rank.has(NONE_SELECTED_TOKEN) ? false : (!state.filters.rank.size || state.filters.rank.has(account.rank));
   const chainOk = state.filters.chain.has(NONE_SELECTED_TOKEN) ? false : (!state.filters.chain.size || state.filters.chain.has(account.chain));
   const segmentOk = state.filters.segment.has(NONE_SELECTED_TOKEN) ? false : (!state.filters.segment.size || state.filters.segment.has(account.segment));
+  const cityOk = state.filters.city.has(NONE_SELECTED_TOKEN) ? false : (!state.filters.city.size || state.filters.city.has(account.city));
   const premiseOk = state.filters.premise === 'ALL' || account.premise === state.filters.premise;
-  const protectedOk = state.filters.protected === 'ALL' || (state.filters.protected === 'YES' ? account.protected : !account.protected);
   const moved = account.assignedRep !== account.originalAssignedRep;
   const movedOk = state.filters.moved === 'ALL' || (state.filters.moved === 'MOVED' ? moved : !moved);
-  return repOk && rankOk && chainOk && segmentOk && premiseOk && protectedOk && movedOk;
+  return repOk && rankOk && chainOk && segmentOk && cityOk && premiseOk && movedOk;
 }
 
 function updateFilterPassCache() {
@@ -513,8 +513,8 @@ function bindElements() {
     'assign-rep-select','rep-count-input','min-stops-input','max-stops-input','disruption-slider','disruption-value','balance-mode',
     'dim-others-checkbox','show-territory-checkbox','rep-table-body','selection-preview','selection-count',
     'global-accounts','global-revenue','global-protected','global-moved','global-unchanged','global-avg-weekly','global-avg-weekly-per-rep','global-stops-range','global-avg-total-stops',
-    'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','protected-filter',
-    'moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
+    'last-action','toast','clear-selection-btn','theme-toggle-check','premise-filter','city-filter-options',
+    'city-filter-summary','moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
     'routes-table-wrap','moved-search-input','upload-status-pill','upload-status-icon','upload-status-text','upload-status-panel','upload-status-body',
     'detail-panel'
@@ -545,7 +545,6 @@ function bindEvents() {
   els.dimOthersCheckbox.addEventListener('change', refreshUI);
   els.showTerritoryCheckbox.addEventListener('change', () => scheduleTerritoryRefresh(true));
   els.premiseFilter.addEventListener('change', () => { state.filters.premise = els.premiseFilter.value; refreshUI(); });
-  els.protectedFilter.addEventListener('change', () => { state.filters.protected = els.protectedFilter.value; refreshUI(); });
   els.movedFilter.addEventListener('change', () => { state.filters.moved = els.movedFilter.value; refreshUI(); });
   els.disruptionSlider.addEventListener('input', updateOptimizerUI);
 
@@ -599,7 +598,7 @@ function initMap() {
 }
 
 function initMultiFilters() {
-  ['rep','rank','chain','segment'].forEach(key => {
+  ['rep','rank','chain','segment','city'].forEach(key => {
     const trigger = document.querySelector(`[data-multi-trigger="${key}"]`);
     const selectAllBtn = document.querySelector(`[data-select-all="${key}"]`);
     const searchInput = document.querySelector(`[data-search="${key}"]`);
@@ -697,6 +696,7 @@ function getFilterOptionsForKey(key) {
     case 'rank': return getDistinctValues(state.accounts, a => a.rank);
     case 'chain': return getDistinctValues(state.accounts, a => a.chain);
     case 'segment': return getDistinctValues(state.accounts, a => a.segment);
+    case 'city': return getDistinctValues(state.accounts, a => a.city);
     default: return [];
   }
 }
@@ -712,6 +712,7 @@ function renderMultiFilterOptions() {
   renderMultiOptionList('rank', els.rankFilterOptions, els.rankFilterSummary, getDistinctValues(state.accounts, a => a.rank), 'All ranks');
   renderMultiOptionList('chain', els.chainFilterOptions, els.chainFilterSummary, getDistinctValues(state.accounts, a => a.chain), 'All chains');
   renderMultiOptionList('segment', els.segmentFilterOptions, els.segmentFilterSummary, getDistinctValues(state.accounts, a => a.segment), 'All segments');
+  renderMultiOptionList('city', els.cityFilterOptions, els.cityFilterSummary, getDistinctValues(state.accounts, a => a.city), 'All cities');
   if (state.openMultiKey) positionMultiPanel(state.openMultiKey);
 }
 
