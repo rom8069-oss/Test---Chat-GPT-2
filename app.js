@@ -1772,6 +1772,21 @@ function optimizeRoutes() {
       }
     }
 
+    // Final dedicated fragmentation sweep — runs after ALL other cleanup
+    // so it catches any islands created by the balance enforcement passes.
+    // Three full cycles: stranded → absorb → contiguity → swap → enforce.
+    for (let fragPass = 0; fragPass < 3; fragPass += 1) {
+      resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+      enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+      rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    }
+
     const finalViolations = targetRepNames.filter(rep => { const c = assignmentCtx.count(rep); return c < minStops || c > maxStops; });
     if (finalViolations.length) showToast('Optimizer could not fully satisfy the stop limits. Try adjusting rep count or stop limits.');
 
@@ -2409,8 +2424,8 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
           visited.add(nId); stack.push(nId);
         });
       }
-      // Raised 4 → 8: absorb larger stranded clusters
-      if (component.length > 8) continue;
+      // Raised 4 → 12: absorb larger stranded clusters
+      if (component.length > 12) continue;
       if (ctx.count(rep) - component.length < minStops) continue;
       const borderCounts = new Map();
       for (const id of component) {
