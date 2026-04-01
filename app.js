@@ -1719,19 +1719,23 @@ function optimizeRoutes() {
     runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
     performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
 
+    // Resolve stranded clusters first — catches situations like Mario Dukovac
+    // where a whole sub-cluster is geographically disconnected from home base
+    resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+    absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+
     if (tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup)) {
       tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
     }
 
-    const compactCleanupPasses = compactMode ? 5 : 1;
+    const compactCleanupPasses = compactMode ? 5 : 2;
     for (let compactPass = 0; compactPass < compactCleanupPasses; compactPass += 1) {
+      resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
-      if (compactMode) absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
-      if (compactMode) {
-        tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
-        absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
-      }
+      tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
@@ -1742,6 +1746,7 @@ function optimizeRoutes() {
     if (newRepSet.size > 0) {
       const newRepAccounts = movableForCleanup.filter(a => newRepSet.has(assignments.get(a._id) || ''));
       for (let extraPass = 0; extraPass < 4; extraPass += 1) {
+        resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
         runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, newRepAccounts);
         absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
         performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
@@ -2151,16 +2156,27 @@ function fragmentationPenalty(account, rep, assignments, adjacency) {
   return compactMode && same <= 1 ? 0.35 : 0;
 }
 
+// Border swap: exchange two adjacent accounts between reps if it improves
+// fragmentation + support + distance. Removed the fragmentationPenalty > 0
+// gate — any border account with a different neighbor is now considered.
 function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
   const compactMode = getOptimizerMode() === 'compact';
   const candidates = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
   let improved = false;
+
   for (const account of candidates) {
     const currentRep = assignments.get(account._id) || account.assignedRep;
     if (!currentRep) continue;
     const neighbors = adjacency.get(account._id);
-    if (!neighbors || neighbors.size < 2) continue;
-    if (fragmentationPenalty(account, currentRep, assignments, adjacency) <= 0) continue;
+    if (!neighbors || !neighbors.size) continue;
+
+    // Consider any border account (has at least one neighbor from a different rep)
+    const hasDifferentNeighbor = [...neighbors].some(id => {
+      const nRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+      return nRep && nRep !== currentRep;
+    });
+    if (!hasDifferentNeighbor) continue;
+
     let bestSwap = null, bestGain = 0;
     neighbors.forEach(id => {
       const neighbor = state.accountById.get(id);
@@ -2169,24 +2185,30 @@ function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacen
       if (!neighborRep || neighborRep === currentRep) return;
       if (ctx.count(currentRep) <= minStops || ctx.count(neighborRep) <= minStops) return;
       if (ctx.count(currentRep) > maxStops || ctx.count(neighborRep) > maxStops) return;
+
       const aCent = averageCentroidForRep(currentRep, ctx);
       const nCent = averageCentroidForRep(neighborRep, ctx);
       const aOldDist = aCent ? squaredDistance(account.latitude, account.longitude, aCent.lat, aCent.lng) : 0;
       const nOldDist = nCent ? squaredDistance(neighbor.latitude, neighbor.longitude, nCent.lat, nCent.lng) : 0;
       const aNewDist = nCent ? squaredDistance(account.latitude, account.longitude, nCent.lat, nCent.lng) : aOldDist;
       const nNewDist = aCent ? squaredDistance(neighbor.latitude, neighbor.longitude, aCent.lat, aCent.lng) : nOldDist;
+
       const fragBefore = fragmentationPenalty(account, currentRep, assignments, adjacency) + fragmentationPenalty(neighbor, neighborRep, assignments, adjacency);
       const suppBefore = countNeighborRepSupport(account, currentRep, assignments, adjacency) + countNeighborRepSupport(neighbor, neighborRep, assignments, adjacency);
       assignments.set(account._id, neighborRep); assignments.set(neighbor._id, currentRep);
       const fragAfter = fragmentationPenalty(account, neighborRep, assignments, adjacency) + fragmentationPenalty(neighbor, currentRep, assignments, adjacency);
       const suppAfter = countNeighborRepSupport(account, neighborRep, assignments, adjacency) + countNeighborRepSupport(neighbor, currentRep, assignments, adjacency);
       assignments.set(account._id, currentRep); assignments.set(neighbor._id, neighborRep);
+
       const distGain = (aOldDist + nOldDist) - (aNewDist + nNewDist);
       const suppGain = suppAfter - suppBefore;
       const fragGain = fragBefore - fragAfter;
-      const totalGain = (fragGain * (compactMode ? 3.2 : 2.4)) + (suppGain * (compactMode ? 1.8 : 1.3)) + (distGain * 0.85);
-      if (totalGain > bestGain && (fragGain > 0 || (suppGain >= (compactMode ? 1 : 2) && distGain > 0))) { bestGain = totalGain; bestSwap = { neighbor, neighborRep }; }
+      const totalGain = (fragGain * (compactMode ? 3.5 : 2.6)) + (suppGain * (compactMode ? 2.0 : 1.4)) + (distGain * 0.9);
+
+      // Any positive net gain qualifies
+      if (totalGain > bestGain && totalGain > 0.05) { bestGain = totalGain; bestSwap = { neighbor, neighborRep }; }
     });
+
     if (bestSwap) {
       ctx.removeFromRep(currentRep, account); ctx.removeFromRep(bestSwap.neighborRep, bestSwap.neighbor);
       ctx.addToRep(bestSwap.neighborRep, account); ctx.addToRep(currentRep, bestSwap.neighbor);
@@ -2197,11 +2219,14 @@ function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacen
   return improved;
 }
 
+// Contiguity refinement: move border accounts toward reps they're
+// more connected to. Lowered compact threshold from 3→2 so edge
+// accounts with fewer total neighbors still get considered.
 function performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
   const compactMode = getOptimizerMode() === 'compact';
   const candidates = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
   let changed = true, passes = 0;
-  while (changed && passes < (compactMode ? 18 : 10)) {
+  while (changed && passes < (compactMode ? 20 : 12)) {
     changed = false; passes += 1;
     const ordered = [...candidates].sort((a, b) =>
       countNeighborRepSupport(a, assignments.get(a._id) || a.assignedRep, assignments, adjacency) -
@@ -2211,29 +2236,36 @@ function performContiguityRefinement(assignments, targetRepNames, minStops, maxS
       const currentRep = assignments.get(account._id) || account.assignedRep;
       if (!currentRep || ctx.count(currentRep) <= minStops) continue;
       const neighbors = adjacency.get(account._id);
-      if (!neighbors || neighbors.size < 2) continue;
+      if (!neighbors || !neighbors.size) continue;
       const currentSupport = countNeighborRepSupport(account, currentRep, assignments, adjacency);
       const oldCentroid = averageCentroidForRep(currentRep, ctx);
       const oldDist = oldCentroid ? squaredDistance(account.latitude, account.longitude, oldCentroid.lat, oldCentroid.lng) : 0;
       const targetCounts = new Map();
       neighbors.forEach(id => {
-        const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
-        if (!neighborRep || neighborRep === currentRep) return;
-        targetCounts.set(neighborRep, (targetCounts.get(neighborRep) || 0) + 1);
+        const nRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+        if (!nRep || nRep === currentRep) return;
+        targetCounts.set(nRep, (targetCounts.get(nRep) || 0) + 1);
       });
       let bestRep = null, bestDelta = 0;
       for (const [targetRep, targetSupport] of targetCounts.entries()) {
         if (isRepLocked(targetRep) || ctx.count(targetRep) >= maxStops) continue;
-        if (targetSupport < (compactMode ? 3 : 2)) continue;
+        // Lowered from 3→2 in compact mode so sparse-area edge accounts qualify
+        if (targetSupport < (compactMode ? 2 : 2)) continue;
         const newCentroid = averageCentroidForRep(targetRep, ctx);
         const newDist = newCentroid ? squaredDistance(account.latitude, account.longitude, newCentroid.lat, newCentroid.lng) : oldDist;
         const supportDelta = targetSupport - currentSupport;
         const distanceDelta = newDist - oldDist;
         const fragmentationDelta = fragmentationPenalty(account, currentRep, assignments, adjacency) - fragmentationPenalty(account, targetRep, assignments, adjacency);
-        const moveScore = (supportDelta * (compactMode ? 2.55 : 1.55)) + (fragmentationDelta * (compactMode ? 4.3 : 2.2)) - (distanceDelta * (compactMode ? 1.15 : 0.95)) - (ctx.count(targetRep) < minStops ? (compactMode ? 0.5 : 0.35) : 0);
-        if (moveScore > bestDelta && (supportDelta >= (compactMode ? 3 : 2) || (supportDelta >= 2 && fragmentationDelta > 0 && compactMode) || (supportDelta >= 1 && distanceDelta <= 0 && !compactMode))) {
-          bestDelta = moveScore; bestRep = targetRep;
-        }
+        const moveScore =
+          (supportDelta * (compactMode ? 2.8 : 1.6)) +
+          (fragmentationDelta * (compactMode ? 4.8 : 2.4)) -
+          (distanceDelta * (compactMode ? 1.1 : 0.9)) -
+          (ctx.count(targetRep) < minStops ? (compactMode ? 0.5 : 0.35) : 0);
+        if (moveScore > bestDelta && (
+          supportDelta >= 2 ||
+          (supportDelta >= 1 && fragmentationDelta > 0) ||
+          (supportDelta >= 1 && distanceDelta <= 0)
+        )) { bestDelta = moveScore; bestRep = targetRep; }
       }
       if (bestRep) { ctx.removeFromRep(currentRep, account); ctx.addToRep(bestRep, account); assignments.set(account._id, bestRep); changed = true; }
     }
@@ -2361,7 +2393,9 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
           visited.add(nId); stack.push(nId);
         });
       }
-      if (component.length > 4 || ctx.count(rep) - component.length < minStops) continue;
+      // Raised 4 → 8: absorb larger stranded clusters
+      if (component.length > 8) continue;
+      if (ctx.count(rep) - component.length < minStops) continue;
       const borderCounts = new Map();
       for (const id of component) {
         adjacency.get(id)?.forEach(nId => {
@@ -2374,7 +2408,71 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
       const ordered = [...borderCounts.entries()].sort((a, b) => b[1] - a[1]);
       const targetRep = ordered[0]?.[0];
       const targetTouches = ordered[0]?.[1] || 0;
-      if (!targetRep || targetTouches < 2 || ctx.count(targetRep) + component.length > maxStops) continue;
+      // Lowered 2 → 1: absorb single-touch islands too
+      if (!targetRep || targetTouches < 1) continue;
+      if (ctx.count(targetRep) + component.length > maxStops) continue;
+      for (const id of component) {
+        const a = state.accountById.get(id);
+        if (!a) continue;
+        ctx.removeFromRep(rep, a); ctx.addToRep(targetRep, a); assignments.set(id, targetRep);
+      }
+    }
+  }
+}
+
+// Finds ALL disconnected components for each rep and reassigns minority
+// components to the geographically dominant surrounding rep.
+// This is the primary fix for scattered territories like the Mario Dukovac
+// example — the stranded southwest cluster gets absorbed by whoever surrounds it.
+function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
+  const accounts = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+  const accountIds = new Set(accounts.map(a => a._id));
+
+  for (const rep of targetRepNames) {
+    if (isRepLocked(rep)) continue;
+    const repAccounts = accounts.filter(a => (assignments.get(a._id) || a.assignedRep) === rep);
+    if (!repAccounts.length) continue;
+
+    const repAccountIds = new Set(repAccounts.map(a => a._id));
+    const visited = new Set();
+    const components = [];
+
+    for (const seed of repAccounts) {
+      if (visited.has(seed._id)) continue;
+      const component = [];
+      const stack = [seed._id];
+      visited.add(seed._id);
+      while (stack.length) {
+        const id = stack.pop();
+        component.push(id);
+        adjacency.get(id)?.forEach(nId => {
+          if (visited.has(nId) || !repAccountIds.has(nId)) return;
+          visited.add(nId); stack.push(nId);
+        });
+      }
+      components.push(component);
+    }
+
+    if (components.length <= 1) continue;
+
+    // Keep largest component; reassign all minority components
+    components.sort((a, b) => b.length - a.length);
+    for (const component of components.slice(1)) {
+      if (ctx.count(rep) - component.length < minStops) continue;
+      const componentSet = new Set(component);
+      const borderCounts = new Map();
+      for (const id of component) {
+        adjacency.get(id)?.forEach(nId => {
+          if (componentSet.has(nId) || !accountIds.has(nId)) return;
+          const nRep = assignments.get(nId) || state.accountById.get(nId)?.assignedRep;
+          if (!nRep || nRep === rep || isRepLocked(nRep)) return;
+          borderCounts.set(nRep, (borderCounts.get(nRep) || 0) + 1);
+        });
+      }
+      if (!borderCounts.size) continue;
+      const sorted = [...borderCounts.entries()].sort((a, b) => b[1] - a[1]);
+      const targetRep = sorted[0][0];
+      if (ctx.count(targetRep) + component.length > maxStops) continue;
       for (const id of component) {
         const a = state.accountById.get(id);
         if (!a) continue;
