@@ -110,7 +110,8 @@ const state = {
     premise: 'ALL', protected: 'ALL', moved: 'ALL'
   },
   multiSearch: { rep: '', rank: '', chain: '', segment: '', moved: '' },
-  openMultiKey: null
+  openMultiKey: null,
+  repCountUserSet: false
 };
 
 const els = {};
@@ -547,6 +548,10 @@ function bindEvents() {
   els.protectedFilter.addEventListener('change', () => { state.filters.protected = els.protectedFilter.value; refreshUI(); });
   els.movedFilter.addEventListener('change', () => { state.filters.moved = els.movedFilter.value; refreshUI(); });
   els.disruptionSlider.addEventListener('input', updateOptimizerUI);
+
+  // Mark rep count as user-set as soon as they type in it
+  els.repCountInput.addEventListener('input', () => { state.repCountUserSet = true; });
+  els.repCountInput.addEventListener('change', () => { state.repCountUserSet = true; });
   if (els.movedSearchInput) {
     els.movedSearchInput.addEventListener('input', e => { state.multiSearch.moved = e.target.value || ''; renderMovedReview(); });
   }
@@ -859,6 +864,7 @@ function loadSelectedSheet() {
   state.changeLog = [];
   state.repFocus = null;
   state.optimizationSummary = null;
+  state.repCountUserSet = false;
   state.multiSearch.moved = '';
   if (els.movedSearchInput) els.movedSearchInput.value = '';
   const rows = state.workbookSheets[sheetName] || [];
@@ -1440,8 +1446,12 @@ function syncControlState() {
   els.exportBtn.disabled = !hasAccounts;
   if (els.clearSelectionBtn) els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
-  const reps = getAvailableReps();
-  if (document.activeElement !== els.repCountInput) els.repCountInput.value = reps.length || 1;
+
+  // Only set rep count on first file load — never overwrite after user changes it.
+  if (!state.repCountUserSet) {
+    const reps = getAvailableReps();
+    els.repCountInput.value = reps.length || 1;
+  }
 }
 
 function assignSelectionToRep() {
@@ -1668,8 +1678,11 @@ function optimizeRoutes() {
           const fragmentPenalty = fragmentationPenalty(account, rep, assignments, adjacency) * (compactMode ? 2.8 : 0.7);
           const localPenalty = compactMode ? (localPenaltyBase * 2.15) : localPenaltyBase;
           const unsupportedPenalty = (!isNewRep || !isEarlyIter) && compactMode && neighborSupport === 0 && currentRep && currentRep !== rep ? 2.2 : 0;
+          // Density gap: penalize crossing natural geographic boundaries
+          // (sparse zones act as proxy for roads/rivers/city borders)
+          const gapPenalty = densityGapPenalty(account, rep, assignments, adjacency) * (compactMode ? 1.6 : 0.8);
 
-          const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + fragmentPenalty + unsupportedPenalty + underMinBoost + overMaxPenalty + supportBonus;
+          const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + fragmentPenalty + unsupportedPenalty + gapPenalty + underMinBoost + overMaxPenalty + supportBonus;
 
           if (score < bestScore) { bestScore = score; bestRep = rep; }
         }
@@ -1722,6 +1735,20 @@ function optimizeRoutes() {
       enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+    }
+
+    // Extra consolidation passes for new reps — they need more cleanup
+    // than established reps because they start from a cold seed.
+    if (newRepSet.size > 0) {
+      const newRepAccounts = movableForCleanup.filter(a => newRepSet.has(assignments.get(a._id) || ''));
+      for (let extraPass = 0; extraPass < 4; extraPass += 1) {
+        runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, newRepAccounts);
+        absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+        performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+        tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+        enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+        enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
+      }
     }
 
     const finalViolations = targetRepNames.filter(rep => { const c = assignmentCtx.count(rep); return c < minStops || c > maxStops; });
@@ -1784,45 +1811,69 @@ function isOptimizerSeedAccount(accountId) {
   return !!(state.optimizerSeedIds && state.optimizerSeedIds.has(accountId));
 }
 
-// ── FLOOD-FILL SEED (new) ─────────────────────────────────────
-// Grows a contiguous cluster outward through the neighbor graph
-// from a starting account, staying within the same donor rep.
-// Guarantees the seed cluster is geographically connected.
+// ── FLOOD-FILL SEED ───────────────────────────────────────────
+// Grows a contiguous cluster outward via BFS through the neighbor graph.
+// Phase 1: stay strictly within the donor rep (clean geographic slice).
+// Phase 2: if phase 1 can't reach 75% of maxSize, relax and absorb
+//          adjacent movable accounts from any rep — handles sparse areas
+//          where the donor territory doesn't have enough contiguous accounts.
 function floodFillSeed(startAccount, movableIdSet, reservedIds, donorRep, maxSize) {
   const visited = new Set([startAccount._id]);
   const result = [startAccount];
   const queue = [startAccount];
 
+  // Phase 1 — strict donor-only BFS
   while (queue.length && result.length < maxSize) {
     const current = queue.shift();
     const neighbors = state.neighborMap.get(current._id);
     if (!neighbors) continue;
     for (const neighborId of neighbors) {
-      if (visited.has(neighborId)) continue;
-      if (reservedIds.has(neighborId)) continue;
-      if (!movableIdSet.has(neighborId)) continue;
+      if (visited.has(neighborId) || reservedIds.has(neighborId) || !movableIdSet.has(neighborId)) continue;
       const neighbor = state.accountById.get(neighborId);
       if (!neighbor) continue;
-      const neighborRep = neighbor.assignedRep || neighbor.currentRep || 'Unassigned';
-      if (neighborRep !== donorRep) continue;
+      if ((neighbor.assignedRep || neighbor.currentRep || 'Unassigned') !== donorRep) continue;
       visited.add(neighborId);
       result.push(neighbor);
       queue.push(neighbor);
       if (result.length >= maxSize) break;
     }
   }
+
+  // Phase 2 — expand into neighboring reps if still short
+  if (result.length < Math.round(maxSize * 0.75)) {
+    const queue2 = [...result];
+    while (queue2.length && result.length < maxSize) {
+      const current = queue2.shift();
+      const neighbors = state.neighborMap.get(current._id);
+      if (!neighbors) continue;
+      for (const neighborId of neighbors) {
+        if (visited.has(neighborId) || reservedIds.has(neighborId) || !movableIdSet.has(neighborId)) continue;
+        const neighbor = state.accountById.get(neighborId);
+        if (!neighbor) continue;
+        visited.add(neighborId);
+        result.push(neighbor);
+        queue2.push(neighbor);
+        if (result.length >= maxSize) break;
+      }
+    }
+  }
+
   return result;
 }
 
 // ── SEED PLAN ─────────────────────────────────────────────────
 // Replaces old proximity-based seeding with flood-fill so new
 // rep seed clusters are guaranteed to be contiguous.
+// Seed size is now much closer to the actual target stops so new
+// reps start the main loop with enough mass to defend their territory.
 function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops) {
   const plan = createEmptySeedPlan();
   const newReps = targetRepNames.filter(rep => !existingRepNames.has(rep));
   if (!newReps.length || !movableAccounts.length) return plan;
 
   const movableIdSet = new Set(movableAccounts.map(a => a._id));
+  const totalMovable = movableAccounts.length;
+  const totalReps = targetRepNames.length;
 
   const movableByRep = new Map();
   for (const a of movableAccounts) {
@@ -1840,32 +1891,64 @@ function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, 
 
   const reservedIds = new Set();
   const placedCentroids = [];
-  const seedTarget = Math.max(minStops, Math.round(minStops * 1.15));
+
+  // Seed size: aim for a full fair share of accounts, capped at maxStops.
+  // This gives new reps enough mass that they don't get overwhelmed by
+  // established reps with strong neighbor support in the main loop.
+  const fairShare = Math.round(totalMovable / totalReps);
+  const seedTarget = Math.max(minStops, Math.min(maxStops, Math.round(fairShare * 0.9)));
 
   for (const newRep of newReps) {
+    // Consider all donors that have enough available accounts
     const donors = [...movableByRep.entries()]
-      .filter(([, accounts]) => accounts.filter(a => !reservedIds.has(a._id)).length >= Math.max(seedTarget, minStops + 10))
-      .sort((a, b) => b[1].filter(x => !reservedIds.has(x._id)).length - a[1].filter(x => !reservedIds.has(x._id)).length);
+      .filter(([, accounts]) => {
+        const avail = accounts.filter(a => !reservedIds.has(a._id)).length;
+        return avail >= Math.max(Math.round(seedTarget * 0.6), minStops + 5);
+      })
+      .sort((a, b) => {
+        const availA = a[1].filter(x => !reservedIds.has(x._id)).length;
+        const availB = b[1].filter(x => !reservedIds.has(x._id)).length;
+        return availB - availA;
+      });
 
     let bestSeed = null;
     let bestSeedScore = -Infinity;
 
-    for (const [donorRep, donorAccounts] of donors.slice(0, 6)) {
+    for (const [donorRep, donorAccounts] of donors.slice(0, 8)) {
       const available = donorAccounts.filter(a => !reservedIds.has(a._id));
-      if (available.length < seedTarget) continue;
+      if (!available.length) continue;
+
       const centroid = repCentroids.get(donorRep);
 
-      for (const candidate of available) {
+      // Sample edge candidates — accounts far from donor centroid are on the
+      // boundary and make the cleanest starting points for a new slice.
+      // Sort by edge distance descending, sample top 25 to test.
+      const edgeCandidates = available
+        .map(a => ({ account: a, edgeDist: centroid ? squaredDistance(a.latitude, a.longitude, centroid.lat, centroid.lng) : 0 }))
+        .sort((a, b) => b.edgeDist - a.edgeDist)
+        .slice(0, 25)
+        .map(x => x.account);
+
+      for (const candidate of edgeCandidates) {
         const edgeDist = centroid ? squaredDistance(candidate.latitude, candidate.longitude, centroid.lat, centroid.lng) : 0;
+
+        // Separation from already-placed seed centroids
         let minSeedDist = Infinity;
-        for (const placed of placedCentroids) minSeedDist = Math.min(minSeedDist, squaredDistance(candidate.latitude, candidate.longitude, placed.lat, placed.lng));
+        for (const placed of placedCentroids) {
+          minSeedDist = Math.min(minSeedDist, squaredDistance(candidate.latitude, candidate.longitude, placed.lat, placed.lng));
+        }
         if (!isFinite(minSeedDist)) minSeedDist = 1;
 
-        // Test if flood-fill from this candidate can reach enough accounts
+        // Run flood-fill — this is the key test of contiguity
         const reachable = floodFillSeed(candidate, movableIdSet, reservedIds, donorRep, seedTarget);
-        if (reachable.length < Math.round(seedTarget * 0.7)) continue;
 
-        const score = (edgeDist * 180) + (minSeedDist * 220) - (reachable.length < seedTarget ? 500 : 0);
+        // Require at least 60% of seed target reachable contiguously
+        if (reachable.length < Math.round(seedTarget * 0.6)) continue;
+
+        // Score: reward edge placement, separation from other seeds, and fill ratio
+        const fillRatio = reachable.length / seedTarget;
+        const score = (edgeDist * 200) + (minSeedDist * 250) + (fillRatio * 300);
+
         if (score > bestSeedScore) {
           bestSeedScore = score;
           bestSeed = { donorRep, reachable };
@@ -2011,6 +2094,38 @@ function countNeighborRepSupport(account, rep, assignments, adjacency) {
   let support = 0;
   neighbors.forEach(id => { if ((assignments.get(id) || state.accountById.get(id)?.assignedRep) === rep) support += 1; });
   return support;
+}
+
+// Detects natural geographic boundaries between an account and a rep's
+// existing territory. If the account has very few neighbors assigned to
+// the rep AND those neighbors are far away, it's likely across a density
+// gap (highway, river, sparse zone) and should be penalized more heavily.
+function densityGapPenalty(account, rep, assignments, adjacency) {
+  const neighbors = adjacency.get(account._id);
+  if (!neighbors || !neighbors.size) return 0;
+
+  let repNeighborCount = 0;
+  let totalNeighborCount = 0;
+
+  neighbors.forEach(id => {
+    const neighborRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
+    if (!neighborRep) return;
+    totalNeighborCount += 1;
+    if (neighborRep === rep) repNeighborCount += 1;
+  });
+
+  if (!totalNeighborCount) return 0;
+
+  // If this account has NO rep neighbors at all, it's likely isolated
+  // across a density gap — apply a strong boundary penalty
+  if (repNeighborCount === 0) return 1.8;
+
+  // If support ratio is very low and account is in a sparse zone
+  // (few total neighbors means the account is near a gap), penalize
+  const supportRatio = repNeighborCount / totalNeighborCount;
+  if (totalNeighborCount <= 2 && supportRatio < 0.5) return 1.2;
+
+  return 0;
 }
 
 function fragmentationPenalty(account, rep, assignments, adjacency) {
