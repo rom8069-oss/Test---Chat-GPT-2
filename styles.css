@@ -245,8 +245,8 @@ input[type="file"]{display:none;}
     1fr     /* Rank filter          */
     1fr     /* Chain filter         */
     1fr     /* Segment filter       */
+    1fr     /* City filter          */
     1fr     /* Premise filter       */
-    1fr     /* Protected filter     */
     1fr     /* Moved filter         */
     .85fr   /* Target rep count     */
     .85fr   /* Min stops            */
@@ -539,6 +539,13 @@ input[type="file"]{display:none;}
   justify-content:flex-end;
   gap:8px;
   flex-wrap:wrap;
+}
+
+/* Undo, Reset All, Export Excel — matched width */
+.topbar-btn{
+  width:88px;
+  min-width:88px;
+  justify-content:center;
 }
 
 /* Both action buttons identical width */
