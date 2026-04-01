@@ -42,9 +42,9 @@
 
         <select id="sheet-select" class="input sheet-control is-hidden" disabled></select>
         <button id="load-sheet-btn" class="btn btn-subtle sheet-control is-hidden" disabled>Load Sheet</button>
-        <button id="undo-btn" class="btn btn-subtle" disabled>Undo</button>
-        <button id="reset-btn" class="btn btn-subtle" disabled>Reset All</button>
-        <button id="export-btn" class="btn btn-subtle" disabled>Export Excel</button>
+        <button id="undo-btn" class="btn btn-subtle topbar-btn" disabled>Undo</button>
+        <button id="reset-btn" class="btn btn-subtle topbar-btn" disabled>Reset All</button>
+        <button id="export-btn" class="btn btn-subtle topbar-btn" disabled>Export Excel</button>
       </div>
     </div>
 
@@ -115,18 +115,25 @@
           </div>
         </div>
 
-        <div class="field">
-          <label>Premise filter</label>
-          <select id="premise-filter"></select>
+        <!-- City filter replaces Protected filter -->
+        <div class="field multi" id="city-filter-wrap">
+          <label>City filter</label>
+          <div class="multi-trigger input" data-multi-trigger="city">
+            <span class="multi-trigger-text" id="city-filter-summary">All cities</span>
+            <span>▾</span>
+          </div>
+          <div class="multi-panel" data-multi-panel="city">
+            <div class="multi-actions">
+              <button class="mini-btn" type="button" data-select-all="city">Select all</button>
+              <input class="multi-search" type="text" placeholder="Search..." data-search="city" />
+            </div>
+            <div class="multi-list" id="city-filter-options"></div>
+          </div>
         </div>
 
         <div class="field">
-          <label>Protected filter</label>
-          <select id="protected-filter">
-            <option value="ALL">All</option>
-            <option value="YES">Protected only</option>
-            <option value="NO">Unprotected only</option>
-          </select>
+          <label>Premise filter</label>
+          <select id="premise-filter"></select>
         </div>
 
         <div class="field">
