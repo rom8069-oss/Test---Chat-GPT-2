@@ -328,7 +328,7 @@ input[type="file"]{display:none;}
   border-radius:9px;
   background:#fff;
   color:var(--text);
-  padding:0 10px 0 30px;
+  padding:0 10px 0 26px;
   font-size:12px;
   font-weight:700;
   outline:none;
@@ -349,10 +349,10 @@ input[type="file"]{display:none;}
 .account-search-wrap::before{
   content:'⌕';
   position:absolute;
-  left:9px;
+  left:7px;
   top:50%;
   transform:translateY(-50%);
-  font-size:14px;
+  font-size:13px;
   color:var(--muted);
   pointer-events:none;
   z-index:1;
