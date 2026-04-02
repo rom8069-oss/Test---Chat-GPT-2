@@ -345,9 +345,19 @@ input[type="file"]{display:none;}
   cursor:not-allowed;
 }
 
-/* no pseudo-element needed — icon is baked into the input background */
-.account-search-wrap::before{
-  display:none;
+/* no pseudo-element — icon is an inline span */
+.account-search-wrap::before{ display:none; }
+
+.account-search-icon{
+  position:absolute;
+  left:8px;
+  top:50%;
+  transform:translateY(-50%);
+  color:#99afc4;
+  display:flex;
+  align-items:center;
+  pointer-events:none;
+  z-index:1;
 }
 
 .account-search-dropdown{
