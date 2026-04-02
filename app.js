@@ -1925,7 +1925,7 @@ function optimizeRoutes() {
           const overMaxPenalty = nextStops > maxStops ? ((nextStops - maxStops) * 4.5) : 0;
           const localPenaltyBase = localDominancePenalty(account, rep, assignments, adjacency);
           const supportBonus = compactMode
-            ? (neighborSupport >= 4 ? -2.4 : neighborSupport >= 3 ? -1.55 : neighborSupport >= 2 ? -0.9 : neighborSupport === 1 ? -0.18 : 2.1)
+            ? (neighborSupport >= 4 ? -2.4 : neighborSupport >= 3 ? -1.55 : neighborSupport >= 2 ? -0.9 : neighborSupport === 1 ? -0.18 : 1.45)
             : (neighborSupport >= 2 ? -0.25 : 0);
           const fragmentPenalty = fragmentationPenalty(account, rep, assignments, adjacency) * (compactMode ? 2.8 : 0.7);
           const localPenalty = compactMode ? (localPenaltyBase * 2.15) : localPenaltyBase;
@@ -2012,42 +2012,6 @@ function optimizeRoutes() {
       enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
-    }
-
-    // Final isolation sweep (compact mode only) — finds any account with zero
-    // same-rep neighbors and moves it to the dominant surrounding rep.
-    // Runs after all other passes so it can't interfere with balance enforcement.
-    if (compactMode) {
-      for (let isoPass = 0; isoPass < 3; isoPass += 1) {
-        let isoChanged = false;
-        for (const account of movableForCleanup) {
-          const currentRep = assignments.get(account._id);
-          if (!currentRep) continue;
-          if (assignmentCtx.count(currentRep) <= minStops) continue;
-          const neighbors = adjacency.get(account._id);
-          if (!neighbors || !neighbors.size) continue;
-          const neighborRepCounts = new Map();
-          neighbors.forEach(nId => {
-            const nRep = assignments.get(nId) || state.accountById.get(nId)?.assignedRep;
-            if (!nRep) return;
-            neighborRepCounts.set(nRep, (neighborRepCounts.get(nRep) || 0) + 1);
-          });
-          const sameRepCount = neighborRepCounts.get(currentRep) || 0;
-          if (sameRepCount > 0) continue;
-          let bestRep = null, bestCount = 0;
-          for (const [nRep, count] of neighborRepCounts) {
-            if (nRep === currentRep || isRepLocked(nRep)) continue;
-            if (assignmentCtx.count(nRep) >= maxStops) continue;
-            if (count > bestCount) { bestCount = count; bestRep = nRep; }
-          }
-          if (!bestRep || bestCount < 2) continue;
-          assignmentCtx.removeFromRep(currentRep, account);
-          assignmentCtx.addToRep(bestRep, account);
-          assignments.set(account._id, bestRep);
-          isoChanged = true;
-        }
-        if (!isoChanged) break;
-      }
     }
 
     const finalViolations = targetRepNames.filter(rep => { const c = assignmentCtx.count(rep); return c < minStops || c > maxStops; });
@@ -2638,7 +2602,7 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
           visited.add(nId); stack.push(nId);
         });
       }
-      if (component.length > 20) continue;
+      if (component.length > 12) continue;
       if (ctx.count(rep) - component.length < minStops) continue;
       const borderCounts = new Map();
       for (const id of component) {
@@ -2666,7 +2630,7 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
 function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
   const accounts = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
   const accountIds = new Set(accounts.map(a => a._id));
-  const MAX_COMPONENT_DIST_SQ = 0.14 * 0.14;
+  const MAX_COMPONENT_DIST_SQ = 0.08 * 0.08;
 
   for (const rep of targetRepNames) {
     if (isRepLocked(rep)) continue;
