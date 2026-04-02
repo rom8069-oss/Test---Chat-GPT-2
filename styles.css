@@ -235,14 +235,12 @@ input[type="file"]{display:none;}
 }
 
 /*
-  14 columns: account search + assign to + 5 filters + premise + moved +
+  13 columns: assign to + 5 filters + premise + moved +
   rep count + min + max + optimize weight + consistency slider.
-  Search and assign get a little more room since they contain more text.
 */
 .controls-grid{
   display:grid;
   grid-template-columns:
-    1.4fr   /* Search account        */
     1.3fr   /* Assign selected to    */
     1fr     /* Rep filter            */
     1fr     /* Rank filter           */
@@ -284,8 +282,7 @@ input[type="file"]{display:none;}
 .field > .input,
 .field > .range-wrap,
 .field > .multi-trigger,
-.field > .multi > .multi-trigger,
-.field > .account-search-wrap{
+.field > .multi > .multi-trigger{
   width:100%;
   min-width:0;
 }
@@ -317,13 +314,11 @@ input[type="file"]{display:none;}
 .field-disruption-compact{gap:2px;}
 
 /* ─── ACCOUNT SEARCH ─────────────────────────────────────────── */
-.account-search-field{
-  position:relative;
-}
-
+/* Lives in the map-actions bar, inline with Assign/Optimize buttons */
 .account-search-wrap{
   position:relative;
-  width:100%;
+  width:200px;
+  flex:0 0 200px;
 }
 
 .account-search-input{
@@ -350,7 +345,7 @@ input[type="file"]{display:none;}
   cursor:not-allowed;
 }
 
-/* magnifier icon via pseudo-element on the wrapper */
+/* magnifier icon */
 .account-search-wrap::before{
   content:'⌕';
   position:absolute;
