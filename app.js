@@ -111,11 +111,17 @@ const state = {
   },
   multiSearch: { rep: '', rank: '', chain: '', segment: '', city: '', moved: '' },
   openMultiKey: null,
-  repCountUserSet: false
+  repCountUserSet: false,
+  // Account search state
+  accountSearch: '',
+  accountSearchResults: [],
+  spotlitAccountId: null
 };
 
 const els = {};
 let toastTimer = null;
+// Pulse animation timer for spotlit marker
+let spotlitPulseTimer = null;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -517,7 +523,7 @@ function bindElements() {
     'city-filter-summary','moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
     'routes-table-wrap','moved-search-input','upload-status-pill','upload-status-icon','upload-status-text','upload-status-panel','upload-status-body',
-    'detail-panel'
+    'detail-panel','account-search-input','account-search-dropdown'
   ].forEach(id => { els[toCamel(id)] = document.getElementById(id); });
 }
 
@@ -551,9 +557,20 @@ function bindEvents() {
   // Mark rep count as user-set as soon as they type in it
   els.repCountInput.addEventListener('input', () => { state.repCountUserSet = true; });
   els.repCountInput.addEventListener('change', () => { state.repCountUserSet = true; });
+
   if (els.movedSearchInput) {
     els.movedSearchInput.addEventListener('input', e => { state.multiSearch.moved = e.target.value || ''; renderMovedReview(); });
   }
+
+  // Account search events
+  if (els.accountSearchInput) {
+    els.accountSearchInput.addEventListener('input', onAccountSearchInput);
+    els.accountSearchInput.addEventListener('keydown', onAccountSearchKeydown);
+    els.accountSearchInput.addEventListener('focus', () => {
+      if (state.accountSearchResults.length) showAccountSearchDropdown();
+    });
+  }
+
   document.querySelectorAll('th[data-sort]').forEach(th => {
     th.addEventListener('click', () => toggleTableSort(th.getAttribute('data-sort')));
   });
@@ -569,9 +586,204 @@ function bindEvents() {
     if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden) positionUploadStatusPanel();
   }, true);
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeAllMultiPanels(); closeUploadStatusPanel(); }
+    if (e.key === 'Escape') {
+      closeAllMultiPanels();
+      closeUploadStatusPanel();
+      closeAccountSearchDropdown();
+    }
   });
 }
+
+// ─── ACCOUNT SEARCH ───────────────────────────────────────────
+
+let accountSearchHighlightIndex = -1;
+
+function onAccountSearchInput(e) {
+  const term = safeString(e.target.value);
+  state.accountSearch = term;
+  if (!term) {
+    state.accountSearchResults = [];
+    closeAccountSearchDropdown();
+    return;
+  }
+  const lower = term.toLowerCase();
+  state.accountSearchResults = state.accounts
+    .filter(a => {
+      return (
+        a.customerName.toLowerCase().includes(lower) ||
+        a.customerId.toLowerCase().includes(lower) ||
+        (a.city || '').toLowerCase().includes(lower)
+      );
+    })
+    .slice(0, 12);
+  accountSearchHighlightIndex = -1;
+  if (state.accountSearchResults.length) {
+    showAccountSearchDropdown();
+  } else {
+    closeAccountSearchDropdown();
+  }
+}
+
+function onAccountSearchKeydown(e) {
+  const dropdown = els.accountSearchDropdown;
+  if (!dropdown || dropdown.hidden) return;
+  const items = dropdown.querySelectorAll('.account-search-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    accountSearchHighlightIndex = Math.min(accountSearchHighlightIndex + 1, items.length - 1);
+    updateAccountSearchHighlight(items);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    accountSearchHighlightIndex = Math.max(accountSearchHighlightIndex - 1, 0);
+    updateAccountSearchHighlight(items);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (accountSearchHighlightIndex >= 0 && items[accountSearchHighlightIndex]) {
+      const id = items[accountSearchHighlightIndex].getAttribute('data-account-id');
+      if (id) spotlightAccount(id);
+    } else if (state.accountSearchResults.length === 1) {
+      spotlightAccount(state.accountSearchResults[0]._id);
+    }
+  }
+}
+
+function updateAccountSearchHighlight(items) {
+  items.forEach((item, i) => item.classList.toggle('is-highlighted', i === accountSearchHighlightIndex));
+  if (accountSearchHighlightIndex >= 0 && items[accountSearchHighlightIndex]) {
+    items[accountSearchHighlightIndex].scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function showAccountSearchDropdown() {
+  const dropdown = els.accountSearchDropdown;
+  if (!dropdown) return;
+  const results = state.accountSearchResults;
+  if (!results.length) { dropdown.hidden = true; return; }
+
+  dropdown.innerHTML = results.map((a, i) => {
+    const color = getRepColor(a.assignedRep);
+    return `
+      <div class="account-search-item${i === accountSearchHighlightIndex ? ' is-highlighted' : ''}"
+           data-account-id="${escapeHtmlAttr(a._id)}">
+        <span class="account-search-dot" style="background:${escapeHtmlAttr(color)}"></span>
+        <div class="account-search-info">
+          <div class="account-search-name">${escapeHtml(a.customerName)}</div>
+          <div class="account-search-meta">${escapeHtml(a.city || '')}${a.city && a.assignedRep ? ' · ' : ''}${escapeHtml(a.assignedRep)}</div>
+        </div>
+        <div class="account-search-rank rank-${escapeHtmlAttr(a.rank)}">${escapeHtml(a.rank)}</div>
+      </div>`;
+  }).join('');
+
+  dropdown.querySelectorAll('.account-search-item').forEach(item => {
+    item.addEventListener('mousedown', e => {
+      e.preventDefault(); // keep focus on input
+      const id = item.getAttribute('data-account-id');
+      if (id) spotlightAccount(id);
+    });
+  });
+
+  dropdown.hidden = false;
+  positionAccountSearchDropdown();
+}
+
+function positionAccountSearchDropdown() {
+  const dropdown = els.accountSearchDropdown;
+  const input = els.accountSearchInput;
+  if (!dropdown || !input) return;
+  const rect = input.getBoundingClientRect();
+  const width = Math.max(rect.width, 280);
+  let left = rect.left;
+  if (left + width > window.innerWidth - 10) left = window.innerWidth - width - 10;
+  if (left < 8) left = 8;
+  dropdown.style.width = `${width}px`;
+  dropdown.style.left = `${left}px`;
+  dropdown.style.top = `${rect.bottom + 4}px`;
+}
+
+function closeAccountSearchDropdown() {
+  if (els.accountSearchDropdown) els.accountSearchDropdown.hidden = true;
+  accountSearchHighlightIndex = -1;
+}
+
+function spotlightAccount(accountId) {
+  const account = state.accountById.get(accountId);
+  if (!account) return;
+
+  // Close dropdown and clear search input
+  closeAccountSearchDropdown();
+  if (els.accountSearchInput) els.accountSearchInput.value = '';
+  state.accountSearch = '';
+  state.accountSearchResults = [];
+
+  // Add to selection
+  const previousSelection = new Set(state.selection);
+  state.selection.add(accountId);
+  refreshSelectionMarkerDiff(previousSelection, state.selection);
+  renderSelectionPreview();
+  renderDetail();
+  syncControlState();
+
+  // Pan map to account (no zoom animation — just setView)
+  const zoom = Math.max(state.map.getZoom(), 13);
+  state.map.setView([account.latitude, account.longitude], zoom);
+
+  // Open popup
+  const marker = state.markerById.get(accountId);
+  if (marker) {
+    marker.setPopupContent(buildPopupHtml(account));
+    marker.openPopup();
+  }
+
+  // Pulse the marker
+  pulseMarker(accountId);
+}
+
+function pulseMarker(accountId) {
+  // Clear any existing pulse
+  if (spotlitPulseTimer) { clearTimeout(spotlitPulseTimer); spotlitPulseTimer = null; }
+  state.spotlitAccountId = accountId;
+
+  const marker = state.markerById.get(accountId);
+  if (!marker) return;
+
+  // Grow the marker
+  marker.setRadius(10);
+  marker.setStyle({ weight: 3 });
+
+  // Step it back down after 800ms
+  spotlitPulseTimer = setTimeout(() => {
+    state.spotlitAccountId = null;
+    // Re-render just this marker to restore its normal style
+    refreshMarkerStyles(new Set([accountId]));
+  }, 800);
+}
+
+// ─── REVERT REP ────────────────────────────────────────────────
+
+function revertRepToOriginal(rep) {
+  if (!rep) return;
+  const changes = [];
+  const repsBefore = getAllAssignedReps();
+  for (const account of state.accounts) {
+    if (account.assignedRep === rep && account.assignedRep !== account.originalAssignedRep) {
+      // Only revert accounts whose CURRENT assignment is this rep
+      // i.e. accounts that moved INTO this rep from somewhere else
+      changes.push({ id: account._id, from: account.assignedRep, to: account.originalAssignedRep });
+    }
+    if (account.originalAssignedRep === rep && account.assignedRep !== rep) {
+      // Also restore accounts that BELONGED to this rep but were moved away
+      changes.push({ id: account._id, from: account.assignedRep, to: account.originalAssignedRep });
+    }
+  }
+  // Deduplicate — an account shouldn't appear in both directions
+  const seen = new Set();
+  const deduped = changes.filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
+
+  if (!deduped.length) { showToast(`No changes to revert for ${rep}.`); return; }
+  applyChanges(deduped, `Reverted ${rep} to original assignments`, repsBefore);
+}
+
+// ─── INIT MAP ─────────────────────────────────────────────────
 
 function initMap() {
   state.map = L.map('map', { preferCanvas: true, renderer: L.canvas({ padding: 0.5 }) }).setView([40.1, -89.2], 7);
@@ -625,6 +837,12 @@ function handleDocumentClickForPanels(event) {
   if (openMulti && !openMulti.contains(event.target)) closeAllMultiPanels();
   if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden && !els.uploadStatusPanel.contains(event.target) && !els.uploadStatusPill.contains(event.target)) {
     closeUploadStatusPanel();
+  }
+  // Close account search dropdown if clicking outside
+  if (els.accountSearchDropdown && !els.accountSearchDropdown.hidden) {
+    if (!els.accountSearchInput.contains(event.target) && !els.accountSearchDropdown.contains(event.target)) {
+      closeAccountSearchDropdown();
+    }
   }
 }
 
@@ -867,7 +1085,11 @@ function loadSelectedSheet() {
   state.optimizationSummary = null;
   state.repCountUserSet = false;
   state.multiSearch.moved = '';
+  state.accountSearch = '';
+  state.accountSearchResults = [];
   if (els.movedSearchInput) els.movedSearchInput.value = '';
+  if (els.accountSearchInput) els.accountSearchInput.value = '';
+  closeAccountSearchDropdown();
   const rows = state.workbookSheets[sheetName] || [];
   const normalizedResult = normalizeRows(rows);
   const normalized = normalizedResult.accounts;
@@ -993,17 +1215,7 @@ function buildNeighborMap(accounts) {
 
   const spread = Math.max(maxLng - minLng, maxLat - minLat);
   const densityFactor = Math.sqrt(accounts.length) / 100;
-
-  // Tighter cell size: was spread/40, now spread/70. This makes the grid
-  // finer so accounts in different suburbs don't falsely share a cell.
-  // Hard cap of 0.18 degrees (~12 miles) prevents distant accounts from
-  // ever being considered neighbors — the old 0.5 cap was ~35 miles which
-  // is why Kenosha and Frankfort could end up connected.
   const cellSize = Math.max(0.04, Math.min(0.18, spread / (70 + densityFactor) || 0.12));
-
-  // Max neighbor distance: ~8 miles in squared degrees.
-  // 0.12 degrees lat ≈ 8 miles. Anything further is never a neighbor
-  // regardless of what the grid says.
   const MAX_NEIGHBOR_DIST_SQ = 0.12 * 0.12;
 
   const grid = new Map();
@@ -1038,7 +1250,7 @@ function buildNeighborMap(accounts) {
     }
     candidates
       .map(o => ({ id: o._id, d: squaredDistance(a.latitude, a.longitude, o.latitude, o.longitude) }))
-      .filter(item => item.d <= MAX_NEIGHBOR_DIST_SQ)  // hard distance cap
+      .filter(item => item.d <= MAX_NEIGHBOR_DIST_SQ)
       .sort((a, b) => a.d - b.d)
       .slice(0, 10)
       .forEach(item => { map.get(a._id).add(item.id); map.get(item.id)?.add(a._id); });
@@ -1168,14 +1380,19 @@ function refreshMarkers(accountIds = null) {
     const pass = passesFilters(account);
     const color = getRepColor(account.assignedRep);
     const selected = state.selection.has(id);
+    const isSpotlit = state.spotlitAccountId === id;
     const focusedOut = state.repFocus && account.assignedRep !== state.repFocus;
     const dimmed = dimOthers && focusedOut && !selected;
+
+    // Spotlit marker gets a larger radius; selected a medium bump; normal is baseline
+    const radius = isSpotlit ? 10 : (selected ? 4.2 : dimmed ? 1.65 : (state.repFocus && account.assignedRep === state.repFocus ? 3.8 : 2.8));
+
     const nextState = {
       color,
-      radius: selected ? 4.2 : dimmed ? 1.65 : (state.repFocus && account.assignedRep === state.repFocus ? 3.8 : 2.8),
+      radius,
       opacity: pass ? (dimmed ? 0.02 : 0.98) : 0,
       fillOpacity: pass ? (selected ? 1 : dimmed ? 0.015 : 0.92) : 0,
-      weight: selected ? 2 : (dimmed ? 0.5 : 1),
+      weight: isSpotlit ? 3 : (selected ? 2 : (dimmed ? 0.5 : 1)),
       hidden: !pass
     };
     const prevState = state.markerMetaById.get(id) || {};
@@ -1280,12 +1497,22 @@ function toggleRepLock(rep, shouldLock) {
 function renderRepTable() {
   let rows = summarizeByRep();
   sortRepRows(rows);
-  if (!rows.length) { els.repTableBody.innerHTML = '<tr><td colspan="15" class="empty">Upload a file to begin.</td></tr>'; return; }
+  if (!rows.length) { els.repTableBody.innerHTML = '<tr><td colspan="16" class="empty">Upload a file to begin.</td></tr>'; return; }
   syncSortHeaderIndicators();
-  els.repTableBody.innerHTML = rows.map(row => `
+  els.repTableBody.innerHTML = rows.map(row => {
+    const hasChanges = row.movedIn > 0 || row.movedOut > 0;
+    return `
     <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}">
       <td><div class="rep-cell"><span class="color-dot" style="background:${getRepColor(row.rep)}"></span><span>${escapeHtml(row.rep)}</span></div></td>
       <td class="lock-cell"><label class="lock-toggle" title="Lock this territory"><input type="checkbox" class="rep-lock-checkbox" data-lock-rep="${escapeHtmlAttr(row.rep)}" ${isRepLocked(row.rep) ? 'checked' : ''} /></label></td>
+      <td class="revert-cell">
+        <button
+          class="revert-rep-btn"
+          data-revert-rep="${escapeHtmlAttr(row.rep)}"
+          title="Revert ${escapeHtmlAttr(row.rep)} to original assignments"
+          ${!hasChanges ? 'disabled' : ''}
+        >↩</button>
+      </td>
       <td>${formatNumber(row.stops)}</td>
       <td>${renderDeltaCount(row.deltaStops)}</td>
       <td>${formatCurrency(row.revenue)}</td>
@@ -1299,10 +1526,12 @@ function renderRepTable() {
       <td>${formatNumber(row.protected)}</td>
       <td>${formatNumber(row.movedIn)}</td>
       <td>${formatNumber(row.movedOut)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
+
   els.repTableBody.querySelectorAll('tr[data-rep-row]').forEach(tr => {
     tr.addEventListener('click', e => {
-      if (e.target.closest('.rep-lock-checkbox')) return;
+      if (e.target.closest('.rep-lock-checkbox') || e.target.closest('.revert-rep-btn')) return;
       const rep = decodeURIComponent(tr.getAttribute('data-rep-row'));
       state.repFocus = state.repFocus === rep ? null : rep;
       refreshMarkerStyles();
@@ -1311,43 +1540,63 @@ function renderRepTable() {
       if (state.repFocus) zoomToRep(state.repFocus);
     });
   });
+
   els.repTableBody.querySelectorAll('.rep-lock-checkbox').forEach(input => {
     input.addEventListener('click', e => e.stopPropagation());
     input.addEventListener('change', e => toggleRepLock(e.target.getAttribute('data-lock-rep'), e.target.checked));
+  });
+
+  els.repTableBody.querySelectorAll('.revert-rep-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const rep = btn.getAttribute('data-revert-rep');
+      if (rep) revertRepToOriginal(rep);
+    });
   });
 }
 
 function summarizeByRep() {
   if (state.repSummaryCache && state.repSummaryCache.size) return [...state.repSummaryCache.values()].map(row => ({ ...row }));
+
   const map = new Map();
-  const originalMap = new Map();
+  const originalBaselines = new Map();
+
+  // Single pass: build current assignments and original baselines together
   for (const a of state.accounts) {
     const assignedRep = a.assignedRep || 'Unassigned';
     const originalRep = a.originalAssignedRep || 'Unassigned';
+
+    // Ensure row exists for assigned rep
     if (!map.has(assignedRep)) map.set(assignedRep, { rep: assignedRep, stops: 0, deltaStops: 0, revenue: 0, deltaRevenue: 0, A: 0, B: 0, C: 0, D: 0, planned4W: 0, avgWeekly: 0, protected: 0, movedIn: 0, movedOut: 0 });
-    if (!originalMap.has(originalRep)) originalMap.set(originalRep, { stops: 0, revenue: 0 });
+    // Ensure baseline exists for original rep
+    if (!originalBaselines.has(originalRep)) originalBaselines.set(originalRep, { stops: 0, revenue: 0 });
+
     const row = map.get(assignedRep);
     row.stops += 1;
     row.revenue += Number(a.overallSales || 0);
     row.planned4W += Number(a.cadence4w || 0);
     if (row[a.rank] != null) row[a.rank] += 1;
     if (a.protected) row.protected += 1;
-    if (assignedRep !== originalRep) row.movedIn += 1;
-    const orig = originalMap.get(originalRep);
-    orig.stops += 1;
-    orig.revenue += Number(a.overallSales || 0);
+    if (assignedRep !== originalRep) {
+      row.movedIn += 1;
+      // Also ensure the original rep has a row so movedOut gets tracked
+      if (!map.has(originalRep)) map.set(originalRep, { rep: originalRep, stops: 0, deltaStops: 0, revenue: 0, deltaRevenue: 0, A: 0, B: 0, C: 0, D: 0, planned4W: 0, avgWeekly: 0, protected: 0, movedIn: 0, movedOut: 0 });
+      map.get(originalRep).movedOut += 1;
+    }
+
+    const baseline = originalBaselines.get(originalRep);
+    baseline.stops += 1;
+    baseline.revenue += Number(a.overallSales || 0);
   }
-  for (const a of state.accounts) {
-    const orig = a.originalAssignedRep || 'Unassigned';
-    const assigned = a.assignedRep || 'Unassigned';
-    if (orig !== assigned && map.has(orig)) map.get(orig).movedOut += 1;
-  }
+
+  // Compute deltas and weekly averages
   for (const row of map.values()) {
-    const orig = originalMap.get(row.rep) || { stops: 0, revenue: 0 };
-    row.deltaStops = row.stops - orig.stops;
-    row.deltaRevenue = row.revenue - orig.revenue;
+    const baseline = originalBaselines.get(row.rep) || { stops: 0, revenue: 0 };
+    row.deltaStops = row.stops - baseline.stops;
+    row.deltaRevenue = row.revenue - baseline.revenue;
     row.avgWeekly = row.planned4W / 4;
   }
+
   state.repSummaryCache = map;
   return [...map.values()].map(row => ({ ...row }));
 }
@@ -1462,6 +1711,7 @@ function syncControlState() {
   els.exportBtn.disabled = !hasAccounts;
   if (els.clearSelectionBtn) els.clearSelectionBtn.disabled = !hasSelection;
   els.assignRepSelect.disabled = !hasAccounts;
+  if (els.accountSearchInput) els.accountSearchInput.disabled = !hasAccounts;
 
   // Only set rep count on first file load — never overwrite after user changes it.
   if (!state.repCountUserSet) {
@@ -1553,16 +1803,9 @@ function resetAssignments() {
 
 // ─── OPTIMIZER ───────────────────────────────────────────────
 
-function runEnclaveCleanupFast(assignments, targetRepNames, minStops, adjacency, ctx) {
-  runBorderCleanupFast(assignments, targetRepNames, 0, minStops, adjacency, ctx);
-}
-
-function runMajoritySmoothingFast(assignments, targetRepNames, minStops, adjacency, ctx) {
-  runBorderCleanupFast(assignments, targetRepNames, 0, minStops, adjacency, ctx);
-}
-
 function optimizeRoutes() {
   if (!state.accounts.length) return;
+  // Use finally to guarantee optimizerSeedIds is always cleared
   try {
     const targetCount = Math.max(1, Math.min(100, parseInt(els.repCountInput.value || '1', 10) || 1));
     const minStops = Math.max(1, parseInt(els.minStopsInput.value || '1', 10) || 1);
@@ -1597,8 +1840,6 @@ function optimizeRoutes() {
 
     const assignmentCtx = createAssignmentContext(targetRepNames, assignments);
     const existingRepNames = new Set(currentReps);
-
-    // Track which reps are new (didn't exist before this optimization)
     const newRepSet = new Set(targetRepNames.filter(r => !existingRepNames.has(r)));
 
     const seedPlan = compactMode
@@ -1641,7 +1882,6 @@ function optimizeRoutes() {
       assignmentCtx.clearMovableAssignments(movableForAssignment, assignments);
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
 
-      // Initialize repStats from context AFTER clear so fixed accounts count
       const repStats = new Map();
       for (const rep of targetRepNames) {
         repStats.set(rep, {
@@ -1651,7 +1891,6 @@ function optimizeRoutes() {
         });
       }
 
-      // New reps get expanded freedoms in early iterations
       const isEarlyIter = iter < 4;
 
       for (const account of orderedMovable) {
@@ -1663,8 +1902,6 @@ function optimizeRoutes() {
           const isNewRep = newRepSet.has(rep);
           const neighborSupport = countNeighborRepSupport(account, rep, assignments, adjacency);
 
-          // Compact hard constraint — exempt new reps in early iters so they
-          // can grow beyond their seed cluster into adjacent territory
           if (compactMode && neighborSupport === 0 && assignmentCtx.count(rep) > 0) {
             if (!(isNewRep && isEarlyIter)) continue;
           }
@@ -1674,7 +1911,6 @@ function optimizeRoutes() {
             ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * ((1 - continuityWeight) * 1.4)
             : 0;
 
-          // New reps have no history — no continuity penalty
           const continuityPenalty = isNewRep ? 0 : (account.currentRep === rep ? 0 : continuityWeight);
           const existingPenalty = account.assignedRep === rep ? -0.15 : 0;
 
@@ -1694,8 +1930,6 @@ function optimizeRoutes() {
           const fragmentPenalty = fragmentationPenalty(account, rep, assignments, adjacency) * (compactMode ? 2.8 : 0.7);
           const localPenalty = compactMode ? (localPenaltyBase * 2.15) : localPenaltyBase;
           const unsupportedPenalty = (!isNewRep || !isEarlyIter) && compactMode && neighborSupport === 0 && currentRep && currentRep !== rep ? 2.2 : 0;
-          // Density gap: penalize crossing natural geographic boundaries
-          // (sparse zones act as proxy for roads/rivers/city borders)
           const gapPenalty = densityGapPenalty(account, rep, assignments, adjacency) * (compactMode ? 1.6 : 0.8);
 
           const score = compactnessScore + continuityPenalty + existingPenalty + balancePenalty + localPenalty + fragmentPenalty + unsupportedPenalty + gapPenalty + underMinBoost + overMaxPenalty + supportBonus;
@@ -1735,8 +1969,6 @@ function optimizeRoutes() {
     runBorderCleanupFast(assignments, targetRepNames, continuityWeight, minStops, adjacency, assignmentCtx, movableForCleanup);
     performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
 
-    // Resolve stranded clusters first — catches situations like Mario Dukovac
-    // where a whole sub-cluster is geographically disconnected from home base
     resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
     absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
 
@@ -1757,8 +1989,6 @@ function optimizeRoutes() {
       rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     }
 
-    // Extra consolidation passes for new reps — they need more cleanup
-    // than established reps because they start from a cold seed.
     if (newRepSet.size > 0) {
       const newRepAccounts = movableForCleanup.filter(a => newRepSet.has(assignments.get(a._id) || ''));
       for (let extraPass = 0; extraPass < 4; extraPass += 1) {
@@ -1772,7 +2002,6 @@ function optimizeRoutes() {
       }
     }
 
-    // Final fragmentation sweep — catches any islands created by balance enforcement
     for (let fragPass = 0; fragPass < 3; fragPass += 1) {
       resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
@@ -1801,15 +2030,16 @@ function optimizeRoutes() {
     }
 
     applyChanges(changes, `Optimized routes to ${targetRepNames.length} reps with minimum ${minStops} stops`, repsBefore);
-    state.optimizerSeedIds = new Set();
     state.optimizationSummary = buildOptimizationSummary(beforeSummary, { weightLabel: getOptimizerWeightLabel(), disruptionLabel: getDisruptionPreset().short });
     renderOptimizationFeedback();
     updateLastAction('');
 
   } catch (err) {
-    state.optimizerSeedIds = new Set();
     console.error('Optimize Routes failed:', err);
     showToast('Optimize Routes hit an error. Check the browser console for details.');
+  } finally {
+    // Always clear seed IDs whether the optimizer succeeded or threw
+    state.optimizerSeedIds = new Set();
   }
 }
 
@@ -1845,18 +2075,11 @@ function isOptimizerSeedAccount(accountId) {
   return !!(state.optimizerSeedIds && state.optimizerSeedIds.has(accountId));
 }
 
-// ── FLOOD-FILL SEED ───────────────────────────────────────────
-// Grows a contiguous cluster outward via BFS through the neighbor graph.
-// Phase 1: stay strictly within the donor rep (clean geographic slice).
-// Phase 2: if phase 1 can't reach 75% of maxSize, relax and absorb
-//          adjacent movable accounts from any rep — handles sparse areas
-//          where the donor territory doesn't have enough contiguous accounts.
 function floodFillSeed(startAccount, movableIdSet, reservedIds, donorRep, maxSize) {
   const visited = new Set([startAccount._id]);
   const result = [startAccount];
   const queue = [startAccount];
 
-  // Phase 1 — strict donor-only BFS
   while (queue.length && result.length < maxSize) {
     const current = queue.shift();
     const neighbors = state.neighborMap.get(current._id);
@@ -1873,7 +2096,6 @@ function floodFillSeed(startAccount, movableIdSet, reservedIds, donorRep, maxSiz
     }
   }
 
-  // Phase 2 — expand into neighboring reps if still short
   if (result.length < Math.round(maxSize * 0.75)) {
     const queue2 = [...result];
     while (queue2.length && result.length < maxSize) {
@@ -1895,11 +2117,6 @@ function floodFillSeed(startAccount, movableIdSet, reservedIds, donorRep, maxSiz
   return result;
 }
 
-// ── SEED PLAN ─────────────────────────────────────────────────
-// Replaces old proximity-based seeding with flood-fill so new
-// rep seed clusters are guaranteed to be contiguous.
-// Seed size is now much closer to the actual target stops so new
-// reps start the main loop with enough mass to defend their territory.
 function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops) {
   const plan = createEmptySeedPlan();
   const newReps = targetRepNames.filter(rep => !existingRepNames.has(rep));
@@ -1926,14 +2143,10 @@ function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, 
   const reservedIds = new Set();
   const placedCentroids = [];
 
-  // Seed size: aim for a full fair share of accounts, capped at maxStops.
-  // This gives new reps enough mass that they don't get overwhelmed by
-  // established reps with strong neighbor support in the main loop.
   const fairShare = Math.round(totalMovable / totalReps);
   const seedTarget = Math.max(minStops, Math.min(maxStops, Math.round(fairShare * 0.9)));
 
   for (const newRep of newReps) {
-    // Consider all donors that have enough available accounts
     const donors = [...movableByRep.entries()]
       .filter(([, accounts]) => {
         const avail = accounts.filter(a => !reservedIds.has(a._id)).length;
@@ -1954,9 +2167,6 @@ function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, 
 
       const centroid = repCentroids.get(donorRep);
 
-      // Sample edge candidates — accounts far from donor centroid are on the
-      // boundary and make the cleanest starting points for a new slice.
-      // Sort by edge distance descending, sample top 25 to test.
       const edgeCandidates = available
         .map(a => ({ account: a, edgeDist: centroid ? squaredDistance(a.latitude, a.longitude, centroid.lat, centroid.lng) : 0 }))
         .sort((a, b) => b.edgeDist - a.edgeDist)
@@ -1966,20 +2176,16 @@ function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, 
       for (const candidate of edgeCandidates) {
         const edgeDist = centroid ? squaredDistance(candidate.latitude, candidate.longitude, centroid.lat, centroid.lng) : 0;
 
-        // Separation from already-placed seed centroids
         let minSeedDist = Infinity;
         for (const placed of placedCentroids) {
           minSeedDist = Math.min(minSeedDist, squaredDistance(candidate.latitude, candidate.longitude, placed.lat, placed.lng));
         }
         if (!isFinite(minSeedDist)) minSeedDist = 1;
 
-        // Run flood-fill — this is the key test of contiguity
         const reachable = floodFillSeed(candidate, movableIdSet, reservedIds, donorRep, seedTarget);
 
-        // Require at least 60% of seed target reachable contiguously
         if (reachable.length < Math.round(seedTarget * 0.6)) continue;
 
-        // Score: reward edge placement, separation from other seeds, and fill ratio
         const fillRatio = reachable.length / seedTarget;
         const score = (edgeDist * 200) + (minSeedDist * 250) + (fillRatio * 300);
 
@@ -2097,12 +2303,6 @@ function buildTargetRepNames(targetCount, currentReps) {
   return reps.slice(0, targetCount);
 }
 
-function buildFullRepStats(targetRepNames) {
-  const map = new Map();
-  targetRepNames.forEach(rep => map.set(rep, { rep, stops: 0, revenue: 0 }));
-  return map;
-}
-
 function localDominancePenalty(account, rep, assignments, adjacency) {
   const neighbors = adjacency.get(account._id);
   if (!neighbors || !neighbors.size) return 0;
@@ -2130,10 +2330,6 @@ function countNeighborRepSupport(account, rep, assignments, adjacency) {
   return support;
 }
 
-// Detects natural geographic boundaries between an account and a rep's
-// existing territory. If the account has very few neighbors assigned to
-// the rep AND those neighbors are far away, it's likely across a density
-// gap (highway, river, sparse zone) and should be penalized more heavily.
 function densityGapPenalty(account, rep, assignments, adjacency) {
   const neighbors = adjacency.get(account._id);
   if (!neighbors || !neighbors.size) return 0;
@@ -2149,16 +2345,9 @@ function densityGapPenalty(account, rep, assignments, adjacency) {
   });
 
   if (!totalNeighborCount) return 0;
-
-  // If this account has NO rep neighbors at all, it's likely isolated
-  // across a density gap — apply a strong boundary penalty
   if (repNeighborCount === 0) return 1.8;
-
-  // If support ratio is very low and account is in a sparse zone
-  // (few total neighbors means the account is near a gap), penalize
   const supportRatio = repNeighborCount / totalNeighborCount;
   if (totalNeighborCount <= 2 && supportRatio < 0.5) return 1.2;
-
   return 0;
 }
 
@@ -2185,9 +2374,6 @@ function fragmentationPenalty(account, rep, assignments, adjacency) {
   return compactMode && same <= 1 ? 0.35 : 0;
 }
 
-// Border swap: exchange two adjacent accounts between reps if it improves
-// fragmentation + support + distance. Removed the fragmentationPenalty > 0
-// gate — any border account with a different neighbor is now considered.
 function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
   const compactMode = getOptimizerMode() === 'compact';
   const candidates = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
@@ -2199,7 +2385,6 @@ function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacen
     const neighbors = adjacency.get(account._id);
     if (!neighbors || !neighbors.size) continue;
 
-    // Consider any border account (has at least one neighbor from a different rep)
     const hasDifferentNeighbor = [...neighbors].some(id => {
       const nRep = assignments.get(id) || state.accountById.get(id)?.assignedRep;
       return nRep && nRep !== currentRep;
@@ -2234,7 +2419,6 @@ function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacen
       const fragGain = fragBefore - fragAfter;
       const totalGain = (fragGain * (compactMode ? 3.5 : 2.6)) + (suppGain * (compactMode ? 2.0 : 1.4)) + (distGain * 0.9);
 
-      // Any positive net gain qualifies
       if (totalGain > bestGain && totalGain > 0.05) { bestGain = totalGain; bestSwap = { neighbor, neighborRep }; }
     });
 
@@ -2248,9 +2432,6 @@ function tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacen
   return improved;
 }
 
-// Contiguity refinement: move border accounts toward reps they're
-// more connected to. Lowered compact threshold from 3→2 so edge
-// accounts with fewer total neighbors still get considered.
 function performContiguityRefinement(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
   const compactMode = getOptimizerMode() === 'compact';
   const candidates = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
@@ -2278,8 +2459,7 @@ function performContiguityRefinement(assignments, targetRepNames, minStops, maxS
       let bestRep = null, bestDelta = 0;
       for (const [targetRep, targetSupport] of targetCounts.entries()) {
         if (isRepLocked(targetRep) || ctx.count(targetRep) >= maxStops) continue;
-        // Lowered from 3→2 in compact mode so sparse-area edge accounts qualify
-        if (targetSupport < (compactMode ? 2 : 2)) continue;
+        if (targetSupport < 2) continue;
         const newCentroid = averageCentroidForRep(targetRep, ctx);
         const newDist = newCentroid ? squaredDistance(account.latitude, account.longitude, newCentroid.lat, newCentroid.lng) : oldDist;
         const supportDelta = targetSupport - currentSupport;
@@ -2422,7 +2602,6 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
           visited.add(nId); stack.push(nId);
         });
       }
-      // Raised 4 → 8: absorb larger stranded clusters
       if (component.length > 12) continue;
       if (ctx.count(rep) - component.length < minStops) continue;
       const borderCounts = new Map();
@@ -2437,7 +2616,6 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
       const ordered = [...borderCounts.entries()].sort((a, b) => b[1] - a[1]);
       const targetRep = ordered[0]?.[0];
       const targetTouches = ordered[0]?.[1] || 0;
-      // Lowered 2 → 1: absorb single-touch islands too
       if (!targetRep || targetTouches < 1) continue;
       if (ctx.count(targetRep) + component.length > maxStops) continue;
       for (const id of component) {
@@ -2449,18 +2627,9 @@ function absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops,
   }
 }
 
-// Finds ALL disconnected components for each rep and reassigns minority
-// components to the geographically dominant surrounding rep.
-// This is the primary fix for scattered territories like the Mario Dukovac
-// example — the stranded southwest cluster gets absorbed by whoever surrounds it.
 function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
   const accounts = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
   const accountIds = new Set(accounts.map(a => a._id));
-
-  // Max distance per BFS hop — 0.08 degrees ≈ ~5 miles.
-  // Tight enough that accounts in different suburbs (Gurnee vs Frankfort)
-  // can never be chained together even through intermediate accounts.
-  // Previously 0.22 (~15 miles) allowed bridging chains 60+ miles long.
   const MAX_COMPONENT_DIST_SQ = 0.08 * 0.08;
 
   for (const rep of targetRepNames) {
@@ -2485,7 +2654,6 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
         if (!current) continue;
         adjacency.get(id)?.forEach(nId => {
           if (visited.has(nId) || !repAccountIds.has(nId)) return;
-          // Geographic distance check — only connect accounts within ~15 miles
           const neighbor = repById.get(nId) || state.accountById.get(nId);
           if (!neighbor) return;
           const dist = squaredDistance(current.latitude, current.longitude, neighbor.latitude, neighbor.longitude);
@@ -2498,13 +2666,11 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
 
     if (components.length <= 1) continue;
 
-    // Keep the largest component; reassign all minority components
     components.sort((a, b) => b.length - a.length);
     for (const component of components.slice(1)) {
       if (ctx.count(rep) - component.length < minStops) continue;
       const componentSet = new Set(component);
 
-      // Find the best receiving rep by most border touches
       const borderCounts = new Map();
       for (const id of component) {
         adjacency.get(id)?.forEach(nId => {
@@ -2515,8 +2681,6 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
         });
       }
 
-      // If no neighbor-graph border touches (true geographic island), find
-      // the closest rep by centroid distance instead
       if (!borderCounts.size) {
         const compAccounts = component.map(id => state.accountById.get(id)).filter(Boolean);
         const compLat = compAccounts.reduce((s, a) => s + a.latitude, 0) / compAccounts.length;
