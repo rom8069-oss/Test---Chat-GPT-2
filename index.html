@@ -51,22 +51,6 @@
     <div class="controls-card">
       <div class="controls-grid">
 
-        <!-- Account search — spotlights a single account on the map -->
-        <div class="field account-search-field">
-          <label>Search account</label>
-          <div class="account-search-wrap">
-            <input
-              id="account-search-input"
-              type="text"
-              class="account-search-input"
-              placeholder="Name, ID, or city…"
-              autocomplete="off"
-              disabled
-            />
-            <div id="account-search-dropdown" class="account-search-dropdown" hidden></div>
-          </div>
-        </div>
-
         <div class="field">
           <label>Assign selected to</label>
           <select id="assign-rep-select"></select>
@@ -212,6 +196,18 @@
             <div class="card-sub">Use rectangle or polygon draw to lasso accounts</div>
           </div>
           <div class="map-actions">
+            <!-- Account search — spotlights a single account on the map -->
+            <div class="account-search-wrap">
+              <input
+                id="account-search-input"
+                type="text"
+                class="account-search-input"
+                placeholder="Search account…"
+                autocomplete="off"
+                disabled
+              />
+              <div id="account-search-dropdown" class="account-search-dropdown" hidden></div>
+            </div>
             <button id="assign-btn" class="btn btn-primary" disabled>Assign to Rep</button>
             <button id="optimize-btn" class="btn btn-green" disabled>Optimize Routes</button>
             <label class="inline-check"><input id="theme-toggle-check" type="checkbox" /> Dark Map</label>
