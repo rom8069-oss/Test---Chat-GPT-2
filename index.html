@@ -50,6 +50,23 @@
 
     <div class="controls-card">
       <div class="controls-grid">
+
+        <!-- Account search — spotlights a single account on the map -->
+        <div class="field account-search-field">
+          <label>Search account</label>
+          <div class="account-search-wrap">
+            <input
+              id="account-search-input"
+              type="text"
+              class="account-search-input"
+              placeholder="Name, ID, or city…"
+              autocomplete="off"
+              disabled
+            />
+            <div id="account-search-dropdown" class="account-search-dropdown" hidden></div>
+          </div>
+        </div>
+
         <div class="field">
           <label>Assign selected to</label>
           <select id="assign-rep-select"></select>
@@ -115,7 +132,6 @@
           </div>
         </div>
 
-        <!-- City filter replaces Protected filter -->
         <div class="field multi" id="city-filter-wrap">
           <label>City filter</label>
           <div class="multi-trigger input" data-multi-trigger="city">
@@ -220,7 +236,8 @@
               <thead>
                 <tr>
                   <th data-sort="rep" class="sortable is-active asc">Rep <span class="sort-indicator">▲</span></th>
-                  <th>Lock</th>
+                  <th title="Lock territory">Lock</th>
+                  <th title="Revert rep to original assignments">↩</th>
                   <th data-sort="stops" class="sortable">Stops <span class="sort-indicator">↕</span></th>
                   <th data-sort="deltaStops" class="sortable">+/- Stops <span class="sort-indicator">↕</span></th>
                   <th data-sort="revenue" class="sortable">Revenue <span class="sort-indicator">↕</span></th>
@@ -237,7 +254,7 @@
                 </tr>
               </thead>
               <tbody id="rep-table-body">
-                <tr><td colspan="15" class="empty">Upload a file to begin.</td></tr>
+                <tr><td colspan="16" class="empty">Upload a file to begin.</td></tr>
               </tbody>
             </table>
           </div>
