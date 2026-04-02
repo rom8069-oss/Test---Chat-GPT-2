@@ -134,7 +134,6 @@ select{
 .btn:hover:not(:disabled){transform:translateY(-1px);}
 .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 
-/* Primary button stays more visible when disabled — just slightly muted */
 .btn-primary:disabled{opacity:.72;}
 
 /* Button variants */
@@ -236,37 +235,37 @@ input[type="file"]{display:none;}
 }
 
 /*
-  13 equal columns — every field gets the same fr unit so all
-  inputs render at identical width. The "Assign to" and slider
-  columns get slightly more room (1.3fr) since their labels are longer.
+  14 columns: account search + assign to + 5 filters + premise + moved +
+  rep count + min + max + optimize weight + consistency slider.
+  Search and assign get a little more room since they contain more text.
 */
 .controls-grid{
   display:grid;
   grid-template-columns:
-    1.3fr   /* Assign selected to   */
-    1fr     /* Rep filter           */
-    1fr     /* Rank filter          */
-    1fr     /* Chain filter         */
-    1fr     /* Segment filter       */
-    1fr     /* City filter          */
-    1fr     /* Premise filter       */
-    1fr     /* Moved filter         */
-    .85fr   /* Target rep count     */
-    .85fr   /* Min stops            */
-    .85fr   /* Max stops            */
-    1fr     /* Optimize weight      */
-    1.3fr;  /* Customer consistency */
+    1.4fr   /* Search account        */
+    1.3fr   /* Assign selected to    */
+    1fr     /* Rep filter            */
+    1fr     /* Rank filter           */
+    1fr     /* Chain filter          */
+    1fr     /* Segment filter        */
+    1fr     /* City filter           */
+    1fr     /* Premise filter        */
+    1fr     /* Moved filter          */
+    .85fr   /* Target rep count      */
+    .85fr   /* Min stops             */
+    .85fr   /* Max stops             */
+    1fr     /* Optimize weight       */
+    1.3fr;  /* Customer consistency  */
   gap:8px;
   align-items:end;
 }
 
-/* Every field is a flex column; the control inside fills full width */
 .field{
   display:flex;
   flex-direction:column;
   gap:4px;
   min-width:0;
-  width:100%;        /* ← critical: fills the grid column */
+  width:100%;
 }
 
 .field label,
@@ -279,19 +278,19 @@ input[type="file"]{display:none;}
   line-height:1.2;
 }
 
-/* All interactive controls inside a field stretch to full column width */
 .field > select,
 .field > input[type="number"],
 .field > input[type="text"],
 .field > .input,
 .field > .range-wrap,
 .field > .multi-trigger,
-.field > .multi > .multi-trigger{
+.field > .multi > .multi-trigger,
+.field > .account-search-wrap{
   width:100%;
   min-width:0;
 }
 
-/* Range wrapper — same visual height and border as other inputs */
+/* Range wrapper */
 .range-wrap{
   height:30px;
   display:flex;
@@ -313,19 +312,133 @@ input[type="file"]{display:none;}
   accent-color:#2563eb;
 }
 
-/* Disruption slider label value */
 #disruption-value{font-weight:800;color:var(--text);}
 .optimizer-helper{font-size:10px;color:var(--muted);padding-left:2px;}
 .field-disruption-compact{gap:2px;}
 
+/* ─── ACCOUNT SEARCH ─────────────────────────────────────────── */
+.account-search-field{
+  position:relative;
+}
+
+.account-search-wrap{
+  position:relative;
+  width:100%;
+}
+
+.account-search-input{
+  width:100%;
+  height:30px;
+  border:1px solid #ccd8e4;
+  border-radius:9px;
+  background:#fff;
+  color:var(--text);
+  padding:0 10px 0 30px;
+  font-size:12px;
+  font-weight:700;
+  outline:none;
+  display:block;
+}
+
+.account-search-input:focus{
+  border-color:#2563eb;
+  box-shadow:0 0 0 2px rgba(37,99,235,.12);
+}
+
+.account-search-input:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+/* magnifier icon via pseudo-element on the wrapper */
+.account-search-wrap::before{
+  content:'⌕';
+  position:absolute;
+  left:9px;
+  top:50%;
+  transform:translateY(-50%);
+  font-size:14px;
+  color:var(--muted);
+  pointer-events:none;
+  z-index:1;
+}
+
+.account-search-dropdown{
+  position:fixed;
+  z-index:22000;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:14px;
+  box-shadow:0 16px 34px rgba(25,56,93,.18);
+  overflow:hidden;
+  max-height:320px;
+  overflow-y:auto;
+}
+
+.account-search-item{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:8px 12px;
+  cursor:pointer;
+  transition:background .1s;
+}
+.account-search-item:hover,
+.account-search-item.is-highlighted{
+  background:#f0f6ff;
+}
+
+.account-search-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  flex:0 0 10px;
+  border:1px solid rgba(0,0,0,.1);
+}
+
+.account-search-info{
+  flex:1 1 auto;
+  min-width:0;
+}
+
+.account-search-name{
+  font-size:12px;
+  font-weight:800;
+  color:var(--text);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.account-search-meta{
+  font-size:11px;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Rank badge inside dropdown */
+.account-search-rank{
+  flex:0 0 auto;
+  width:20px;
+  height:20px;
+  border-radius:6px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-weight:900;
+  color:#fff;
+}
+.rank-A{background:#0d9c65;}
+.rank-B{background:#2563eb;}
+.rank-C{background:#c48a13;}
+.rank-D{background:#9ca3af;}
+
 /* ─── MULTI-SELECT FILTER ────────────────────────────────────── */
-/*
-  .multi must be display:block (not the default inline) so it
-  fills the grid column fully — this was the root cause of the
-  narrower multi-select dropdowns.
-*/
 .multi{
-  display:block;       /* ← was missing; caused width collapse */
+  display:block;
   position:relative;
   overflow:visible;
   width:100%;
@@ -544,14 +657,12 @@ input[type="file"]{display:none;}
   flex-wrap:wrap;
 }
 
-/* Undo, Reset All, Export Excel — matched width */
 .topbar-btn{
   width:88px;
   min-width:88px;
   justify-content:center;
 }
 
-/* Both action buttons identical width */
 .map-actions #assign-btn,
 .map-actions #optimize-btn{
   width:118px;
@@ -619,13 +730,9 @@ th[data-sort]:hover{color:#1f3d61;}
 th.is-active{color:#1f3d61;}
 .sort-indicator{font-size:10px;margin-left:3px;}
 
-/* Row states */
 .routes-card tbody tr{cursor:pointer;transition:background .1s ease;}
 .routes-card tbody tr:hover td{background:#f4f8fc;}
-
-/* Clicked/focused rep row = same grey as thead */
 .routes-card tbody tr.rep-row-active td{background:#edf3f9 !important;}
-
 .routes-card tbody tr.rep-row-locked td:first-child{
   box-shadow:inset 3px 0 0 #7b8da6;
 }
@@ -647,6 +754,40 @@ th.is-active{color:#1f3d61;}
 .lock-cell{text-align:center;width:36px;min-width:36px;}
 .lock-toggle{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
 .lock-toggle input{margin:0;}
+
+/* ─── REVERT BUTTON ──────────────────────────────────────────── */
+.revert-cell{
+  text-align:center;
+  width:30px;
+  min-width:30px;
+}
+
+.revert-rep-btn{
+  height:22px;
+  width:26px;
+  border:1px solid #d6e0ea;
+  border-radius:7px;
+  background:#fff;
+  color:#5f7892;
+  font-size:12px;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  transition:background .12s, color .12s, border-color .12s;
+}
+
+.revert-rep-btn:hover:not(:disabled){
+  background:#fdf0f0;
+  color:var(--red);
+  border-color:#f1c3c3;
+}
+
+.revert-rep-btn:disabled{
+  opacity:.3;
+  cursor:not-allowed;
+}
 
 /* ─── DETAIL PANEL ───────────────────────────────────────────── */
 .detail-panel{
@@ -725,7 +866,6 @@ th.is-active{color:#1f3d61;}
 
 /* ─── MISC ───────────────────────────────────────────────────── */
 .btn-subtle{background:#fff;}
-
 #optimizer-disruption-helper{display:block !important;}
 
 .clear-btn{
