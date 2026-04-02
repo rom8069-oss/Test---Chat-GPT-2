@@ -2023,10 +2023,9 @@ function optimizeRoutes() {
         for (const account of movableForCleanup) {
           const currentRep = assignments.get(account._id);
           if (!currentRep) continue;
-          if (ctx.count(currentRep) <= minStops) continue;
+          if (assignmentCtx.count(currentRep) <= minStops) continue;
           const neighbors = adjacency.get(account._id);
           if (!neighbors || !neighbors.size) continue;
-          // Count how many neighbors belong to each rep
           const neighborRepCounts = new Map();
           neighbors.forEach(nId => {
             const nRep = assignments.get(nId) || state.accountById.get(nId)?.assignedRep;
@@ -2034,18 +2033,16 @@ function optimizeRoutes() {
             neighborRepCounts.set(nRep, (neighborRepCounts.get(nRep) || 0) + 1);
           });
           const sameRepCount = neighborRepCounts.get(currentRep) || 0;
-          // Only act on fully isolated accounts (zero same-rep neighbors)
           if (sameRepCount > 0) continue;
-          // Find the neighbor rep with the most touches
           let bestRep = null, bestCount = 0;
           for (const [nRep, count] of neighborRepCounts) {
             if (nRep === currentRep || isRepLocked(nRep)) continue;
-            if (ctx.count(nRep) >= maxStops) continue;
+            if (assignmentCtx.count(nRep) >= maxStops) continue;
             if (count > bestCount) { bestCount = count; bestRep = nRep; }
           }
           if (!bestRep || bestCount < 2) continue;
-          ctx.removeFromRep(currentRep, account);
-          ctx.addToRep(bestRep, account);
+          assignmentCtx.removeFromRep(currentRep, account);
+          assignmentCtx.addToRep(bestRep, account);
           assignments.set(account._id, bestRep);
           isoChanged = true;
         }
