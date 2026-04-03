@@ -1911,8 +1911,8 @@ function optimizeRoutes() {
             ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * ((1 - continuityWeight) * 1.4)
             : 0;
 
-          const continuityPenalty = isNewRep ? 0 : (account.currentRep === rep ? 0 : continuityWeight);
-          const existingPenalty = account.assignedRep === rep ? -0.15 : 0;
+          const continuityPenalty = isNewRep ? 0 : (account.currentRep === rep ? 0 : continuityWeight * 1.8);
+          const existingPenalty = account.assignedRep === rep ? -(0.15 + continuityWeight * 1.2) : 0;
 
           const stat = repStats.get(rep);
           const nextStops = (stat.stops || 0) + 1;
