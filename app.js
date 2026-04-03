@@ -1503,7 +1503,13 @@ function renderRepTable() {
     const hasChanges = row.movedIn > 0 || row.movedOut > 0;
     return `
     <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}">
-      <td><div class="rep-cell"><span class="color-dot" style="background:${getRepColor(row.rep)}"></span><span>${escapeHtml(row.rep)}</span></div></td>
+      <td>
+        <div class="rep-cell">
+          <span class="color-dot" style="background:${getRepColor(row.rep)}"></span>
+          <span class="rep-name-text">${escapeHtml(row.rep)}</span>
+          <button class="rename-rep-btn" data-rename-rep="${escapeHtmlAttr(row.rep)}" title="Rename ${escapeHtmlAttr(row.rep)}">✎</button>
+        </div>
+      </td>
       <td class="lock-cell"><label class="lock-toggle" title="Lock this territory"><input type="checkbox" class="rep-lock-checkbox" data-lock-rep="${escapeHtmlAttr(row.rep)}" ${isRepLocked(row.rep) ? 'checked' : ''} /></label></td>
       <td class="revert-cell">
         <button
@@ -1531,7 +1537,7 @@ function renderRepTable() {
 
   els.repTableBody.querySelectorAll('tr[data-rep-row]').forEach(tr => {
     tr.addEventListener('click', e => {
-      if (e.target.closest('.rep-lock-checkbox') || e.target.closest('.revert-rep-btn')) return;
+      if (e.target.closest('.rep-lock-checkbox') || e.target.closest('.revert-rep-btn') || e.target.closest('.rename-rep-btn')) return;
       const rep = decodeURIComponent(tr.getAttribute('data-rep-row'));
       state.repFocus = state.repFocus === rep ? null : rep;
       refreshMarkerStyles();
@@ -1553,6 +1559,102 @@ function renderRepTable() {
       if (rep) revertRepToOriginal(rep);
     });
   });
+
+  els.repTableBody.querySelectorAll('.rename-rep-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const oldName = btn.getAttribute('data-rename-rep');
+      startRepRename(btn, oldName);
+    });
+  });
+}
+
+function startRepRename(btn, oldName) {
+  const cell = btn.closest('.rep-cell');
+  if (!cell) return;
+  const nameSpan = cell.querySelector('.rep-name-text');
+  if (!nameSpan) return;
+
+  // Replace name span with inline input
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.className = 'rename-rep-input';
+  input.style.cssText = 'width:100%;min-width:80px;max-width:160px;height:22px;border:1px solid #2563eb;border-radius:6px;padding:0 6px;font-size:12px;font-weight:700;outline:none;';
+
+  nameSpan.replaceWith(input);
+  btn.style.display = 'none';
+  input.focus();
+  input.select();
+
+  let committed = false;
+  const commit = () => {
+    if (committed) return;
+    committed = true;
+    const newName = input.value.trim();
+    applyRepRename(oldName, newName);
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { committed = true; renderRepTable(); }
+  });
+  input.addEventListener('blur', commit);
+}
+
+function applyRepRename(oldName, newName) {
+  if (!newName || newName === oldName) { renderRepTable(); return; }
+
+  // Check for collision with existing rep name
+  const existing = getAvailableReps();
+  if (existing.includes(newName)) {
+    showToast(`"${newName}" already exists. Choose a different name.`);
+    renderRepTable();
+    return;
+  }
+
+  // Update all accounts
+  for (const account of state.accounts) {
+    if (account.assignedRep === oldName) account.assignedRep = newName;
+    if (account.currentRep === oldName) account.currentRep = newName;
+    if (account.originalAssignedRep === oldName) account.originalAssignedRep = newName;
+  }
+
+  // Update rep color map
+  if (state.repColors.has(oldName)) {
+    state.repColors.set(newName, state.repColors.get(oldName));
+    state.repColors.delete(oldName);
+  }
+
+  // Update locked reps
+  if (state.lockedReps.has(oldName)) {
+    state.lockedReps.delete(oldName);
+    state.lockedReps.add(newName);
+  }
+
+  // Update allReps
+  if (state.allReps.has(oldName)) {
+    state.allReps.delete(oldName);
+    state.allReps.add(newName);
+  }
+
+  // Update repFocus
+  if (state.repFocus === oldName) state.repFocus = newName;
+
+  // Update undo stack labels
+  state.undoStack.forEach(action => {
+    action.changes.forEach(change => {
+      if (change.from === oldName) change.from = newName;
+      if (change.to === oldName) change.to = newName;
+    });
+  });
+
+  invalidateCaches();
+  syncRepFilterSelection();
+  buildRepColors();
+  refreshAfterAssignmentBatch([], { repsBefore: null, updateSelection: false, territoryForce: true });
+  updateLastAction(`Renamed "${oldName}" → "${newName}"`);
+  showToast(`Renamed "${oldName}" → "${newName}"`);
 }
 
 function summarizeByRep() {
