@@ -1944,6 +1944,10 @@ function optimizeRoutes() {
     const existingRepNames = new Set(currentReps);
     const newRepSet = new Set(targetRepNames.filter(r => !existingRepNames.has(r)));
 
+    const targetStopsPerRep = Math.max(minStops, Math.min(maxStops, totalAccounts / Math.max(1, targetRepNames.length)));
+    const totalRevenuePool = state.accounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
+    const targetRevenuePerRep = totalRevenuePool / Math.max(1, targetRepNames.length);
+
     const seedPlan = newRepSet.size > 0
       ? buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops, targetStopsPerRep)
       : createEmptySeedPlan();
@@ -1968,10 +1972,6 @@ function optimizeRoutes() {
       if (a.overallSales !== b.overallSales) return b.overallSales - a.overallSales;
       return a.customerName.localeCompare(b.customerName);
     });
-
-    const targetStopsPerRep = Math.max(minStops, Math.min(maxStops, totalAccounts / Math.max(1, targetRepNames.length)));
-    const totalRevenuePool = state.accounts.reduce((sum, a) => sum + (a.overallSales || 0), 0);
-    const targetRevenuePerRep = totalRevenuePool / Math.max(1, targetRepNames.length);
 
     let iterationsExecuted = 0;
 
