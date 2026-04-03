@@ -1944,8 +1944,8 @@ function optimizeRoutes() {
     const existingRepNames = new Set(currentReps);
     const newRepSet = new Set(targetRepNames.filter(r => !existingRepNames.has(r)));
 
-    const seedPlan = compactMode
-      ? buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops)
+    const seedPlan = newRepSet.size > 0
+      ? buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops, targetStopsPerRep)
       : createEmptySeedPlan();
 
     state.optimizerSeedIds = new Set(seedPlan.seededAccountIds || []);
@@ -2058,7 +2058,7 @@ function optimizeRoutes() {
       }
 
       refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
-      if (compactMode && seedPlan.seededReps && seedPlan.seededReps.size) {
+      if (seedPlan.seededReps && seedPlan.seededReps.size) {
         enforceSeedAnchors(assignments, assignmentCtx, seedPlan);
         refreshCentroidsFromContext(centroids, targetRepNames, assignmentCtx);
       }
@@ -2219,7 +2219,7 @@ function floodFillSeed(startAccount, movableIdSet, reservedIds, donorRep, maxSiz
   return result;
 }
 
-function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops) {
+function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, minStops, maxStops, targetStopsPerRep = 0) {
   const plan = createEmptySeedPlan();
   const newReps = targetRepNames.filter(rep => !existingRepNames.has(rep));
   if (!newReps.length || !movableAccounts.length) return plan;
@@ -2248,6 +2248,11 @@ function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, 
   const fairShare = Math.round(totalMovable / totalReps);
   const seedTarget = Math.max(minStops, Math.min(maxStops, Math.round(fairShare * 0.9)));
 
+  // Sort donors by how overloaded they are — most overloaded first.
+  // This ensures new reps carve territory from whoever has too many accounts,
+  // rather than just whoever has the most accounts overall.
+  const effectiveTarget = targetStopsPerRep || fairShare;
+
   for (const newRep of newReps) {
     const donors = [...movableByRep.entries()]
       .filter(([, accounts]) => {
@@ -2255,6 +2260,11 @@ function buildNewRepSeedPlan(movableAccounts, targetRepNames, existingRepNames, 
         return avail >= Math.max(Math.round(seedTarget * 0.6), minStops + 5);
       })
       .sort((a, b) => {
+        // Primary: most overloaded (furthest above target) first
+        const overloadA = a[1].length - effectiveTarget;
+        const overloadB = b[1].length - effectiveTarget;
+        if (Math.abs(overloadB - overloadA) > 10) return overloadB - overloadA;
+        // Secondary: most available accounts
         const availA = a[1].filter(x => !reservedIds.has(x._id)).length;
         const availB = b[1].filter(x => !reservedIds.has(x._id)).length;
         return availB - availA;
