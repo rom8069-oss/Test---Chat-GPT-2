@@ -1911,10 +1911,7 @@ function optimizeRoutes() {
             ? squaredDistance(account.latitude, account.longitude, centroid.lat, centroid.lng) * ((1 - continuityWeight) * 1.4)
             : 0;
 
-          // Scale continuity penalty to compete with compactness — at high continuity
-          // weights, an account with its original rep should strongly resist moving
-          const continuityScale = 1 + (continuityWeight * 2.5);
-          const continuityPenalty = isNewRep ? 0 : (account.currentRep === rep ? 0 : continuityWeight * continuityScale);
+          const continuityPenalty = isNewRep ? 0 : (account.currentRep === rep ? 0 : continuityWeight);
           const existingPenalty = account.assignedRep === rep ? -0.15 : 0;
 
           const stat = repStats.get(rep);
