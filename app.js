@@ -2009,10 +2009,14 @@ function optimizeRoutes() {
       tryBorderSwaps(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       absorbSmallIslandsFast(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
+      resolveStrandedClustersWithSwap(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
       enforceMinimumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       enforceMaximumStopsFast(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
       rebalanceStopTargetsStrict(assignments, targetRepNames, minStops, maxStops, assignmentCtx);
     }
+
+    // One final swap pass after all cleanup to catch any remaining splits
+    resolveStrandedClustersWithSwap(assignments, targetRepNames, minStops, maxStops, adjacency, assignmentCtx, movableForCleanup);
 
     const finalViolations = targetRepNames.filter(rep => { const c = assignmentCtx.count(rep); return c < minStops || c > maxStops; });
     if (finalViolations.length) showToast('Optimizer could not fully satisfy the stop limits. Try adjusting rep count or stop limits.');
@@ -2710,6 +2714,148 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
         const a = state.accountById.get(id);
         if (!a) continue;
         ctx.removeFromRep(rep, a); ctx.addToRep(targetRep, a); assignments.set(id, targetRep);
+      }
+    }
+  }
+}
+
+// Swap-based split resolver — handles the case where resolveStrandedClusters
+// can't give away a stranded component because the receiving rep would exceed
+// maxStops or the donor would drop below minStops. Instead finds accounts in
+// the target rep that are close to the donor's MAIN cluster and swaps them
+// for the stranded component accounts, keeping both reps within limits.
+function resolveStrandedClustersWithSwap(assignments, targetRepNames, minStops, maxStops, adjacency, ctx, movableAccounts = null) {
+  const accounts = Array.isArray(movableAccounts) && movableAccounts.length ? movableAccounts : state.accounts.filter(a => !a.protected && !isAccountLocked(a));
+  const accountIds = new Set(accounts.map(a => a._id));
+  const movableById = new Map(accounts.map(a => [a._id, a]));
+  const MAX_COMPONENT_DIST_SQ = 0.08 * 0.08;
+
+  for (const rep of targetRepNames) {
+    if (isRepLocked(rep)) continue;
+    const repAccounts = accounts.filter(a => (assignments.get(a._id) || a.assignedRep) === rep);
+    if (repAccounts.length < 2) continue;
+
+    // Find disconnected components for this rep
+    const repAccountIds = new Set(repAccounts.map(a => a._id));
+    const visited = new Set();
+    const components = [];
+
+    for (const seed of repAccounts) {
+      if (visited.has(seed._id)) continue;
+      const component = [];
+      const stack = [seed._id];
+      visited.add(seed._id);
+      while (stack.length) {
+        const id = stack.pop();
+        component.push(id);
+        const current = state.accountById.get(id);
+        if (!current) continue;
+        adjacency.get(id)?.forEach(nId => {
+          if (visited.has(nId) || !repAccountIds.has(nId)) return;
+          const neighbor = state.accountById.get(nId);
+          if (!neighbor) return;
+          if (squaredDistance(current.latitude, current.longitude, neighbor.latitude, neighbor.longitude) > MAX_COMPONENT_DIST_SQ) return;
+          visited.add(nId); stack.push(nId);
+        });
+      }
+      components.push(component);
+    }
+
+    if (components.length <= 1) continue;
+
+    // Largest component = main body; smaller ones are stranded
+    components.sort((a, b) => b.length - a.length);
+    const mainComponent = components[0];
+    const mainAccounts = mainComponent.map(id => state.accountById.get(id)).filter(Boolean);
+    const mainLat = mainAccounts.reduce((s, a) => s + a.latitude, 0) / mainAccounts.length;
+    const mainLng = mainAccounts.reduce((s, a) => s + a.longitude, 0) / mainAccounts.length;
+
+    for (const strandedComponent of components.slice(1)) {
+      const strandedSize = strandedComponent.length;
+      const strandedAccounts = strandedComponent.map(id => state.accountById.get(id)).filter(Boolean);
+      if (!strandedAccounts.length) continue;
+
+      // Find the best rep to absorb this stranded cluster
+      // — prefer reps that are geographically close to the stranded cluster
+      const strandedLat = strandedAccounts.reduce((s, a) => s + a.latitude, 0) / strandedAccounts.length;
+      const strandedLng = strandedAccounts.reduce((s, a) => s + a.longitude, 0) / strandedAccounts.length;
+
+      // First try: simple give-away if receiving rep has room
+      let absorbed = false;
+      const borderCounts = new Map();
+      for (const id of strandedComponent) {
+        adjacency.get(id)?.forEach(nId => {
+          if (!accountIds.has(nId)) return;
+          const nRep = assignments.get(nId) || state.accountById.get(nId)?.assignedRep;
+          if (!nRep || nRep === rep || isRepLocked(nRep)) return;
+          borderCounts.set(nRep, (borderCounts.get(nRep) || 0) + 1);
+        });
+      }
+
+      const candidateReps = [...borderCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([r]) => r)
+        .filter(r => !isRepLocked(r));
+
+      // Try give-away first (no swap needed)
+      for (const targetRep of candidateReps) {
+        if (ctx.count(rep) - strandedSize < minStops) break; // would drop donor below min
+        if (ctx.count(targetRep) + strandedSize > maxStops) continue; // receiver too full
+        for (const a of strandedAccounts) {
+          ctx.removeFromRep(rep, a); ctx.addToRep(targetRep, a); assignments.set(a._id, targetRep);
+        }
+        absorbed = true;
+        break;
+      }
+      if (absorbed) continue;
+
+      // Swap approach: find accounts in a nearby rep that are close to rep's MAIN cluster
+      // and swap them for the stranded accounts — net counts stay the same
+      let bestSwapRep = null;
+      let bestSwapAccounts = null;
+      let bestSwapScore = Infinity;
+
+      for (const targetRep of candidateReps.slice(0, 4)) {
+        if (isRepLocked(targetRep)) continue;
+        // Target rep accounts that are movable and close to our main cluster
+        const targetRepAccounts = accounts.filter(a =>
+          (assignments.get(a._id) || a.assignedRep) === targetRep &&
+          !a.protected && !isAccountLocked(a)
+        );
+        if (targetRepAccounts.length < strandedSize) continue;
+        if (ctx.count(targetRep) - strandedSize < minStops) continue;
+
+        // Sort by distance to rep's main cluster centroid — closest first
+        const sorted = targetRepAccounts
+          .map(a => ({ a, d: squaredDistance(a.latitude, a.longitude, mainLat, mainLng) }))
+          .sort((x, y) => x.d - y.d);
+
+        // Take the closest N accounts (same count as stranded cluster)
+        const swapCandidates = sorted.slice(0, strandedSize).map(x => x.a);
+        const avgDist = sorted.slice(0, strandedSize).reduce((s, x) => s + x.d, 0) / strandedSize;
+
+        // Score: lower = better. Reward closeness to main cluster + closeness of stranded to target centroid
+        const targetCent = averageCentroidForRep(targetRep, ctx);
+        const strandedToTarget = targetCent
+          ? squaredDistance(strandedLat, strandedLng, targetCent.lat, targetCent.lng)
+          : Infinity;
+        const score = avgDist + strandedToTarget;
+
+        if (score < bestSwapScore) {
+          bestSwapScore = score;
+          bestSwapRep = targetRep;
+          bestSwapAccounts = swapCandidates;
+        }
+      }
+
+      if (bestSwapRep && bestSwapAccounts) {
+        // Execute the swap: stranded → targetRep, swap accounts → rep
+        for (const a of strandedAccounts) {
+          ctx.removeFromRep(rep, a); ctx.addToRep(bestSwapRep, a); assignments.set(a._id, bestSwapRep);
+        }
+        for (const a of bestSwapAccounts) {
+          ctx.removeFromRep(bestSwapRep, a); ctx.addToRep(rep, a); assignments.set(a._id, rep);
+        }
       }
     }
   }
