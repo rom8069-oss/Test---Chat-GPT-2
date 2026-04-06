@@ -92,7 +92,7 @@ const state = {
   changeLog: [],
   repColors: new Map(),
   allReps: new Set(),
-  repFocus: null,
+  repFocus: new Set(),
   lockedReps: new Set(),
   theme: 'light',
   loadedFileName: 'territory_export_updated.xlsx',
@@ -490,7 +490,8 @@ function refreshAfterAssignmentBatch(changes, options = {}) {
   const touchedReps = getChangedRepNamesFromChanges(changes);
   buildRepColors();
   syncRepFilterSelection(Array.isArray(repsBefore) ? repsBefore : null);
-  if (state.repFocus && !getAllAssignedReps().includes(state.repFocus)) state.repFocus = null;
+  const allReps = new Set(getAllAssignedReps());
+  for (const rep of [...state.repFocus]) { if (!allReps.has(rep)) state.repFocus.delete(rep); }
   updateFilterPassCache();
   updateRepSummaryCacheForReps(touchedReps);
   markTerritoriesDirty();
@@ -523,7 +524,7 @@ function bindElements() {
     'city-filter-summary','moved-filter','moved-review-list','moved-review-count','rep-filter-options','rank-filter-options','chain-filter-options',
     'segment-filter-options','rep-filter-summary','rank-filter-summary','chain-filter-summary','segment-filter-summary',
     'routes-table-wrap','moved-search-input','upload-status-pill','upload-status-icon','upload-status-text','upload-status-panel','upload-status-body',
-    'detail-panel','account-search-input','account-search-dropdown'
+    'detail-panel','account-search-input','account-search-dropdown','clean-border-btn','clean-border-wrap'
   ].forEach(id => { els[toCamel(id)] = document.getElementById(id); });
 }
 
@@ -1088,7 +1089,7 @@ function loadSelectedSheet() {
   state.selection.clear();
   state.undoStack = [];
   state.changeLog = [];
-  state.repFocus = null;
+  state.repFocus = new Set();
   state.optimizationSummary = null;
   state.repCountUserSet = false;
   state.multiSearch.moved = '';
@@ -1388,11 +1389,10 @@ function refreshMarkers(accountIds = null) {
     const color = getRepColor(account.assignedRep);
     const selected = state.selection.has(id);
     const isSpotlit = state.spotlitAccountId === id;
-    const focusedOut = state.repFocus && account.assignedRep !== state.repFocus;
+    const focusedOut = state.repFocus.size > 0 && !state.repFocus.has(account.assignedRep);
     const dimmed = dimOthers && focusedOut && !selected;
-
-    // Spotlit marker gets a larger radius; selected a medium bump; normal is baseline
-    const radius = isSpotlit ? 10 : (selected ? 4.2 : dimmed ? 1.65 : (state.repFocus && account.assignedRep === state.repFocus ? 3.8 : 2.8));
+    const isFocused = state.repFocus.has(account.assignedRep);
+    const radius = isSpotlit ? 10 : (selected ? 4.2 : dimmed ? 1.65 : (isFocused ? 3.8 : 2.8));
 
     const nextState = {
       color,
@@ -1509,7 +1509,7 @@ function renderRepTable() {
   els.repTableBody.innerHTML = rows.map(row => {
     const hasChanges = row.movedIn > 0 || row.movedOut > 0;
     return `
-    <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus === row.rep ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}">
+    <tr data-rep-row="${encodeURIComponent(row.rep)}" class="${state.repFocus.has(row.rep) ? 'rep-row-active' : ''} ${isRepLocked(row.rep) ? 'rep-row-locked' : ''}">
       <td>
         <div class="rep-cell">
           <span class="color-dot" style="background:${getRepColor(row.rep)}"></span>
@@ -1546,11 +1546,18 @@ function renderRepTable() {
     tr.addEventListener('click', e => {
       if (e.target.closest('.rep-lock-checkbox') || e.target.closest('.revert-rep-btn') || e.target.closest('.rename-rep-btn')) return;
       const rep = decodeURIComponent(tr.getAttribute('data-rep-row'));
-      state.repFocus = state.repFocus === rep ? null : rep;
+      if (state.repFocus.has(rep)) {
+        state.repFocus.delete(rep);
+      } else {
+        if (state.repFocus.size >= 2) state.repFocus.clear();
+        state.repFocus.add(rep);
+      }
       refreshMarkerStyles();
       renderRepTable();
+      renderCleanBorderButton();
       scheduleTerritoryRefresh();
-      if (state.repFocus) zoomToRep(state.repFocus);
+      if (state.repFocus.size === 1) zoomToRep([...state.repFocus][0]);
+      else if (state.repFocus.size === 2) zoomToRepPair([...state.repFocus]);
     });
   });
 
@@ -1574,6 +1581,8 @@ function renderRepTable() {
       startRepRename(btn, oldName);
     });
   });
+
+  renderCleanBorderButton();
 }
 
 function startRepRename(btn, oldName) {
@@ -1646,7 +1655,10 @@ function applyRepRename(oldName, newName) {
   }
 
   // Update repFocus
-  if (state.repFocus === oldName) state.repFocus = newName;
+  if (state.repFocus.has(oldName)) {
+    state.repFocus.delete(oldName);
+    state.repFocus.add(newName);
+  }
 
   // Update undo stack labels
   state.undoStack.forEach(action => {
@@ -1900,7 +1912,7 @@ function resetAssignments() {
   if (!resetChanges.length) { showToast('Nothing to reset.'); return; }
   state.undoStack = [];
   state.changeLog = [];
-  state.repFocus = null;
+  state.repFocus = new Set();
   state.optimizationSummary = null;
   state.multiSearch.moved = '';
   if (els.movedSearchInput) els.movedSearchInput.value = '';
@@ -2932,6 +2944,74 @@ function zoomToRep(rep) {
   const spanLng = Math.abs(bounds.getEast() - bounds.getWest());
   if (spanLat < 0.03 && spanLng < 0.03) { state.map.setView(bounds.getCenter(), 11); return; }
   state.map.fitBounds(bounds, { padding: [35, 35], maxZoom: 11 });
+}
+
+function zoomToRepPair(reps) {
+  const points = state.accounts
+    .filter(a => reps.includes(a.assignedRep))
+    .map(a => [a.latitude, a.longitude]);
+  if (!points.length) return;
+  state.map.fitBounds(L.latLngBounds(points), { padding: [35, 35], maxZoom: 11 });
+}
+
+function renderCleanBorderButton() {
+  const wrap = document.getElementById('clean-border-wrap');
+  const btn = document.getElementById('clean-border-btn');
+  if (!wrap || !btn) return;
+  if (state.repFocus.size === 2) {
+    const [repA, repB] = [...state.repFocus];
+    btn.textContent = `✦ Clean border`;
+    btn.title = `Clean border between ${repA} and ${repB}`;
+    wrap.hidden = false;
+    btn.onclick = () => cleanBorderBetweenReps([...state.repFocus]);
+  } else {
+    wrap.hidden = true;
+    btn.onclick = null;
+  }
+}
+
+function cleanBorderBetweenReps(reps) {
+  if (!reps || reps.length !== 2) return;
+  const [repA, repB] = reps;
+  if (!repA || !repB) return;
+
+  const repsBefore = getAllAssignedReps();
+  const adjacency = state.neighborMap;
+
+  // Snapshot current assignments
+  const assignments = new Map();
+  for (const a of state.accounts) assignments.set(a._id, a.assignedRep);
+
+  // Build a minimal context just for these two reps
+  const ctx = createAssignmentContext([repA, repB], assignments);
+
+  // Only operate on movable accounts belonging to these two reps
+  const movable = state.accounts.filter(a =>
+    !a.protected && !isAccountLocked(a) &&
+    (a.assignedRep === repA || a.assignedRep === repB)
+  );
+
+  const minStops = 1;
+  const maxStops = 999999;
+
+  // Run the full border cleanup suite between just these two reps
+  runBorderCleanupFast(assignments, [repA, repB], 0, minStops, adjacency, ctx, movable);
+  performContiguityRefinement(assignments, [repA, repB], minStops, maxStops, adjacency, ctx, movable);
+  tryBorderSwaps(assignments, [repA, repB], minStops, maxStops, adjacency, ctx, movable);
+  tryBorderSwaps(assignments, [repA, repB], minStops, maxStops, adjacency, ctx, movable);
+  runBorderCleanupFast(assignments, [repA, repB], 0, minStops, adjacency, ctx, movable);
+  absorbSmallIslandsFast(assignments, [repA, repB], minStops, maxStops, adjacency, ctx, movable);
+  resolveStrandedClusters(assignments, [repA, repB], minStops, maxStops, adjacency, ctx, movable);
+
+  // Collect changes
+  const changes = [];
+  for (const a of movable) {
+    const next = assignments.get(a._id);
+    if (next && next !== a.assignedRep) changes.push({ id: a._id, from: a.assignedRep, to: next });
+  }
+
+  if (!changes.length) { showToast(`Border between ${repA} and ${repB} is already clean.`); return; }
+  applyChanges(changes, `Cleaned border: ${repA} ↔ ${repB}`, repsBefore);
 }
 
 function fitMapToAccounts() {
