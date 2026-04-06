@@ -586,11 +586,18 @@ function bindEvents() {
     if (els.uploadStatusPanel && !els.uploadStatusPanel.hidden) positionUploadStatusPanel();
   }, true);
   document.addEventListener('keydown', e => {
+    // Don't fire shortcuts when typing in an input
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || document.activeElement?.isContentEditable;
     if (e.key === 'Escape') {
       closeAllMultiPanels();
       closeUploadStatusPanel();
       closeAccountSearchDropdown();
+      if (!isTyping && state.selection.size > 0) clearSelection();
     }
+    if (isTyping) return;
+    if (e.key === 'u' || e.key === 'U') { e.preventDefault(); if (!els.undoBtn.disabled) undoLastAction(); }
+    if (e.key === 'a' || e.key === 'A') { e.preventDefault(); if (!els.assignBtn.disabled) assignSelectionToRep(); }
   });
 }
 
@@ -1807,6 +1814,7 @@ function syncControlState() {
   const hasAccounts = state.accounts.length > 0;
   const hasSelection = state.selection.size > 0;
   els.assignBtn.disabled = !hasAccounts || !hasSelection;
+  els.assignBtn.textContent = hasSelection ? `Assign ${state.selection.size} to Rep` : 'Assign to Rep';
   els.undoBtn.disabled = state.undoStack.length === 0;
   els.resetBtn.disabled = !hasAccounts;
   els.optimizeBtn.disabled = !hasAccounts;
@@ -2831,6 +2839,8 @@ function resolveStrandedClusters(assignments, targetRepNames, minStops, maxStops
 
 async function exportWorkbook() {
   if (!state.accounts.length) { showToast('Nothing to export.'); return; }
+  els.exportBtn.disabled = true;
+  els.exportBtn.textContent = 'Exporting…';
   const workbook = new ExcelJS.Workbook();
   const mainSheet = workbook.addWorksheet(state.currentSheetName || 'Sheet1');
   const exportRows = state.accounts.map(account => {
@@ -2870,6 +2880,8 @@ async function exportWorkbook() {
   }
   const buffer = await workbook.xlsx.writeBuffer();
   downloadArrayBufferAsFile(buffer, state.loadedFileName || 'territory_export_updated.xlsx');
+  els.exportBtn.disabled = false;
+  els.exportBtn.textContent = 'Export Excel';
   showToast('Excel export ready.');
 }
 
@@ -2941,11 +2953,17 @@ function buildRepColors() {
   const previous = new Map(state.repColors);
   const reps = getAllKnownReps();
   const usedColors = new Set();
-  state.repColors = new Map();
+
+  // First pass: keep all existing color assignments — never reassign a rep that already has a color
   reps.forEach(rep => {
     const existing = previous.get(rep);
-    if (existing && COLOR_PALETTE.includes(existing)) { state.repColors.set(rep, existing); usedColors.add(existing); }
+    if (existing && COLOR_PALETTE.includes(existing)) {
+      state.repColors.set(rep, existing);
+      usedColors.add(existing);
+    }
   });
+
+  // Second pass: assign colors only to reps that don't have one yet
   reps.forEach(rep => {
     if (state.repColors.has(rep)) return;
     const nextColor = pickBestAvailableColor(usedColors);
