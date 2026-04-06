@@ -886,6 +886,28 @@ th.is-active{color:#1f3d61;}
 .routes-card tbody tr:hover td:first-child{background:#f4f8fc;}
 .routes-card tbody tr.rep-row-active td:first-child{background:#edf3f9 !important;}
 
+.clean-border-wrap{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.btn-clean-border{
+  background:linear-gradient(135deg,#1d4ed8,#7c3aed);
+  color:#fff;
+  border:none;
+  height:28px;
+  padding:0 12px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+  white-space:nowrap;
+  transition:opacity .15s, transform .15s;
+  box-shadow:0 2px 8px rgba(124,58,237,.25);
+}
+.btn-clean-border:hover{opacity:.88;transform:translateY(-1px);}
+
 /* Last action — more visible */
 #last-action{
   font-size:11px;
