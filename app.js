@@ -51,7 +51,7 @@ const COLUMN_ALIASES = {
   premise: ['premise','premise type','on/off premise','premise class'],
   currentRep: ['current rep','rep','sales rep','territory rep','owner rep'],
   assignedRep: ['assigned rep','new rep','territory','route','assigned territory'],
-  overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue','vol sept feb','dollar vol sept feb'],
+  overallSales: ['overall sales','sales','total sales','revenue','$ revenue','$ vol sept - feb','overall revenue','vol sept feb','dollar vol sept feb','$ vol','$ rev','vol','rev','dollar volume','dollar rev','total revenue','annual sales','annual revenue','ytd sales','ytd revenue'],
   rank: ['rank','class','priority rank'],
   cadence4w: [
     'cadence 4w','cadence_4w','cadence4w','4w','planned 4w','planned_4w','planned4w',
